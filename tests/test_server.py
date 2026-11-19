@@ -161,6 +161,19 @@ class Providers(unittest.TestCase):
         h = handler(self.BOX, ["ULOAD_T0", "ULOAD_T1", "ULOAD_T2", "ULOAD_T3"], cfg={"macros": {"unload": "ULOAD_T{n}"}})
         self.assertEqual((h.command_for("load", 1), h.command_for("unload", 1)), ("E_LOAD slot=1", "ULOAD_T1"))
 
+    def test_setting_a_qidi_box_slot(self):
+        h = handler(self.BOX)
+        h.box_table = lambda: {"fila": {1: "PLA Rapido", 18: "ASA"}, "color": {1: "#FAFAFA", 2: "#060606"}, "vendor": {0: "Generic", 1: "QIDI"}}
+        self.assertEqual(h.slot_script({"slot": 2, "filament": 18, "color": 2, "vendor": 0}),
+                         "SAVE_VARIABLE VARIABLE=filament_slot2 VALUE=18\nSAVE_VARIABLE VARIABLE=color_slot2 VALUE=2\nSAVE_VARIABLE VARIABLE=vendor_slot2 VALUE=0")
+        self.assertEqual(h.slot_script({"slot": 16, "color": 1}), "SAVE_VARIABLE VARIABLE=color_slot16 VALUE=1")      # the external spool
+        for bad in ({"slot": 4, "filament": 1}, {"slot": 2}, {"slot": 2, "filament": 99}, {"slot": 2, "color": "2"}, {"slot": 2, "vendor": True},
+                    {"slot": "2", "filament": 1}, {"slot": 2, "filament": "1; M112"}):
+            with self.assertRaises(ValueError, msg=bad):
+                h.slot_script(bad)
+        with self.assertRaises(ValueError):
+            handler(self.TC).slot_script({"slot": 0, "filament": 1})
+
     def test_toolchanger_buttons(self):
         h = handler(self.TC, ["T0", "T1", "T2", "SELECT_TOOL", "UNSELECT_TOOL"])
         self.assertEqual((h.command_for("pickup", 2), h.command_for("park", 1)), ("T2", "UNSELECT_TOOL"))

@@ -663,6 +663,64 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return "u1"
         return "afc" if self.afc_lanes() else "qidibox" if self.qidi_slots() else "toolchanger" if self.tc_tools() else "extruders"
 
+    # ---- QIDI Box: what is in a slot (for spools without an RFID tag). The Box keeps a number per slot for the filament,
+    # the color and the vendor in Klipper's saved variables; the numbers are rows of the printer's own filament table.
+    BOX_TABLE = "officiall_filas_list.cfg"
+    BOX_FIELDS = (("filament", "filament_slot%d", "fila"), ("color", "color_slot%d", "color"), ("vendor", "vendor_slot%d", "vendor"))
+
+    def box_table(self):
+        """The printer's filament table: {"fila": {id: name}, "color": {id: "#hex"}, "vendor": {id: name}}, or {}."""
+        def load():
+            out, sec = {"fila": {}, "color": {}, "vendor": {}}, None
+            for line in self.fetch_config(self.BOX_TABLE)[0].decode("utf-8", "replace").splitlines():
+                m = re.match(r"\[([^\]]+)\]", line)
+                kv = re.match(r"\s*([^#;=\s\[][^=]*?)\s*=\s*(.*?)\s*$", line)
+                if m:
+                    sec = m.group(1).strip()
+                elif kv and sec:
+                    k, v = kv.group(1), kv.group(2)
+                    if re.fullmatch(r"fila\d+", sec) and k == "filament":
+                        out["fila"][int(sec[4:])] = v
+                    elif sec == "colordict" and k.isdigit():
+                        out["color"][int(k)] = v
+                    elif sec == "vendor_list" and k.isdigit():
+                        out["vendor"][int(k)] = v
+            return out
+        return self.cached("boxtable", 300, load) or {}
+
+    def slot_script(self, req):
+        """SAVE_VARIABLE lines for one "set_slot" request, or raises ValueError. Only numbers that are rows of the printer's
+        own filament table are accepted, for a slot this printer has (16 is the external spool)."""
+        if self.provider() != "qidibox":
+            raise ValueError("this printer has no QIDI Box")
+        slot = req.get("slot")
+        if isinstance(slot, bool) or not isinstance(slot, int) or slot not in [int(s[4:]) for s in self.qidi_slots()] + [16]:
+            raise ValueError("unknown slot")
+        table, lines = self.box_table(), []
+        for field, var, kind in self.BOX_FIELDS:
+            v = req.get(field)
+            if v is None:
+                continue
+            if isinstance(v, bool) or not isinstance(v, int) or v not in (table.get(kind) or {}):
+                raise ValueError("unknown %s" % field)
+            lines.append("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (var % slot, v))
+        if not lines:
+            raise ValueError("nothing to change")
+        return "\n".join(lines)
+
+    def box_slot_control(self, req):
+        try:
+            script = self.slot_script(req)
+            state = self.print_state()
+            if state in ("printing", "paused"):
+                return self.jreply(409, {"error": "refused: printer is %s" % state})
+            self.run_gcode(script, 20)
+            self.jreply(200, {"ok": True, "cmd": script.replace("\n", " ; ")})
+        except ValueError as e:
+            self.jreply(400, {"error": str(e)})
+        except Exception as e:  # noqa: BLE001
+            self.jreply(502, {"error": str(e)})
+
     def slot_count(self):
         """How many filament slots the tool buttons cover: Box slots on a QIDI Box, otherwise one per tool."""
         return len(self.qidi_slots()) if self.provider() == "qidibox" else self.tool_count()
@@ -1524,7 +1582,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     # itself, because they share the one-command-at-a-time lock and the "not while printing" rule.
     ROUTES = {"tune": "tune_control", "fan": "fan_control", "temp": "temp_control", "light": "light_control",
               "home": "move_control", "jog": "move_control", "goto": "move_control", "motors_off": "move_control",
-              "set_lane": "lane_control", "save_config": "config_save",
+              "set_lane": "lane_control", "set_slot": "box_slot_control", "save_config": "config_save",
               "save_settings": "save_settings", "save_pack": "save_pack", "delete_pack": "delete_pack",
               "add_printer": "add_printer", "remove_printer": "remove_printer", "set_embed": "set_embed", "set_spoolman": "set_spoolman"}
 

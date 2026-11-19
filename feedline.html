@@ -55,6 +55,7 @@
   #spmodal .laneedit input[type=color]{padding:2px;height:34px;cursor:pointer}
   #spmodal .laneedit .row{grid-column:1 / -1;display:flex;gap:10px;align-items:center}
   #spmodal .laneedit .sub{grid-column:1 / -1;font-size:11px;color:#6B66A5}
+  #spmodal .laneedit select{background:#0a0818;border:1px solid #352F6B;border-radius:8px;color:#fff;font:inherit;font-size:14px;padding:5px 8px;width:100%;box-sizing:border-box}
   #spmodal .laneedit button{background:#1D1A42;border:1px solid #352F6B;color:#e8e6ff;border-radius:8px;padding:6px 14px;cursor:pointer;font:inherit;font-size:13px}
   #spmodal .laneedit button.go{background:#7A63F2;border-color:#7A63F2;color:#fff} #spmodal .laneedit button:disabled{opacity:.4;cursor:default}
   #stage{max-width:800px;width:100%;margin:0 auto}
@@ -619,7 +620,7 @@ function openSpool(i) {
     title = b.label + " · " + (b.loaded ? b.title : "Empty");
     row("Material", escH(b.mat)); row("Vendor", escH(b.vendor)); row("Color", b.loaded ? '<i class="sw" style="background:' + escH(b.col) + '"></i>' + escH(b.col) : "");
     row("Nozzle temp", escH(b.temps)); row("Drying temp", escH(b.boxTemp)); row("State", escH(b.status)); row(b.ext ? "Loaded" : "Printed as", escH(b.map)); row("Slot", escH(b.unit + (b.ext ? "" : ", " + b.lane)));
-    body = (b.loaded ? "<table>" + r2.join("") + "</table>" : b.ext ? "<p>No material is set for the external spool.</p>" : "<p>No filament in this slot.</p>") +
+    body = boxEditForm(b) + (b.loaded ? "<table>" + r2.join("") + "</table>" : b.ext ? "<p>No material is set for the external spool.</p>" : "<p>No filament in this slot.</p>") +
       '<p class="sub">' + (b.ext ? "The external spool bypasses the Box and is loaded by hand. Nothing senses the spool itself: it shows as in use when the toolhead has filament and no Box slot is loaded. Its material and color are what was set on the printer."
         : "Material and color are what was set for this slot on the printer (or read from the spool's tag). The Box does not weigh the spool, so there is no remaining amount.") + "</p>";
   }
@@ -627,6 +628,32 @@ function openSpool(i) {
   document.getElementById("spmodal-body").innerHTML = (d.lane || d.box ? "<h2>" : '<h2>T' + i + " &middot; ") + escH(title) + "</h2>" + body;
   document.getElementById("spmodal").hidden = false;
 }
+// QIDI Box: say what is in a slot when the spool has no RFID tag to read. The lists are the printer's own filament table;
+// the server stores the chosen rows in the Box's saved variables, exactly as the printer's own Box card does.
+function boxEditForm(b) {
+  const T = boxTable;
+  if (!T) return '<div class="laneedit"><div class="sub">The printer\'s filament list is not available, so this slot cannot be set here.</div></div>';
+  const locked = !CONTROLS || printState === "printing" || printState === "paused", dis = locked ? " disabled" : "";
+  const byNum = o => Object.keys(o || {}).filter(k => /^\d+$/.test(k)).sort((x, y) => x - y);
+  const sel = (id, opts, cur) => '<select id="' + id + '"' + dis + ">" + (opts.some(o => String(o[0]) === String(cur)) ? "" : '<option value="">(not set)</option>') +
+    opts.map(o => '<option value="' + escH(o[0]) + '"' + (String(o[0]) === String(cur) ? " selected" : "") + (o[2] ? ' style="background:' + escH(o[2]) + ";color:" + (parseInt(o[2].slice(1, 3), 16) > 150 ? "#000" : "#fff") + '"' : "") + ">" + escH(o[1]) + "</option>").join("") + "</select>";
+  const fil = Object.keys(T).filter(k => /^fila\d+$/.test(k)).sort((x, y) => x.slice(4) - y.slice(4)).map(k => [k.slice(4), (T[k].filament || k) + (T[k].type && T[k].type !== T[k].filament ? " (" + T[k].type + ")" : "")]);
+  const col = byNum(T.colordict).map(k => [k, afcColor(T.colordict[k]), afcColor(T.colordict[k])]), ven = byNum(T.vendor_list).map(k => [k, T.vendor_list[k]]);
+  return '<div class="laneedit" data-box-slot="' + b.slot + '"><h3>Set this slot</h3>' +
+    "<label>Filament" + sel("bx-fil", fil, b.ids.filament) + "</label><label>Color" + sel("bx-col", col, b.ids.color) + "</label><label>Vendor" + sel("bx-ven", ven, b.ids.vendor) + "</label>" +
+    '<div class="row"><button id="bx-save" class="go"' + dis + '>Save</button><span id="bx-msg" class="sub"></span></div>' +
+    '<div class="sub">' + (locked ? (CONTROLS ? "Not while a print is running." : "Setting a slot needs the dashboard server.") : "For a spool without an RFID tag. This is stored on the printer, like on its own Box card; a tag that is read later replaces it.") + "</div></div>";
+}
+document.getElementById("spmodal").addEventListener("click", async ev => {
+  const b = ev.target.closest("#bx-save"); if (!b) return;
+  const box = b.closest(".laneedit"), slot = +box.dataset.boxSlot, d = spoolInfo.find(x => x && x.box && x.box.slot === slot), msg = document.getElementById("bx-msg");
+  if (!d) return;
+  const body = {action: "set_slot", slot};
+  for (const [key, id] of [["filament", "bx-fil"], ["color", "bx-col"], ["vendor", "bx-ven"]]) { const v = document.getElementById(id).value; if (v !== "" && String(d.box.ids[key]) !== v) body[key] = +v; }
+  if (Object.keys(body).length === 2) { msg.textContent = "Nothing changed"; return; }
+  b.disabled = true; msg.textContent = "Saving...";
+  try { await postControl(body); msg.textContent = "Saved"; tick(); } catch (e) { msg.textContent = String(e.message || e); } finally { b.disabled = false; }
+});
 // AFC: change a lane's material / color / weight; the server turns it into SET_MATERIAL / SET_COLOR / SET_WEIGHT
 const MATERIALS = ["PLA", "PLA+", "PETG", "ABS", "ASA", "TPU", "PA", "PA-CF", "PC", "PETG-CF", "PVA", "HIPS"];
 function laneEditForm(d) {
@@ -2200,7 +2227,7 @@ async function loadBoxTable() {                  // only needed when the Box con
 function slotsQidi(st) {
   const M = st.multi_color_controller || {}, V = (st.save_variables || {}).variables || {}, sl = M.slots || {}, out = [];
   window.__fd = [];
-  if (!sl.materials) loadBoxTable();
+  loadBoxTable();                                             // also needed for the lists in the slot editor
   const T = boxTable || {};
   const material = name => (sl.materials || {})[name] || (boxTable ? {filament: T["fila" + V["filament_" + name]] || {}, color: (T.colordict || {})[V["color_" + name]], vendor: (T.vendor_list || {})[V["vendor_" + name]]} : {});
   const names = CFG.lanes || [], boxLoaded = names.some(nm => nm !== BOX_EXT && +(((sl.states || {})[nm]) != null ? sl.states[nm] : V[nm]) === 2);
@@ -2215,6 +2242,7 @@ function slotsQidi(st) {
     if (!ext) for (let t = 0; t < 16; t++) if (V["value_t" + t] === name) { tool = t; break; }
     const mat = String(f.type || ""), title = String(f.filament || mat || "Filament"), temps = f.min_temp && f.max_temp ? f.min_temp + " - " + f.max_temp + " °C" : "";
     out.push({i, ex: isActive ? (st[exName(0)] || {}) : {}, info: {}, loaded, uid: "", sp: null, col: m.color ? afcColor(m.color) : "#808080", mat, rem: null, total: 0, isActive, ext,
+      ids: {filament: V["filament_" + name], color: V["color_" + name], vendor: V["vendor_" + name]},
       lane: name, tool, slot: n, label: ext ? "External" : (Math.floor(n / 4) + 1) + "ABCD"[n % 4], status: isActive ? "In use" : ext ? (loaded ? "Standby" : "Not set") : loaded ? "Ready" : "Empty",
       map: ext ? "by hand" : "T" + tool, unit: ext ? "External spool, not through the Box" : "Box " + (Math.floor(n / 4) + 1),
       frac: loaded ? .7 : .05, spool: "left", remTxt: "-", title: loaded ? title : ext ? "Not set" : "Empty", brand: loaded ? String(m.vendor || "") : ext ? "no material chosen" : "no filament",
