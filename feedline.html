@@ -5,8 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Feedline</title>
 <style>
-  :root{--bg:#0A0814;--card:#13112A;--edge:#352F6B;--text:#DEDCFA;--muted:#A29EDB;--sub:#6B66A5;
-        --violet:#7A63F2;--blue:#3B82F6;--good:#4ADE80;--warn:#E8B04F;--bad:#F0577A}
+  :root{--bg:#0A0814;--card:#13112A;--edge:#352F6B;--text:#DEDCFA;--muted:#A29EDB;--sub:#8985C4;
+        --violet:#7A63F2;--blue:#3B82F6;--good:#4ADE80;--warn:#E8B04F;--bad:#F0577A;color-scheme:dark;accent-color:#7A63F2}
+  /* global: keyboard focus ring, disabled look, file-picker button that matches the app buttons */
+  :is(button,select,input,textarea,a,[role=button],[tabindex]):focus-visible{outline:2px solid #9580FF;outline-offset:2px}
+  button:disabled,input:disabled,select:disabled{opacity:.45;cursor:not-allowed}
+  input[type=file]::file-selector-button{background:#1f1b45;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:6px 12px;margin-right:10px;font:inherit;cursor:pointer}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 "Segoe UI",system-ui,sans-serif}
   header{display:flex;align-items:center;gap:14px;padding:18px 24px 6px;flex-wrap:wrap}
@@ -280,7 +284,7 @@
   .seg-b{text-decoration:none;display:inline-block;background:#1D1A42;border:1px solid var(--edge);color:var(--muted);border-radius:999px;padding:3px 12px;cursor:pointer;font:inherit;font-size:12px}
   .legend{height:10px;border-radius:5px;margin-top:10px;background:linear-gradient(90deg,#3b6fe0,#43b8b0,#4ade80,#e8d44f,#f0577a)}
   .legend + div{display:flex;justify-content:space-between;font-size:11.5px;color:var(--sub);margin-top:3px}
-  @media (max-width:700px){#nav .brand{display:none}#nav{width:100%;height:56px;top:auto;bottom:0;right:0;flex-direction:row;justify-content:center;border-right:0;border-top:1px solid #231f4a;padding:4px}body{padding-left:0;padding-bottom:60px}}
+  @media (max-width:700px){#nav .brand{display:none}#nav{width:100%;height:calc(60px + env(safe-area-inset-bottom,0px));top:auto;bottom:0;right:0;flex-direction:row;justify-content:flex-start;overflow-x:auto;border-right:0;border-top:1px solid #231f4a;padding:4px 4px env(safe-area-inset-bottom,0px)}#nav button{width:auto;flex:0 0 auto;min-width:56px;height:52px;padding:6px 8px;font-size:11px}body{padding-left:0;padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
 
   #v-settings{max-width:900px}
   #v-settings .vcard{margin-bottom:16px;padding:14px 16px}
@@ -291,17 +295,20 @@
   #v-settings button{background:#1f1b45;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
   #v-settings button:hover{border-color:#9580FF} #v-settings button.danger{color:#ff8a8a}
   #v-settings .sub{font-size:12px;color:var(--sub);margin-top:8px} #v-settings code{background:#0a0818;padding:1px 5px;border-radius:4px;font-size:11.5px}
-  #v-settings .prow{display:flex;gap:12px;align-items:center;padding:7px 0;border-top:1px solid var(--edge);font-size:13px} #v-settings .prow span{color:var(--muted);flex:1}
+  #v-settings .prow{display:flex;gap:12px;align-items:center;padding:7px 0;border-top:1px solid var(--edge);font-size:13px} #v-settings .prow span{color:var(--muted);flex:1} #v-settings .prow span.sub{flex:0 0 auto;margin:0 0 0 auto;text-align:right;color:var(--sub)}
   #v-settings .gcols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin-bottom:12px} @media(max-width:700px){#v-settings .gcols{grid-template-columns:1fr}}
   #v-settings .gprev{margin-top:10px;min-height:120px;background:#0a0818;border-radius:10px;padding:8px;display:flex;gap:10px;align-items:center;justify-content:center}
   #v-settings .gprev img{max-width:100%;max-height:240px} #v-settings .tprev>svg{width:46%;height:auto;max-height:200px}
+  #v-settings #addhost{flex:1;min-width:220px}
+  #v-settings .jump{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px} #v-settings .jump button{padding:4px 10px;font-size:12px;border-radius:999px}
+  #v-settings .vcard{scroll-margin-top:12px}
   #pkov text{pointer-events:none}
   .badge:empty{display:none}.badge.bad{background:#4a1d28;color:#ff9aa8}
 
   #v-macros{max-width:1100px} #v-macros .vcard{margin-bottom:16px;padding:14px 16px} #v-macros h3{margin:0 0 10px;font-size:15px}
   #v-macros .srow{display:flex;gap:10px;align-items:center;flex-wrap:wrap} #v-macros .sub{font-size:12px;color:var(--sub)} #v-macros code{background:#0a0818;padding:1px 5px;border-radius:4px;font-size:11.5px}
   #v-macros input{background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:inherit;font-size:13px;padding:6px 10px;min-width:0}
-  #v-macros button{background:#1f1b45;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer} #v-macros button:hover:not(:disabled){border-color:#9580FF} #v-macros button:disabled{opacity:.45;cursor:default}
+  #v-macros button{background:#1f1b45;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer} #v-macros button:hover:not(:disabled){border-color:#9580FF} #v-macros button:disabled{opacity:.45;cursor:not-allowed}
   #v-macros .mrow{display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--edge);flex-wrap:wrap} #v-macros .mrow input{flex:1 1 280px} #v-macros .ml{width:150px;display:flex;flex-direction:column}
   .mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
   .mcard{background:#0e0c22;border:1px solid var(--edge);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
@@ -2334,6 +2341,7 @@ bootstrap();
   const FIELDS = [["bed", "rect", "Bed (plate area)"], ["chamber", "rect", "Chamber / enclosure window"], ["screen", "rect", "Touchscreen"],
     ["chamberTemp", "pt", "Chamber temperature text"], ["partFan", "pt", "Part-cooling fan"], ["chamberFan", "pt", "Chamber fan"], ["light", "pt", "Light button"], ["tools", "tools", "Tools (click once per tool, in order)"]];
   let ED = null, tool = "bed", drag = null;
+  const JUMPS = [["set-this", "This printer"], ["set-printers", "Printers"], ["set-fs", "Filament system"], ["set-opts", "Printer options"], ["set-ha", "Home Assistant"], ["set-sm", "Spoolman"], ["set-gfx", "Graphics"], ["set-upl", "Uploads"]];   // chips scroll to the card; no URL hash because the hash routes views
 
   function unitPreview() {                     // the BoxTurtle unit with sample spools
     const cols = ["#e8594f", "#a24fc4", "#9a9aa0", "#3b82f6"], lanes = cols.map((col, i) => ({i, col, loaded: i < 3, isActive: i === 1, frac: [.8, .6, .45, .3][i], label: "Lane " + (i + 1)}));
@@ -2405,24 +2413,25 @@ bootstrap();
     const customs = kind => (pk[kind] || []).filter(p => p.custom).map(p => '<div class="prow"><b>' + escH(p.label || p.id) + '</b><span>' + escH(p.id) + '</span>' +
       (kind === "printer" ? '<button data-edit="' + escH(p.id) + '">Edit anchors</button>' : "") + '<button class="danger" data-del="' + kind + ":" + escH(p.id) + '">Delete</button></div>').join("") || '<div class="sub">None yet.</div>';
     root.innerHTML = '<h2>Settings <span id="setmsg" class="badge"></span></h2>' +
-      '<div class="vcard"><h3>This printer</h3><div class="srow"><label>Name shown at the top</label><input id="setname" maxlength="60" value="' + escH(CFG.name) + '"><button id="setnamebtn">Save name</button></div>' +
+      '<div class="jump" role="group" aria-label="Jump to">' + JUMPS.map(([id, l]) => '<button type="button" data-jump="' + id + '">' + l + '</button>').join("") + '</div>' +
+      '<div class="vcard" id="set-this"><h3>This printer</h3><div class="srow"><label>Name shown at the top</label><input id="setname" maxlength="60" value="' + escH(CFG.name) + '"><button id="setnamebtn">Save name</button></div>' +
       '<div class="sub">Host and G-code macros are set in config.json on the server, not here.</div></div>' +
-      '<div class="vcard"><h3>Printers</h3>' + plist +
+      '<div class="vcard" id="set-printers"><h3>Printers</h3>' + plist +
       '<div class="srow" style="margin-top:12px"><label>Add a printer</label><input id="addname" placeholder="Name" maxlength="60"><input id="addhost" placeholder="IP or hostname (Moonraker on port 7125)"><button id="addbtn">Add</button></div>' +
       '<div class="sub">New printers get the generic setup: temperatures, fans, jobs, console, files, camera (if Moonraker has one) and one pickup button per tool. Anyone who can open this page can add one, so keep the dashboard on a trusted network.</div></div>' +
-      '<div class="vcard"><h3>Filament system</h3><div class="srow"><select id="setfs">' + fsOptions() + '</select><span class="sub">Decides how filament is read and which filament graphic is used. ' +
+      '<div class="vcard" id="set-fs"><h3>Filament system</h3><div class="srow"><select id="setfs">' + fsOptions() + '</select><span class="sub">Decides how filament is read and which filament graphic is used. ' +
       'AFC / BoxTurtle (ArmoredTurtle) shows one 3D card per lane; it is detected automatically when a printer is added.</span></div></div>' +
       optionsCard() + embedCard() +
-      '<div class="vcard"><h3>Spoolman</h3><div class="srow"><label>Spoolman address</label><input id="smurl" placeholder="http://192.168.1.20:7912" spellcheck="false" value="' + escH(CFG.spoolmanServer || "") + '"' + (CONTROLS ? "" : " disabled") + '>' +
+      '<div class="vcard" id="set-sm"><h3>Spoolman</h3><div class="srow"><label>Spoolman address</label><input id="smurl" placeholder="http://192.168.1.20:7912" spellcheck="false" value="' + escH(CFG.spoolmanServer || "") + '"' + (CONTROLS ? "" : " disabled") + '>' +
       '<button id="smsave"' + (CONTROLS ? "" : " disabled") + '>Save</button><button id="smreset"' + (CONTROLS ? "" : " disabled") + ' title="Go back to the value in config.json">Use config.json</button></div>' +
       '<div class="sub">' + (CFG.spoolmanServer ? "Connected to " + escH(CFG.spoolmanServer) + (CFG.spoolmanFromUi ? " (set here)" : " (from config.json)") : "No Spoolman configured.") +
       ' Enter where this dashboard\'s server reaches Spoolman, for example when Spoolman runs on another machine. It is checked before it is saved and applies to every printer. The link in spool details uses this address unless <code>spoolman_url</code> is set in config.json.</div></div>' +
-      '<div class="vcard"><h3>Graphics</h3><div class="gcols">' +
+      '<div class="vcard" id="set-gfx"><h3>Graphics</h3><div class="gcols">' +
       '<div><label>Printer graphic</label><select id="setpp">' + opts("printer", g.printer) + '</select><div id="setppv" class="gprev"></div></div>' +
       '<div><label>Toolchanger graphic</label><select id="setun">' + [["u1", "Snapmaker U1 toolchanger"], ["afc", "BoxTurtle unit (3D)"], ["none", "None"]].map(([v, l]) => '<option value="' + v + '"' + (v === (g.unit || "none") ? " selected" : "") + ">" + l + "</option>").join("") + '</select><div id="setunv" class="gprev tprev"></div></div>' +
       '<div><label>Spool graphic</label><select id="settp">' + opts("toolchanger", g.toolchanger) + '</select><div id="settpv" class="gprev tprev"></div></div></div>' +
       '<button id="setgbtn">Apply graphics</button> <span class="sub">All three are independent: any printer picture, any toolchanger graphic and any spool style. The spool graphic is the filament roll on each tool / lane card.</span></div>' +
-      '<div class="vcard"><h3>Upload a printer graphic</h3>' +
+      '<div class="vcard" id="set-upl"><h3>Upload a printer graphic</h3>' +
       '<div class="srow"><label>Name</label><input id="pkname" maxlength="60" placeholder="My printer"><label>Id</label><input id="pkid" maxlength="40" placeholder="my-printer"><input id="pkfile" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"></div>' +
       '<div id="pked" hidden><div class="srow" id="pktools"></div><div id="pkstage"><img id="pkimg" alt=""><svg id="pkov"></svg></div><div class="srow"><button id="pksave">Save printer graphic</button><button id="pkcancel">Cancel</button></div>' +
       '<div class="sub">Pick an item above, then click (points) or drag (areas) on the picture. Everything is optional: add only what your printer has. Tools: click each toolhead in order.</div></div>' +
@@ -2435,7 +2444,7 @@ bootstrap();
       '<h4>Your slot graphics</h4>' + customs("toolchanger") + '</div>';
     $("setpp").onchange = $("settp").onchange = $("setun").onchange = previews;
     previews();
-    probeScreen();
+    probeScreen(true);
   }
   // printer options that used to need config.json: remote touchscreen and the light button
   function optionsCard() {
@@ -2443,7 +2452,7 @@ bootstrap();
     const lopts = [["", "Automatic" + (ls.mode === "auto" && ls.active ? " (" + ls.active + ")" : ls.mode === "auto" ? " (none found)" : "")], ["__none", "No light button"]]
       .concat((ls.choices || []).map(c => [c, c]));
     const cur = ls.mode === "none" ? "__none" : ls.mode === "pick" ? ls.active : "";
-    return '<div class="vcard"><h3>Printer options</h3>' +
+    return '<div class="vcard" id="set-opts"><h3>Printer options</h3>' +
       '<div class="srow"><label class="rad"><input type="checkbox" id="setscr"' + (o.screen.on ? " checked" : "") + lock + '> Remote touchscreen</label>' +
       '<button id="scrprobebtn" type="button">Check the printer</button><span id="scrprobe" class="sub"></span></div>' +
       '<div class="sub">Shows the printer\'s own touchscreen on the picture and lets you click it to open the live, interactive screen. Needs a printer that serves it at <code>/screen/</code>, for example the Snapmaker U1 with the Paxx firmware\'s Remote Screen option turned on.' +
@@ -2458,7 +2467,7 @@ bootstrap();
   const haCard = () => "type: iframe\nurl: " + location.origin + "/\naspect_ratio: 75%";
   function embedCard() {
     const e = (CFG.options || {}).embed || {}, lock = CONTROLS ? "" : " disabled";
-    return '<div class="vcard"><h3>Home Assistant and other pages</h3>' +
+    return '<div class="vcard" id="set-ha"><h3>Home Assistant and other pages</h3>' +
       '<div class="srow"><label class="rad"><input type="checkbox" id="setembed"' + (e.on ? " checked" : "") + lock + '> Allow this dashboard to be shown inside another page</label></div>' +
       '<div class="sub">Needed to put Feedline in a Home Assistant dashboard card. When it is off, browsers refuse to show Feedline in a frame. ' +
       (e.source === "config" ? "Currently on because of config.json; unticking here overrides it. " : "") +
@@ -2476,12 +2485,13 @@ bootstrap();
     ta.focus(); ta.select();
     return document.execCommand("copy") ? Promise.resolve() : Promise.reject(new Error("select the text and press Ctrl+C"));
   }
-  async function probeScreen() {
+  async function probeScreen(quiet) {          // quiet = automatic check: only a positive result is shown, a printer without the screen is normal
     const el = $("scrprobe"); if (!el) return;
-    el.textContent = "checking...";
+    el.textContent = quiet ? "" : "checking...";
     try {
       const j = await (await fetch("/api/screen/probe")).json();
-      el.textContent = j.ok ? "The printer serves a touchscreen picture." : j.reason === "not-found" ? "The printer answers but has no /screen/ page (is Remote Screen enabled?)." : "Could not reach the printer's web page.";
+      if (quiet && !j.ok) { el.textContent = ""; return; }
+      el.textContent = j.ok ? (quiet ? "Found on this printer" : "The printer serves a touchscreen picture.") : j.reason === "not-found" ? "The printer answers but has no /screen/ page (is Remote Screen enabled?)." : "Could not reach the printer's web page.";
       el.style.color = j.ok ? "#4ade80" : "#f0b35a";
     } catch (e) { el.textContent = ""; }
   }
@@ -2562,7 +2572,8 @@ bootstrap();
   });
   root.addEventListener("click", ev => guard(async () => {
     const b = ev.target.closest("button"); if (!b) return;
-    if (b.id === "setnamebtn") { await reload((await post({action: "save_settings", name: $("setname").value})).config); msg("Name saved"); }
+    if (b.dataset.jump) { const c = $(b.dataset.jump); if (c) c.scrollIntoView({behavior: "smooth", block: "start"}); }
+    else if (b.id === "setnamebtn") { await reload((await post({action: "save_settings", name: $("setname").value})).config); msg("Name saved"); }
     else if (b.id === "hacopy") {
       const m = $("hamsg");
       try { await copyText($("hacard").value, $("hacard")); m.textContent = "Copied"; } catch (e) { m.textContent = String(e.message || e); }
@@ -2574,7 +2585,7 @@ bootstrap();
       try { localStorage.setItem("fl_ha", u); } catch (e) {}
       window.open(u + "/lovelace/0?edit=1", "_blank", "noopener");
     }
-    else if (b.id === "scrprobebtn") probeScreen();
+    else if (b.id === "scrprobebtn") probeScreen(false);
     else if (b.id === "scrreset") { await reload((await post({action: "save_settings", screen: null})).config); msg("Touchscreen setting reset"); }
     else if (b.id === "setgbtn") { await reload((await post({action: "save_settings", graphics: {printer: $("setpp").value, toolchanger: $("settp").value, unit: $("setun").value}})).config); msg("Graphics applied"); }
     else if (b.id === "addbtn") {
@@ -2641,6 +2652,8 @@ bootstrap();
   let data = null, filter = "", cards = 0;
   const msg = (t, bad) => { const m = $("macmsg"); if (m) { m.textContent = t; m.className = "badge" + (bad ? " bad" : ""); clearTimeout(msg.t); msg.t = setTimeout(() => { m.textContent = ""; }, 8000); } };
   const locked = () => !CONTROLS || running || printState === "printing" || printState === "paused";
+  const hint = () => locked() ? (CONTROLS ? "Run is disabled while a command or print is active." : "Run needs the dashboard server.") : "";
+  let wasLocked = null;
 
   function toolTable() {
     return ACT.map(([a, label]) => {
@@ -2656,8 +2669,8 @@ bootstrap();
     const f = filter.toLowerCase();
     const list = data.macros.filter(m => !f || m.name.toLowerCase().includes(f) || m.description.toLowerCase().includes(f));
     cards = list.length;
-    return list.map(m => '<div class="mcard" data-m="' + escH(m.name) + '"><div class="mh"><b>' + escH(m.name) + '</b><button data-run="' + escH(m.name) + '"' + (locked() || m.blocked ? " disabled" : "") + '>Run</button></div>' +
-      (m.description ? '<div class="sub">' + escH(m.description) + '</div>' : "") +
+    return list.map(m => '<div class="mcard" data-m="' + escH(m.name) + '"><div class="mh"><b>' + escH(m.name) + '</b><button data-run="' + escH(m.name) + '"' + (m.blocked ? ' data-blocked="1"' : "") + (locked() || m.blocked ? " disabled" : "") + '>Run</button></div>' +
+      (m.description && m.description.trim().toLowerCase() !== "g-code macro" ? '<div class="sub">' + escH(m.description) + '</div>' : "") +
       (m.params.length ? '<div class="mp">' + m.params.map(p => '<label>' + escH(p.name) + '<input data-p="' + escH(p.name) + '" placeholder="' + escH(p.default || "") + '" spellcheck="false"></label>').join("") + '</div>' : "") + '</div>').join("") ||
       '<div class="sub">No macros match.</div>';
   }
@@ -2666,10 +2679,19 @@ bootstrap();
       '<div class="vcard"><h3>Tool buttons</h3><div class="sub" style="margin:0 0 8px">What the Load / Unload / Park / Pickup buttons on each tool run. <code>{n}</code> = tool number, <code>{nz}</code> = number, or nothing for tool 0. ' +
       'Only commands this printer reports are accepted, as <code>NAME KEY=value ...</code>. They never run while printing.</div>' + toolTable() + '<datalist id="maccmds">' + data.commands.map(c => '<option value="' + escH(c) + '">').join("") + '</datalist></div>' +
       '<div class="vcard"><h3>All macros <span id="maccount" class="sub"></span></h3><div class="srow" style="margin-bottom:10px"><input id="macfilter" type="search" placeholder="Search macros..." value="' + escH(filter) + '">' +
-      '<button id="macreload">Refresh</button><span class="sub">Macros starting with _ are internal and hidden. ' + (locked() ? (CONTROLS ? "Run is disabled while a command or print is active." : "Run needs the dashboard server.") : "") + '</span></div>' +
+      '<button id="macreload">Refresh</button><span class="sub">Macros starting with _ are internal and hidden. <span id="machint">' + hint() + '</span></span></div>' +
       '<div id="macgrid" class="mgrid">' + macroCards() + '</div></div>';
     $("maccount").textContent = cards + " of " + data.macros.length;
+    wasLocked = locked();
   }
+  // the print state arrives from the Home poll after the cards are drawn, so re-apply it when it changes (blocked macros stay disabled)
+  setInterval(() => {
+    if (root.hidden || !data) return;
+    const l = locked(); if (l === wasLocked) return;
+    wasLocked = l;
+    root.querySelectorAll("[data-run]").forEach(b => { b.disabled = l || !!b.dataset.blocked; });
+    const t = $("machint"); if (t) t.textContent = hint();
+  }, 1500);
   async function load() {
     try { data = await (await fetch("/api/macros", {cache: "no-store"})).json(); } catch (e) { root.innerHTML = "<h2>Macros</h2><p>Could not load macros.</p>"; return; }
     if (!data.macros) { root.innerHTML = "<h2>Macros</h2><p>Could not load macros.</p>"; return; }
@@ -2696,7 +2718,7 @@ bootstrap();
       if (!confirm("Run this macro on " + CFG.name + "?\n\n" + line + "\n\nIt runs on the printer immediately and macros can move or heat it.")) return;
       b.disabled = true; running = true;
       try { const j = await post({action: "run_macro", name: b.dataset.run, params}); msg("Ran " + j.cmd); }
-      finally { running = false; b.disabled = false; }
+      finally { running = false; b.disabled = locked() || !!b.dataset.blocked; }
     }
   }));
   window.macrosLoad = load;
