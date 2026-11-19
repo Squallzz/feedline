@@ -62,6 +62,7 @@ DEFAULT_CFG = {
     "tool_spools": None,             # {"0": 12, "1": 7}: fixed Spoolman spool per tool (provider "extruders")
     "temp_limits": {"extruder": 300, "heater_bed": 110, "heater_generic": 150},
     "graphics": {"printer": None, "toolchanger": None},
+    "motion": True,                  # drawn printer models: the toolhead and bed follow the printer's real position (Settings can turn it off)
     "allowed_hosts": [],             # extra Host names the dashboard answers to (IP addresses, single-label and .local/.lan/.ts.net names always work)
     "allow_embed": False,            # true = the page may be shown inside a frame on another site (e.g. a Home Assistant dashboard card)
     "allow_config_edit": True,       # false = the Files tab is read-only (config files can then not be changed from the browser)
@@ -569,13 +570,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         return c
             c = self.cached("webcam", 60, find)
             if not c:
-                return {"mode": "none", "live": None, "snapshot": None}
+                return {"mode": "none", "live": None, "snapshot": None, "view": self.clean_view({})}
             svc = (c.get("service") or "").lower()
             su = c.get("stream_url") or ""
             mode = "webrtc" if "webrtc" in svc or su.rstrip("/").endswith("webrtc") else ("mjpeg" if "mjpeg" in svc or "stream" in su else "snapshot")
-            return {"mode": mode, "live": absu(su) if su and mode != "snapshot" else None, "snapshot": absu(c.get("snapshot_url")) if c.get("snapshot_url") else None}
+            return {"mode": mode, "live": absu(su) if su and mode != "snapshot" else None, "snapshot": absu(c.get("snapshot_url")) if c.get("snapshot_url") else None,
+                    "view": self.clean_view(c)}
         return {"mode": w.get("mode") or ("webrtc" if w.get("live") else "snapshot"), "live": absu(w["live"]) if w.get("live") else None,
-                "snapshot": absu(w["snapshot"]) if w.get("snapshot") else None}
+                "snapshot": absu(w["snapshot"]) if w.get("snapshot") else None, "view": self.clean_view(w)}
+
+    @staticmethod
+    def clean_view(c):
+        """How the camera picture is turned: {"rotation": 0|90|180|270 (clockwise), "flipH", "flipV"}. Accepts Moonraker's
+        webcam entry (rotation, flip_horizontal, flip_vertical) and the Settings choice (rotation, flipH, flipV)."""
+        try:
+            rot = int(c.get("rotation") or 0) % 360
+        except (TypeError, ValueError):
+            rot = 0
+        return {"rotation": rot if rot in (0, 90, 180, 270) else 0,
+                "flipH": bool(c.get("flipH", c.get("flip_horizontal"))), "flipV": bool(c.get("flipV", c.get("flip_vertical")))}
 
     @staticmethod
     def parse_spoolman(raw):
@@ -691,6 +704,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "light": {"mode": "none" if ui_light is False else ("pick" if isinstance(ui_light, dict) and self.light_for(ui_light.get("object")) else "auto"),
                                   "choices": [o for _, o, _, _ in self.light_choices()], "active": light.get("object")}},
             "name": name, "defaultName": c.get("name"), "graphics": gsel,
+            "motion": bool(st["motion"]) if isinstance(st.get("motion"), bool) else bool(c.get("motion", True)),
             # the printer graphic follows the detected model unless one was picked in Settings or config.json
             "model": {"id": mid, "label": "Snapmaker U1" if mid == "u1" else MODEL_LABEL.get(mid), "why": mwhy, "auto": picked not in self.pack_ids("printer")},
             "packs": {k: BUILTIN_PACKS[k] + self.custom_packs(k) for k in BUILTIN_PACKS},
@@ -701,7 +715,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "actions": [a for a in ACTIONS if a in eff], "macros": eff,
             "light": {"object": light.get("object")} if light and light.get("on") and light.get("off") else None,
             "screen": {"interactive": "http://%s%s" % (host, scr.get("interactive", "/screen/"))} if scr and scr.get("snapshot") else None,
-            "camera": {"mode": cam["mode"], "live": cam["live"], "snapshot": bool(cam["snapshot"])},
+            # "view": how the picture is turned. A choice made in Settings wins over what the printer (Moonraker / config.json) says
+            "camera": dict({"mode": cam["mode"], "live": cam["live"], "snapshot": bool(cam["snapshot"]), "viewFromUi": isinstance(st.get("camera"), dict),
+                            "printerView": cam["view"]}, **(self.clean_view(st["camera"]) if isinstance(st.get("camera"), dict) else cam["view"])),
             "toolFans": c.get("tool_fans"), "chamber": c.get("chamber"), "toolSpools": c.get("tool_spools"),
             "tempLimits": c.get("temp_limits"), "spoolman": bool(self.spoolman_base()), "spoolmanUrl": self.spoolman_url(),
             "spoolmanServer": self.spoolman_base(), "spoolmanFromUi": bool(self.spoolman) and self.spoolman != Handler.spoolman_cfg,
@@ -1141,6 +1157,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 st["screen"] = False
             else:
                 return self.jreply(400, {"error": "bad screen setting"})
+        if "motion" in req:                                   # drawn printer: toolhead and bed follow the printer (true / false; null = config.json)
+            v = req["motion"]
+            if v is None:
+                st.pop("motion", None)
+            elif isinstance(v, bool):
+                st["motion"] = v
+            else:
+                return self.jreply(400, {"error": "bad motion setting"})
+        if "camera" in req:                                   # camera picture: {"rotation", "flipH", "flipV"}, null = as the printer says
+            v = req["camera"]
+            if v is None:
+                st.pop("camera", None)
+            elif isinstance(v, dict) and v.get("rotation") in (0, 90, 180, 270) and all(isinstance(v.get(k, False), bool) for k in ("flipH", "flipV")):
+                st["camera"] = self.clean_view(v)
+            else:
+                return self.jreply(400, {"error": "bad camera setting"})
         if "light" in req:                                    # light button: a detected LED / pin, false = none, null = automatic
             v = req["light"]
             if v is None:

@@ -211,9 +211,10 @@
   #con .box{background:var(--card);border:1px solid var(--edge);border-radius:20px;padding:14px}
   #cam .hd,#con .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
   [hidden]{display:none !important}
-  #cam iframe{width:100%;aspect-ratio:16/9;border:0;background:#07060f;border-radius:12px;display:block}
+  /* the camera picture sits centred in #camview, which takes the picture's shape as shown (after any quarter turn) */
+  #camview{position:relative;width:100%;aspect-ratio:16/9;margin:0 auto;overflow:hidden;background:#07060f;border-radius:12px}
+  #camview > *{position:absolute;top:50%;left:50%;width:100%;height:100%;border:0;display:block;object-fit:contain;transform:translate(-50%,-50%)}
   #cam button.badge{background:none;cursor:pointer;font:inherit;font-size:11px;margin-right:6px}
-  #cam img{width:100%;aspect-ratio:16/9;object-fit:contain;background:#07060f;border-radius:12px;display:block}
   footer{text-align:center;color:var(--sub);font-size:12px;padding-bottom:20px}
   /* left navigation + extra views */
   #nav{position:fixed;left:0;top:0;bottom:0;width:60px;background:#0d0b22;border-right:1px solid #231f4a;display:flex;flex-direction:column;align-items:center;gap:2px;padding:14px 0;z-index:40}
@@ -338,9 +339,9 @@
   <div class="hd"><span class="tn">Camera</span>
     <span><button id="cammode" class="badge" title="Switch between live video and 1 fps snapshots">Use snapshots</button>
     <span id="camstat" class="badge">loading</span></span></div>
-  <iframe id="camframe" title="Printer camera (live)" allow="autoplay; fullscreen"></iframe>
+  <div id="camview"><iframe id="camframe" title="Printer camera (live)" allow="autoplay; fullscreen"></iframe>
   <img id="camlive" alt="Printer camera (live)" hidden>
-  <img id="camimg" alt="Printer camera" hidden>
+  <img id="camimg" alt="Printer camera" hidden></div>
   <section id="move" hidden>
     <div class="mv">
       <div class="steps" id="mvsteps"></div>
@@ -1173,6 +1174,10 @@ function modelPack(id, sfx, noHead) {
 const MO = {x: .5, y: .5, z: 0, tx: .5, ty: .5, tz: 0, done: false, last: 0};
 function motionTarget(st, grownPx) {
   const m = PK.motion; if (!m) return;
+  if (CFG && CFG.motion === false) {                          // turned off in Settings: a fixed pose, head in the middle and clear of the part (fans still spin)
+    MO.tx = MO.ty = .5; MO.tz = m.type === "bedz" ? .5 : .75;
+    return;
+  }
   const th = st.toolhead || {}, lo = th.axis_minimum || [], hi = th.axis_maximum || [], homed = th.homed_axes || "";
   const p = (st.motion_report || {}).live_position || th.position || [];
   const fr = (i, d) => hi[i] > lo[i] && typeof p[i] === "number" && homed.includes("xyz"[i]) ? clamp((p[i] - lo[i]) / (hi[i] - lo[i]), 0, 1) : d;
@@ -2129,9 +2134,25 @@ function setCam(m) {
   else camlive.removeAttribute("src");                           // no src: the browser stops reading the stream
   cambtn.textContent = live ? "Use snapshots" : "Use live video";
   camstat.textContent = live ? (mjpeg ? "connecting" : "live (WebRTC)") : "loading";
+  camLayout();
 }
-// keep the picture's own shape (4:3, 16:9, ...) so it fills the box without bars
-const camShape = im => { if (im.naturalWidth && im.naturalHeight) camlive.style.aspectRatio = camimg.style.aspectRatio = im.naturalWidth + " / " + im.naturalHeight; };
+// The camera view. The box keeps the picture's own shape (4:3, 16:9, ...) so it fills it without bars, and the picture is
+// turned as configured: rotation in quarter turns clockwise, then mirrored left-right / top-bottom as seen on screen (the
+// same order Mainsail uses, so Moonraker's webcam settings look the same here). After a quarter turn the box is the
+// picture's shape on its side, and never taller than most of the window.
+let camNat = [16, 9];
+function camLayout() {
+  const c = (CFG && CFG.camera) || {}, rot = [0, 90, 180, 270].includes(+c.rotation) ? +c.rotation : 0, side = rot === 90 || rot === 270;
+  const [w, h] = camNat, view = document.getElementById("camview"), vw = side ? h : w, vh = side ? w : h;
+  view.style.aspectRatio = vw + " / " + vh;
+  view.style.width = "min(100%, calc(72vh * " + (vw / vh).toFixed(4) + "))";
+  const turn = "translate(-50%,-50%)" + (c.flipH ? " scaleX(-1)" : "") + (c.flipV ? " scaleY(-1)" : "") + (rot ? " rotate(" + rot + "deg)" : "");
+  for (const e of [camframe, camlive, camimg]) {             // on its side the picture is as wide as the box is tall
+    e.style.width = side ? (w / h * 100).toFixed(3) + "%" : ""; e.style.height = side ? (h / w * 100).toFixed(3) + "%" : "";
+    e.style.transform = turn;
+  }
+}
+const camShape = im => { if (im.naturalWidth && im.naturalHeight) { camNat = [im.naturalWidth, im.naturalHeight]; camLayout(); } };
 camlive.addEventListener("load", () => { camShape(camlive); if (camMode === "live") camstat.textContent = "live (MJPEG)"; });
 camlive.addEventListener("error", () => { if (camMode === "live" && camlive.getAttribute("src")) camstat.textContent = "unavailable"; });
 cambtn.onclick = () => setCam(camMode === "live" ? "snap" : "live");
@@ -2633,7 +2654,9 @@ bootstrap();
       ' Enter where this dashboard\'s server reaches Spoolman, for example when Spoolman runs on another machine. It is checked before it is saved and applies to every printer. The link in spool details uses this address unless <code>spoolman_url</code> is set in config.json.</div></div>' +
       '<div class="vcard"><h3>Graphics</h3><div class="gcols">' +
       '<div><label>Printer graphic</label><select id="setpp">' + (md.id ? '<option value=""' + (md.auto ? " selected" : "") + ">Automatic: " + escH(md.label || md.id) + "</option>" : "") + opts("printer", md.id && md.auto ? null : g.printer) + '</select><div id="setppv" class="gprev"></div>' +
-      '<div class="sub">' + (md.id ? "Detected: " + escH(md.label || md.id) + " (" + escH(md.why || "") + "). Automatic follows the printer; pick another if it guessed wrong." : "The model could not be detected (" + escH(md.why || "no answer") + "); pick a graphic.") + '</div></div>' +
+      '<div class="sub">' + (md.id ? "Detected: " + escH(md.label || md.id) + " (" + escH(md.why || "") + "). Automatic follows the printer; pick another if it guessed wrong." : "The model could not be detected (" + escH(md.why || "no answer") + "); pick a graphic.") + '</div>' +
+      '<label class="rad" style="margin-top:8px"><input type="checkbox" id="setmotion"' + (CFG.motion !== false ? " checked" : "") + (CONTROLS ? "" : " disabled") + '> Moving toolhead and bed</label>' +
+      '<div class="sub">On a drawn printer the toolhead and the bed follow the printer\'s real position. Turn it off for a still picture; the fans keep spinning either way.</div></div>' +
       '<div><label>Toolchanger graphic</label><select id="setun">' + [["u1", "Snapmaker U1 toolchanger"], ["afc", "BoxTurtle unit (3D)"], ["none", "None"]].map(([v, l]) => '<option value="' + v + '"' + (v === (g.unit || "none") ? " selected" : "") + ">" + l + "</option>").join("") + '</select><div id="setunv" class="gprev tprev"></div></div>' +
       '<div><label>Spool graphic</label><select id="settp">' + opts("toolchanger", g.toolchanger) + '</select><div id="settpv" class="gprev tprev"></div></div></div>' +
       '<button id="setgbtn">Apply graphics</button> <span class="sub">All three are independent: any printer picture, any toolchanger graphic and any spool style. The spool graphic is the filament roll on each tool / lane card.</span></div>' +
@@ -2666,7 +2689,21 @@ bootstrap();
       (o.screen.source === "ui" ? ' <button id="scrreset" type="button">Reset</button>' : "") + '</div>' +
       '<div class="srow" style="margin-top:12px"><label>Light button</label><select id="setlight"' + lock + '>' +
       lopts.map(([v, l]) => '<option value="' + escH(v) + '"' + (v === cur ? " selected" : "") + ">" + escH(l) + "</option>").join("") + '</select></div>' +
-      '<div class="sub">The button that switches the chamber / case light on the printer picture. Automatic picks the LED or light pin that looks like one; choose another from the list if it picked wrong, or hide the button.</div></div>';
+      '<div class="sub">The button that switches the chamber / case light on the printer picture. Automatic picks the LED or light pin that looks like one; choose another from the list if it picked wrong, or hide the button.</div>' +
+      cameraRow(lock) + '</div>';
+  }
+  // camera picture: rotation and mirroring. Starts from what the printer says (Moonraker's webcam settings); a change here is kept per printer
+  function cameraRow(lock) {
+    const c = CFG.camera || {}, pv = c.printerView || {};
+    if (!c.live && !c.snapshot) return "";
+    const say = v => (v.rotation ? v.rotation + "° clockwise" : "not rotated") + (v.flipH ? ", mirrored left-right" : "") + (v.flipV ? ", flipped top-bottom" : "");
+    return '<div class="srow" style="margin-top:12px"><label>Camera picture</label><select id="setcamrot"' + lock + '>' +
+      [0, 90, 180, 270].map(r => '<option value="' + r + '"' + (r === (c.rotation || 0) ? " selected" : "") + ">" + (r ? "Rotate " + r + "° clockwise" : "No rotation") + "</option>").join("") + "</select>" +
+      '<label class="rad"><input type="checkbox" id="setcamfh"' + (c.flipH ? " checked" : "") + lock + '> Mirror left-right</label>' +
+      '<label class="rad"><input type="checkbox" id="setcamfv"' + (c.flipV ? " checked" : "") + lock + '> Flip top-bottom</label>' +
+      (c.viewFromUi ? '<button id="camreset" type="button">Reset</button>' : "") + '</div>' +
+      '<div class="sub">Turns the camera picture the right way up, for live video and snapshots. The printer says: ' + escH(say(pv)) + " (its webcam settings in Moonraker). " +
+      (c.viewFromUi ? "Set here instead; Reset goes back to the printer's setting." : "A change here applies to this dashboard only and does not change the printer.") + '</div>';
   }
   // show the dashboard inside Home Assistant (or any page): allow framing + a ready-made card
   const haUrl = () => { try { return localStorage.getItem("fl_ha") || ""; } catch (e) { return ""; } };
@@ -2756,6 +2793,10 @@ bootstrap();
       const v = ev.target.value;
       await reload((await post({action: "save_settings", light: v === "" ? null : v === "__none" ? false : v})).config); msg("Light button updated");
     });
+    if (ev.target.id === "setmotion") await guard(async () => { await reload((await post({action: "save_settings", motion: ev.target.checked})).config); msg(ev.target.checked ? "Moving toolhead on" : "Moving toolhead off"); });
+    if (["setcamrot", "setcamfh", "setcamfv"].includes(ev.target.id)) await guard(async () => {
+      await reload((await post({action: "save_settings", camera: {rotation: +$("setcamrot").value, flipH: $("setcamfh").checked, flipV: $("setcamfv").checked}})).config); msg("Camera picture updated");
+    });
     if (ev.target.id === "setfs") await guard(async () => { await reload((await post({action: "save_settings", provider: ev.target.value})).config); msg("Filament system changed"); });
     if (ev.target.id === "pkfile" && ev.target.files[0]) await guard(async () => {
       const f = ev.target.files[0], data = await readFile(f), im = new Image();
@@ -2790,6 +2831,7 @@ bootstrap();
       window.open(u + "/lovelace/0?edit=1", "_blank", "noopener");
     }
     else if (b.id === "scrprobebtn") probeScreen();
+    else if (b.id === "camreset") { await reload((await post({action: "save_settings", camera: null})).config); msg("Camera picture reset"); }
     else if (b.id === "scrreset") { await reload((await post({action: "save_settings", screen: null})).config); msg("Touchscreen setting reset"); }
     else if (b.id === "setgbtn") { await reload((await post({action: "save_settings", graphics: {printer: $("setpp").value, toolchanger: $("settp").value, unit: $("setun").value}})).config); msg("Graphics applied"); }
     else if (b.id === "addbtn") {
