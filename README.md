@@ -234,6 +234,16 @@ Settings > Filament system: auto-detect, standard (one filament per extruder), S
 
 **Toolchangers (StealthChanger, klipper-toolchanger, ktc-easy).** A printer with a `toolchanger` object and `tool T0` ... objects (viesturz's klipper-toolchanger, which StealthChanger and klipper-toolchanger-easy use) is detected automatically. Each tool gets a card showing Active or Docked; a status row shows the toolchanger's state (Ready, Changing, Error, Uninitialized), the tool in use and, with tool detection, the tool detected. Pickup runs `T{n}` (or `SELECT_TOOL T={n}` when the tools have no numbers) and Park runs `UNSELECT_TOOL`, idle only. On a cube-shaped drawn printer the tools hang in a row of docks at the top and the one in use rides the gantry. **Settings > Graphics** has the **Toolhead** look (Generic, Stealth Burner, Mini Stealth Burner, Dragon Burner, Rapid Burner, AntHead, Yavoth, A4T, XOL, Jabberwocky, Archetype BlackBird; simplified shapes, also used for a single-tool printer's head) and the number of **Docks** (one per tool by default, up to 12; spare docks are drawn empty). `toolhead` and `docks` in `config.json` preset them. This was built from the klipper-toolchanger source and documentation and checked with simulated printer state only, not on a real toolchanger; one toolhead look applies to every tool.
 
+## Print tuning
+
+The **Print tuning** card on Home (under Print) is for adjusting a running print:
+
+- **Z offset** (baby-stepping): pick a step (0.005, 0.01, 0.025 or 0.05 mm), then **Closer** or **Further**; **Reset** goes back to 0. The server refuses a step that would take the total offset beyond `z_offset_limit` in `config.json` (default 1.0 mm).
+- **Speed** (10 to 200 %) and **Flow** (50 to 150 %) sliders with 100 % in the middle, and a button back to 100 %.
+- **Pressure advance** (0 to 2) and its **smooth time** (0 to 0.2 s), for the tool in use.
+
+Unlike moves and tool changes these are allowed while printing; that is what they are for. Each request is range-checked on the server and turned into one fixed command (`SET_GCODE_OFFSET Z_ADJUST=`, `M220`, `M221`, `SET_PRESSURE_ADVANCE`). Nothing is saved on the printer: after a restart it is back to its configured values. The commands were checked as text and the read-out against a running printer; they were not sent to a real print.
+
 ## Macros tab
 
 Lists every user-facing macro (names not starting with `_`) with its description and parameters (read from the printer's config) and a Run button (idle only, confirmation first). The tool-button macros (load/unload/park/pickup) are auto-detected from the printer's macros and commands; in the same tab each can be changed, disabled or reset to auto-detect. Custom values are limited to `NAME KEY=value` for commands the printer reports (restart/shutdown/save-config style commands are refused), never free-form G-code. Precedence: custom (UI) > config.json > auto-detected.

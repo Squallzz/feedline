@@ -61,6 +61,7 @@ DEFAULT_CFG = {
     "chamber": None,                 # {"sensor": "temperature_sensor cavity", "fan": "fan_generic cavity_fan"}
     "tool_spools": None,             # {"0": 12, "1": 7}: fixed Spoolman spool per tool (provider "extruders")
     "temp_limits": {"extruder": 300, "heater_bed": 110, "heater_generic": 150},
+    "z_offset_limit": 1.0,           # print tuning: baby-stepping never takes the Z offset further than this from 0 (mm)
     "graphics": {"printer": None, "toolchanger": None},
     "toolhead": None,                # look of the toolhead on a drawn printer: one of TOOLHEADS; null = generic (Settings can change it)
     "docks": None,                   # toolchanger: number of docks drawn (at least one per tool, up to 12); null = one per tool
@@ -942,6 +943,57 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
 
+    # ---- print tuning: baby-stepping, speed and flow factors, pressure advance. Meant for use during a print, so there is
+    # no print-state check; every value is range-checked and turned into one fixed command.
+    Z_STEPS = (0.005, 0.01, 0.025, 0.05)
+    TUNE = {"speed": ("M220 S%d", 10, 300), "flow": ("M221 S%d", 50, 200),
+            "pa": ("SET_PRESSURE_ADVANCE ADVANCE=%.4f", 0, 2), "smooth": ("SET_PRESSURE_ADVANCE SMOOTH_TIME=%.4f", 0, 0.2)}
+
+    def tune_command(self, req):
+        """The G-code for one tuning request, or raises ValueError (bad request) / PermissionError (outside the limit)."""
+        what = req.get("what")
+        try:
+            v = float(req.get("value", 0))
+        except (TypeError, ValueError):
+            raise ValueError("bad value")
+        if isinstance(req.get("value"), bool) or v != v:                      # no booleans, no NaN
+            raise ValueError("bad value")
+        if what in self.TUNE:
+            fmt, lo, hi = self.TUNE[what]
+            if not lo <= v <= hi:
+                raise ValueError("%s must be %s to %s" % (what, lo, hi))
+            return fmt % (round(v) if "%d" in fmt else v)
+        if what not in ("z_adjust", "z_reset"):
+            raise ValueError("unknown setting")
+        st = self.mget("/printer/objects/query?gcode_move=homing_origin&toolhead=homed_axes")["result"]["status"]
+        move = " MOVE=1" if "z" in (st["toolhead"].get("homed_axes") or "") else ""      # apply it now when Z is homed, otherwise from the next move
+        if what == "z_reset":
+            return "SET_GCODE_OFFSET Z=0" + move
+        if round(abs(v), 4) not in self.Z_STEPS:
+            raise ValueError("step must be one of %s mm" % ", ".join(str(s) for s in self.Z_STEPS))
+        cur, lim = float(st["gcode_move"]["homing_origin"][2]), float(self.cfg.get("z_offset_limit") or 1.0)
+        if abs(cur + v) > lim + 1e-9:
+            raise PermissionError("refused: the Z offset would be %+.3f mm, beyond the %.2f mm limit" % (cur + v, lim))
+        return "SET_GCODE_OFFSET Z_ADJUST=%+.3f%s" % (v, move)
+
+    def tune_control(self, req):
+        try:
+            cmd = self.tune_command(req)
+        except ValueError as e:
+            return self.jreply(400, {"error": str(e)})
+        except PermissionError as e:
+            return self.jreply(409, {"error": str(e)})
+        except Exception as e:  # noqa: BLE001
+            return self.jreply(502, {"error": str(e)})
+        try:
+            url = "http://%s:7125/printer/gcode/script?script=%s" % (self.printer, urllib.parse.quote(cmd))
+            logging.info("running %s", cmd)
+            with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=15) as r:
+                r.read()
+            self.jreply(200, {"ok": True, "cmd": cmd})
+        except Exception as e:  # noqa: BLE001
+            self.jreply(502, {"error": str(e)})
+
     def fan_control(self, req):
         """Set a controllable fan: the part fan ("fan") or a fan_generic. heater_fan* (hotend/PSU fans) are
         driven by Klipper from heater temperature and are deliberately not settable here."""
@@ -1475,6 +1527,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             req = json.loads(self.rfile.read(n) or b"{}")
             if req.get("action") in self.PRINT_ACTIONS:
                 return self.print_control(req["action"])
+            if req.get("action") == "tune":
+                return self.tune_control(req)
             if req.get("action") == "fan":
                 return self.fan_control(req)
             if req.get("action") == "temp":

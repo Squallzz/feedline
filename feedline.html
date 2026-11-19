@@ -200,6 +200,15 @@
   #pgrid .p{min-width:0} #pgrid .p .k{font-size:11px;color:var(--sub)} #pgrid .p .v{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #pgrid .p .s{font-size:10.5px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:13px}
   #pgrid .wide{grid-column:span 2}
+  /* Print tuning: one row per setting */
+  #ptune{margin-top:14px} #ptune h2{font-size:15px;font-weight:600;margin:0 0 10px;color:var(--muted)}
+  .ptbox{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:10px 12px;display:flex;flex-direction:column;gap:10px}
+  .ptrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px} .ptrow .k{color:var(--sub);font-size:12px;min-width:64px}
+  .ptrow b{font-weight:600;min-width:58px;font-variant-numeric:tabular-nums} .ptrow input[type=range]{flex:1 1 120px;min-width:100px}
+  .ptrow input[type=number]{width:84px;background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:inherit;font-size:13px;padding:4px 8px}
+  .ptrow button,.ptsteps button{background:#1D1A42;border:1px solid var(--edge);color:var(--text);border-radius:8px;cursor:pointer;font:inherit;font-size:12px;padding:4px 10px}
+  .ptrow button:hover:not(:disabled){border-color:#9580FF} .ptsteps{display:inline-flex;gap:4px} .ptsteps button.on{background:#7A63F2;border-color:#7A63F2;color:#fff}
+  .ptnote{font-size:11.5px;color:var(--sub)}
   #move{margin-top:10px;padding-top:8px;border-top:1px solid #231f4a}
   .mv{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
   .mv .grp,.mv .steps{display:flex;gap:4px}
@@ -242,7 +251,7 @@
     #layout{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:14px}
     #colL,#colR,#mid,#stage,#sceneWrap,#sideR,#cam{display:contents}
     #cam .box{order:1;background:var(--card);border:1px solid var(--edge);border-radius:20px;padding:14px}
-    #pinfo{order:2} #afcbar{order:3;margin:0} #grid{order:4} #scene{order:5;flex:none} #temps{order:6}
+    #pinfo,#ptune{order:2} #afcbar{order:3;margin:0} #grid{order:4} #scene{order:5;flex:none} #temps{order:6}
     #move{order:7;margin:0;padding:12px 14px;background:var(--card);border:1px solid var(--edge);border-radius:20px}
     #fans{order:8} #con{order:9}
     #stage main,#stage.u1layout main{padding:0;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr));max-width:none;margin:0}
@@ -417,6 +426,15 @@
   </section>
 </section>
 <section id="pinfo"><h2>Print</h2><div id="pgrid"></div></section>
+<section id="ptune" hidden><h2>Print tuning</h2><div class="ptbox">
+  <div class="ptrow"><span class="k">Z offset</span><b id="ptz">0.000 mm</b><span class="ptsteps" id="ptzsteps" role="group" aria-label="Z offset step in mm"></span>
+    <button data-tune="zdown" title="Move the nozzle closer to the bed by the chosen step">&#9660; Closer</button><button data-tune="zup" title="Move the nozzle away from the bed by the chosen step">&#9650; Further</button><button data-tune="zreset" title="Set the Z offset back to 0">Reset</button></div>
+  <div class="ptrow"><label class="k" for="ptspeed">Speed</label><input type="range" id="ptspeed" min="0" max="200" step="5" value="100" list="pt100"><b id="ptspeedv">100%</b><button data-tune="speed100" title="Back to 100%">100%</button></div>
+  <div class="ptrow"><label class="k" for="ptflow">Flow</label><input type="range" id="ptflow" min="50" max="150" step="1" value="100" list="pt100"><datalist id="pt100"><option value="100"></option></datalist><b id="ptflowv">100%</b><button data-tune="flow100" title="Back to 100%">100%</button></div>
+  <div class="ptrow"><label class="k" for="ptpa">Pressure advance</label><input type="number" id="ptpa" min="0" max="2" step="0.005" inputmode="decimal"><button data-tune="pa">Set</button>
+    <label class="k" for="ptsm">Smooth time</label><input type="number" id="ptsm" min="0" max="0.2" step="0.005" inputmode="decimal"><button data-tune="smooth">Set</button></div>
+  <div class="ptnote">These take effect at once, also during a print. They are not saved on the printer: after a restart it is back to its configured values.</div>
+</div></section>
 <section id="con"><h2>Console</h2><div class="box">
   <div class="hd"><span class="tn">Live</span><span id="constat" class="badge">Loading</span></div>
   <pre id="conlog"></pre>
@@ -1694,6 +1712,56 @@ function sceneFeed() {
   }
 }
 
+// ---- Print tuning: Z-offset baby-stepping, speed and flow factors, pressure advance. The server checks every value and
+// keeps the total Z offset inside a limit; nothing here is free-form G-code. Unlike moves, these are meant for use during a print.
+const PTSTEPS = [0.005, 0.01, 0.025, 0.05];
+let ptStep = 0.01, ptHold = 0, ptBusy = false;      // ptHold: leave the controls alone while one is being used
+const ptEl = id => document.getElementById(id);
+ptEl("ptzsteps").innerHTML = PTSTEPS.map(v => '<button data-zstep="' + v + '" class="' + (v === ptStep ? "on" : "") + '" title="Step of ' + v + ' mm">' + v + "</button>").join("");
+function renderTune(st) {
+  ptEl("ptune").hidden = !CONTROLS;
+  if (!CONTROLS || Date.now() < ptHold) return;
+  const gm = st.gcode_move || {}, ex = st[(st.toolhead || {}).extruder] || st.extruder || {}, z = +((gm.homing_origin || [])[2]) || 0;
+  ptEl("ptz").textContent = (z > 0 ? "+" : "") + z.toFixed(3) + " mm";
+  const put = (id, v) => { const e = ptEl(id); if (document.activeElement !== e) e.value = v; };
+  for (const [id, f] of [["ptspeed", gm.speed_factor], ["ptflow", gm.extrude_factor]]) if (typeof f === "number") { put(id, Math.round(f * 100)); ptEl(id + "v").textContent = Math.round(f * 100) + "%"; }
+  if (typeof ex.pressure_advance === "number") put("ptpa", +ex.pressure_advance.toFixed(4));
+  if (typeof ex.smooth_time === "number") put("ptsm", +ex.smooth_time.toFixed(4));
+  ptEl("ptune").querySelectorAll("button[data-tune]").forEach(b => { b.disabled = ptBusy; });
+}
+async function tuneSend(what, value, label) {
+  if (ptBusy) return;
+  ptBusy = true; ptHold = Date.now() + 4000;
+  try {
+    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify({action: "tune", what, value})});
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+  } catch (e) {
+    notice.className = "pill off"; notice.textContent = label + " failed: " + e.message;
+    setTimeout(() => { notice.textContent = ""; notice.className = ""; }, 8000);
+  }
+  ptBusy = false; ptHold = 0; tick();
+}
+ptEl("ptune").addEventListener("click", ev => {
+  const s = ev.target.closest("button[data-zstep]");
+  if (s) { ptStep = +s.dataset.zstep; ptEl("ptzsteps").querySelectorAll("button").forEach(b => b.classList.toggle("on", b === s)); return; }
+  const b = ev.target.closest("button[data-tune]"); if (!b || b.disabled || !CONTROLS) return;
+  const t = b.dataset.tune, num = id => { const v = ptEl(id).value; return v === "" ? NaN : +v; };
+  if (t === "zdown") tuneSend("z_adjust", -ptStep, "Z offset");
+  else if (t === "zup") tuneSend("z_adjust", ptStep, "Z offset");
+  else if (t === "zreset") { if (confirm("Set the Z offset back to 0?\nThe nozzle moves by the current offset straight away.")) tuneSend("z_reset", 0, "Z offset"); }
+  else if (t === "speed100") tuneSend("speed", 100, "Speed");
+  else if (t === "flow100") tuneSend("flow", 100, "Flow");
+  else if (t === "pa") tuneSend("pa", num("ptpa"), "Pressure advance");
+  else if (t === "smooth") tuneSend("smooth", num("ptsm"), "Smooth time");
+});
+ptEl("ptune").addEventListener("input", ev => {            // live readout while a slider is dragged
+  const e = ev.target; if (!e.matches("input[type=range]")) return;
+  ptHold = Date.now() + 60000; ptEl(e.id + "v").textContent = Math.max(10, +e.value) + "%";      // the speed slider starts at 0 so that 100 % sits in the middle; the lowest speed is 10 %
+});
+ptEl("ptune").addEventListener("change", ev => {           // sent when the slider is released
+  const e = ev.target; if (!e.matches("input[type=range]") || !CONTROLS) return;
+  tuneSend(e.id === "ptspeed" ? "speed" : "flow", Math.max(10, +e.value), e.id === "ptspeed" ? "Speed" : "Flow");
+});
 // ---- Print info: ETA, speed, flow, filament used, slicer estimate (metadata of the current file) ----
 let meta = null, metaFile = "", thumbUrl = "";
 // Slicer thumbnail of a G-code file, as a path under /server/files/gcodes/ ("" = none). Moonraker lists thumbnails relative
@@ -2178,6 +2246,7 @@ function slotsExtruders(st) {                // any Klipper printer: one slot pe
 function render(st) {
   printState = st.print_stats.state;
   renderPrintInfo(st);
+  renderTune(st);
   renderPrintCtl(printState);
   renderTemps(st);
   renderFans(st);
