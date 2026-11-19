@@ -44,6 +44,30 @@ Notes:
 - The window is a real remote control: taps are sent to the printer. Like the rest of Feedline it has no login, so anyone who can open the dashboard can use it.
 - The generic printer picture has a screen area too, so any printer that serves its screen at `/screen/` can use this.
 
+## Spoolman on the Snapmaker U1
+
+Feedline reads your [Spoolman](https://github.com/Donkie/Spoolman) spools and shows them on the U1's tool cards. Each card gets the spool's name, brand, colour, **remaining weight** and its Spoolman number (`#8`), so you see how much filament is left on every tool at a glance.
+
+![The four U1 tool cards with spool name, brand, colour, remaining grams and Spoolman number](docs/spoolman-cards.png)
+
+**How a tool is matched to a spool.** The U1 reads the RFID tag on each spool and reports its UID. Feedline looks for that UID in the `card_uids` field of your Spoolman spools. A tag with no matching spool still works: the card shows what the tag itself says (type, brand, weight) and the spool popup says "Not in Spoolman".
+
+**Click a spool** (on its card) to open its details: material, colour, remaining / used / initial weight, remaining length, empty-spool weight, diameter, density, nozzle and bed temperature, price, location, lot, first / last used, comment, the tag UID and a link that opens the spool in Spoolman.
+
+![Spool details popup for T1](docs/spoolman-details.png)
+
+**Set it up**
+1. In Spoolman add a **text** extra field for spools with the key `card_uids` (Spoolman > Settings > Extra Fields > Spool).
+2. For each spool, put its tag UID in that field (several tags can be separated by commas). The UID is shown in the spool popup on the dashboard (also for tags Spoolman does not know yet).
+3. In Feedline open **Settings > Spoolman** and enter the address your *Feedline server* reaches Spoolman at, for example `http://192.168.1.20:7912`. It is checked against Spoolman before it is saved and applies to every printer. The link in the popup uses the same address unless `spoolman_url` in `config.json` says otherwise (useful when browsers reach Spoolman under a different name).
+
+![Settings > Spoolman](docs/spoolman-settings.png)
+
+Notes:
+- Feedline only **reads** Spoolman. It never creates spools or changes their weights; the printer / Moonraker does the usage tracking.
+- Colour, material and weight come from Spoolman when the tag is matched, and from the tag otherwise.
+- This tag matching is for Snapmaker U1 printers (filament system "Snapmaker U1"). Other printers show Moonraker's active Spoolman spool on the active tool, or a fixed spool per tool set with `tool_spools` in `config.json`.
+- Spoolman has no login either, so keep both on a trusted network.
 ## Install (Linux, about two minutes)
 
 Requirements: Python 3.8+ (nothing to `pip install`), and a Klipper printer whose Moonraker answers on port 7125 from this machine.
