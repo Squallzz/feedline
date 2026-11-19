@@ -5,7 +5,7 @@ Works with any Klipper + Moonraker printer; ships with a drawn Snapmaker U1 view
 
 ![Dashboard with the drawn Snapmaker U1: live camera, tool cards with filament feed lines, and a front view of the printer showing nozzle temperatures, fans, bed and chamber](docs/dashboard.png)
 
-*Home on a Snapmaker U1: the printer is drawn live from its state. Each tool card feeds a coloured line down to its toolhead, the active tool is highlighted, and temperatures, fans, bed and chamber are clickable.*
+*Home on a Snapmaker U1: the printer is drawn live from its state. Each tool card feeds a colored line down to its toolhead, the active tool is highlighted, and temperatures, fans, bed and chamber are clickable.*
 
 ![AFC / BoxTurtle lanes with status pills and Load / Unload / Eject buttons](docs/afc.png)
 
@@ -46,13 +46,13 @@ Notes:
 
 ## Spoolman on the Snapmaker U1
 
-Feedline reads your [Spoolman](https://github.com/Donkie/Spoolman) spools and shows them on the U1's tool cards. Each card gets the spool's name, brand, colour, **remaining weight** and its Spoolman number (`#8`), so you see how much filament is left on every tool at a glance.
+Feedline reads your [Spoolman](https://github.com/Donkie/Spoolman) spools and shows them on the U1's tool cards. Each card gets the spool's name, brand, color, **remaining weight** and its Spoolman number (`#8`), so you see how much filament is left on every tool at a glance.
 
-![The four U1 tool cards with spool name, brand, colour, remaining grams and Spoolman number](docs/spoolman-cards.png)
+![The four U1 tool cards with spool name, brand, color, remaining grams and Spoolman number](docs/spoolman-cards.png)
 
 **How a tool is matched to a spool.** The U1 reads the RFID tag on each spool and reports its UID. Feedline looks for that UID in the `card_uids` field of your Spoolman spools. A tag with no matching spool still works: the card shows what the tag itself says (type, brand, weight) and the spool popup says "Not in Spoolman".
 
-**Click a spool** (on its card) to open its details: material, colour, remaining / used / initial weight, remaining length, empty-spool weight, diameter, density, nozzle and bed temperature, price, location, lot, first / last used, comment, the tag UID and a link that opens the spool in Spoolman.
+**Click a spool** (on its card) to open its details: material, color, remaining / used / initial weight, remaining length, empty-spool weight, diameter, density, nozzle and bed temperature, price, location, lot, first / last used, comment, the tag UID and a link that opens the spool in Spoolman.
 
 ![Spool details popup for T1](docs/spoolman-details.png)
 
@@ -65,7 +65,7 @@ Feedline reads your [Spoolman](https://github.com/Donkie/Spoolman) spools and sh
 
 ### Auto-add helper (optional)
 
-`tools/spoolman_autoadd.py` watches the U1's loaded tags. When it sees a tag that no Spoolman spool has in `card_uids`, it creates the vendor, filament and spool from the tag's data (type, brand, colour, weight, temperatures), stores the UID, and runs `SET_SPOOL_ID` so the printer links that tag to the new spool (held back while a print is running). It never edits or deletes existing spools. Python standard library only.
+`tools/spoolman_autoadd.py` watches the U1's loaded tags. When it sees a tag that no Spoolman spool has in `card_uids`, it creates the vendor, filament and spool from the tag's data (type, brand, color, weight, temperatures), stores the UID, and runs `SET_SPOOL_ID` so the printer links that tag to the new spool (held back while a print is running). It never edits or deletes existing spools. Python standard library only.
 
 Install it together with Feedline (needs `"spoolman"` set in `config.json`, e.g. `"192.168.1.20:7912"`):
 
@@ -80,7 +80,7 @@ The service uses the `printer` and `spoolman` from `config.json` (an address set
 
 Notes:
 - The dashboard itself only **reads** Spoolman. Creating spools for new tags is the job of the optional auto-add helper above; nothing here changes existing spools or weights.
-- Colour, material and weight come from Spoolman when the tag is matched, and from the tag otherwise.
+- Color, material and weight come from Spoolman when the tag is matched, and from the tag otherwise.
 - This tag matching is for Snapmaker U1 printers (filament system "Snapmaker U1"). Other printers show Moonraker's active Spoolman spool on the active tool, or a fixed spool per tool set with `tool_spools` in `config.json`.
 - Spoolman has no login either, so keep both on a trusted network.
 ## Install (Linux, about two minutes)
@@ -138,7 +138,7 @@ See `config.example.json`. Only `printer` is required. Anything the browser coul
   addresses, and stores them in `printers.json`. Added printers use the generic setup (no custom macros). A header drop-down
   switches printers (cookie `printer`). The first printer comes from `config.json` and cannot be removed in the UI.
 - **Printer options**: tick **Remote touchscreen**, and choose which LED the **Light button** switches (Automatic finds one by name; or pick another / hide it). Per printer.
-- **Graphics**: three independent choices, per printer: the printer picture, the toolchanger graphic (the 3D BoxTurtle unit, or none) and the spool graphic (the filament roll on each tool/lane card: spool wheel, simple reel, 3D spool, none, or your own SVG). With AFC, a dotted line in the loaded filament's colour runs from the active lane to the toolhead.
+- **Graphics**: three independent choices, per printer: the printer picture, the toolchanger graphic (the 3D BoxTurtle unit, or none) and the spool graphic (the filament roll on each tool/lane card: spool wheel, simple reel, 3D spool, none, or your own SVG). With AFC, a dotted line in the loaded filament's color runs from the active lane to the toolhead.
 - **Upload a printer graphic** (PNG/JPEG/WebP/SVG, 3 MB): click or drag anchors on the picture: `bed`, `chamber`, `screen`
   (areas), `chamberTemp`, `partFan`, `chamberFan`, `light` (points) and one point per tool. All optional.
 - **Upload a toolchanger graphic** (one SVG per slot). Optional hooks on any element:
@@ -150,7 +150,7 @@ Feedline has no login. Anyone who can open the page can use the controls, add pr
 
 ## Filament systems
 
-Settings > Filament system: auto-detect, standard (one filament per extruder), Snapmaker U1 (RFID tags) or **AFC / BoxTurtle** (ArmoredTurtle). When a printer is added the server looks for the AFC objects (`AFC` plus `AFC_stepper`/`AFC_lane` lanes) and sets it up automatically. With AFC the cards are one per lane, drawn as a 3D spool, and underneath them a 3D BoxTurtle unit (black frame, gold lattice panels, one bay per lane with the spool loaded, levers, colour LED bars; more than one unit is stacked), and each lane card has three buttons: Unload (`TOOL_UNLOAD`), Load (`TOOL_LOAD`; if another lane is already loaded to the toolhead it first runs the Unload macro for that lane, so Load swaps filament) and Eject (`LANE_UNLOAD`), all with `LANE={lane}` (`CHANGE_TOOL` is detected but not shown as a button) (`{lane}` is available in custom macros too). A row of status pills above the cards shows AFC's state, the toolhead/extruder filament sensor (`AFC_extruder`), the hub (`AFC_hub`) and the Turtleneck buffer (`AFC_buffer`); pills only appear for what the printer reports. Click a spool (on its card or in the BoxTurtle picture) to edit the lane's material, colour and weight: the server sends `SET_MATERIAL`, `SET_COLOR` and `SET_WEIGHT` with `LANE=<lane>` (only values that pass validation, only if your AFC version reports those commands; this changes AFC's lane data, not Spoolman). Changing the system also switches the filament graphic back to that system's default. AFC support was built from the AFC source code and tested against a simulated AFC printer, not real BoxTurtle hardware.
+Settings > Filament system: auto-detect, standard (one filament per extruder), Snapmaker U1 (RFID tags) or **AFC / BoxTurtle** (ArmoredTurtle). When a printer is added the server looks for the AFC objects (`AFC` plus `AFC_stepper`/`AFC_lane` lanes) and sets it up automatically. With AFC the cards are one per lane, drawn as a 3D spool, and underneath them a 3D BoxTurtle unit (black frame, gold lattice panels, one bay per lane with the spool loaded, levers, color LED bars; more than one unit is stacked), and each lane card has three buttons: Unload (`TOOL_UNLOAD`), Load (`TOOL_LOAD`; if another lane is already loaded to the toolhead it first runs the Unload macro for that lane, so Load swaps filament) and Eject (`LANE_UNLOAD`), all with `LANE={lane}` (`CHANGE_TOOL` is detected but not shown as a button) (`{lane}` is available in custom macros too). A row of status pills above the cards shows AFC's state, the toolhead/extruder filament sensor (`AFC_extruder`), the hub (`AFC_hub`) and the Turtleneck buffer (`AFC_buffer`); pills only appear for what the printer reports. Click a spool (on its card or in the BoxTurtle picture) to edit the lane's material, color and weight: the server sends `SET_MATERIAL`, `SET_COLOR` and `SET_WEIGHT` with `LANE=<lane>` (only values that pass validation, only if your AFC version reports those commands; this changes AFC's lane data, not Spoolman). Changing the system also switches the filament graphic back to that system's default. AFC support was built from the AFC source code and tested against a simulated AFC printer, not real BoxTurtle hardware.
 
 ## Macros tab
 
