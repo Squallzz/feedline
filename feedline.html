@@ -27,6 +27,7 @@
   main{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
   /* Front view of the printer; each card sits under its toolhead's real dock position (X = 35, 102.7, 170.2, 237.7 mm) */
   #colR{container-type:inline-size}
+  [data-spin]{transform-box:fill-box;transform-origin:center}      /* spool parts that turn while filament is fed (spinApply) */
   .spool{cursor:pointer;outline:none} .spool:hover circle:first-child,.spool:focus-visible circle:first-child{stroke:#9580FF}
   #spmodal{position:fixed;inset:0;background:rgba(5,4,14,.72);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
   #spmodal .dlg{background:#14122b;border:1px solid #352F6B;border-radius:14px;max-width:440px;width:100%;max-height:90vh;overflow:auto;padding:18px 20px;position:relative;color:#e8e6ff}
@@ -643,9 +644,9 @@ function toolSvg(i, col, frac, temp, target, active, loaded, fanLabel) {
     '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="#1D1A42" stroke="#352F6B" stroke-width="2"/>' +
     // wound filament
     (loaded ? '<circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="url(#w' + i + ')"/>' +
-      '<circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="none" stroke="' + dark + '" stroke-width="1" stroke-dasharray="2 4" opacity=".6"/>' : "") +
+      '<circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="none" stroke="' + dark + '" stroke-width="1" stroke-dasharray="2 4" opacity=".6" data-spin="1"/>' : "") +
     // hub
-    '<circle cx="' + cx + '" cy="' + cy + '" r="22" fill="#0F0D24" stroke="#352F6B" stroke-width="2"/>' + spokes +
+    '<circle cx="' + cx + '" cy="' + cy + '" r="22" fill="#0F0D24" stroke="#352F6B" stroke-width="2"/><g data-spin="1">' + spokes + "</g>" +
     '<circle cx="' + cx + '" cy="' + cy + '" r="6" fill="#352F6B"/></g>' +
     '<text x="' + cx + '" y="166" text-anchor="middle" fill="' + (heat ? "#E8B04F" : "#A29EDB") + '" font-size="15" font-weight="600">' +
       tgtSpan(i ? "extruder" + i : "extruder", "T" + i + " nozzle", target, true, Math.round(temp) + '°' + (target > 0 || CONTROLS ? ' / ' + (target > 0 ? Math.round(target) + "°" : "off") : '')) + '</text>' +
@@ -945,7 +946,7 @@ function fanKey(n) { return n === "fan" ? "fan" : n.replace(/^fan_generic /, "")
 // whatever a printer does not report is simply not shown.
 function renderAfcBar(st) {
   const bar = document.getElementById("afcbar");
-  if (CFG.provider === "qidibox") return;                     // the same row shows the QIDI Box status (renderBoxBar)
+  if (CFG.provider === "qidibox" || CFG.provider === "toolchanger") return;      // the same row shows the QIDI Box / toolchanger status instead
   if (CFG.provider !== "afc") { bar.hidden = true; return; }
   const pills = [], one = pre => afcParts.filter(n => n.startsWith(pre + " ")).length < 2;
   const pill = (label, text, on, dim) => '<span class="pill' + (on ? " on" : "") + (dim ? " dim" : "") + '"><i></i>' + escH(label) + ": " + escH(cap(text)) + "</span>";
@@ -1150,9 +1151,42 @@ const MODELS = {
 // Build one model: {body (SVG markup on a 600 x 520 canvas), width, height, anchors, motion}. `sfx` is added to every id
 // (a second copy, e.g. the Settings preview, must not share ids with the live scene). `noHead` leaves the toolhead out
 // (printers with several tools show one marker per tool instead, as on a picture).
-function modelPack(id, sfx, noHead) {
+// Toolhead looks, each drawn in a 42 x 50 box above the nozzle tip at (0, 0). Simplified shapes in the spirit of each
+// design (the toolheads StealthChanger lists as supported), not drawings of the real parts.
+const HEADS = {
+  generic: {label: "Generic", d: "M-21 -45 q0 -5 5 -5 h32 q5 0 5 5 v24 q0 5 -5 5 h-32 q-5 0 -5 -5 z", fan: [0, -30, 9], band: 1},
+  stealthburner: {label: "Stealth Burner", d: "M-19 -50 h38 l3 10 v18 l-9 8 h-26 l-9 -8 v-18 z", fan: [0, -34, 8], leds: 1},
+  ministealthburner: {label: "Mini Stealth Burner", d: "M-15 -44 h30 l3 8 v14 l-7 7 h-22 l-7 -7 v-14 z", fan: [0, -31, 6.5], leds: 1},
+  dragonburner: {label: "Dragon Burner", d: "M-21 -42 l6 -6 h30 l6 6 v20 l-6 6 h-30 l-6 -6 z", fan: [0, -30, 10]},
+  rapidburner: {label: "Rapid Burner", d: "M-17 -50 h34 q4 0 4 4 v24 l-6 6 h-30 l-6 -6 v-24 q0 -4 4 -4 z", fan: [0, -31, 9], band: 1},
+  anthead: {label: "AntHead", d: "M-20 -30 q0 -20 20 -20 q20 0 20 20 v8 q0 6 -6 6 h-28 q-6 0 -6 -6 z", fan: [0, -29, 7], eyes: 1, feelers: 1},
+  yavoth: {label: "Yavoth", d: "M-21 -50 h42 v30 l-8 4 h-26 l-8 -4 z", fan: [-9, -34, 6], fan2: [9, -34, 6]},
+  a4t: {label: "A4T", d: "M-12 -50 h24 l9 9 v19 l-6 6 h-30 l-6 -6 v-19 z", fan: [-8, -30, 5.5], fan2: [8, -30, 5.5]},
+  xol: {label: "XOL", d: "M-21 -48 h42 v22 q0 10 -10 10 h-22 q-10 0 -10 -10 z", fan: [0, -34, 9]},
+  jabberwocky: {label: "Jabberwocky", d: "M-20 -50 h40 v34 h-40 z", fan: [0, -33, 11]},
+  blackbird: {label: "Archetype BlackBird", d: "M-21 -40 l10 -10 h22 l10 10 l-4 20 l-6 4 h-22 l-6 -4 z", fan: [0, -32, 8], wing: 1}
+};
+function headArt(style, body, acc, nozId) {
+  const h = HEADS[style] || HEADS.generic;
+  const c = (p, r, fill, more) => '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + r + '" fill="' + fill + '"' + (more || "") + "/>";
+  const fan = f => c(f, f[2], "#0d0d14", ' opacity=".6"') + c(f, (f[2] * .36).toFixed(1), acc);
+  return '<path d="' + h.d + '" fill="' + body + '" stroke="#0b0b10" stroke-width="1.2" stroke-linejoin="round"/>' +
+    (h.band ? '<rect x="-17" y="-50" width="34" height="6" rx="3" fill="' + acc + '"/>' : '<path d="' + h.d + '" fill="' + acc + '" opacity=".22"/>') +
+    fan(h.fan) + (h.fan2 ? fan(h.fan2) : "") +
+    (h.leds ? '<rect x="-7" y="-22" width="5" height="3" rx="1" fill="#fff"/><rect x="2" y="-22" width="5" height="3" rx="1" fill="#fff"/>' : "") +
+    (h.eyes ? c([-9, -41], 2.2, "#fff") + c([9, -41], 2.2, "#fff") : "") +
+    (h.feelers ? '<path d="M-8 -49 q-4 -8 -11 -7 M8 -49 q4 -8 11 -7" fill="none" stroke="' + acc + '" stroke-width="1.6" stroke-linecap="round"/>' : "") +
+    (h.wing ? '<path d="M-21 -40 l10 -10 h22 l10 10" fill="none" stroke="' + acc + '" stroke-width="2" stroke-linejoin="round"/>' : "") +
+    '<rect x="-8" y="-16" width="16" height="9" rx="1.5" fill="#8d8d99"/><polygon' + (nozId ? ' id="' + nozId + '"' : "") + ' points="-5,-7 5,-7 1.5,0 -1.5,0" fill="#c9a66b"/>';
+}
+// opt: {tools, docks, style}. With several tools on a cube-shaped printer the tools hang in a row of docks at the top
+// (docks >= tools; the spare ones are drawn empty) and the one in use rides the gantry. Other shapes with several tools
+// show one marker per tool and no head, as before.
+function modelPack(id, sfx, opt) {
   const s = MODELS[id]; if (!s) return null;
   sfx = sfx || "";
+  opt = opt || {};
+  const nt = Math.max(1, opt.tools | 0), docks = nt > 1 && (s.f === "box" || s.f === "gantry") ? Math.max(nt, Math.min(12, opt.docks | 0)) : 0, noHead = nt > 1 && !docks;
   const I = n => n + sfx, sc = s.sc || 1, b = s.b, acc = s.acc, light = parseInt(b[0].slice(1, 3), 16) > 128;
   const trim = shade(b[1], light ? .78 : 1.6), dark = "#0a0818", plate = "#3b3a4a";
   const o = ['<defs><linearGradient id="' + I("mb") + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + b[0] + '"/><stop offset="1" stop-color="' + b[1] + '"/></linearGradient>' +
@@ -1160,10 +1194,8 @@ function modelPack(id, sfx, noHead) {
   const R = (x, y, w, h, fill, more) => '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="' + fill + '"' + (more ? " " + more : "") + "/>";
   const fillB = "url(#" + I("mb") + ")", fillR = "url(#" + I("mr") + ")", edge = 'stroke="' + trim + '" stroke-width="1.5"';
   const screen = (x, y, w, h) => { A.screen = {x, y, w, h}; return R(x, y, w, h, "#0d0d14", 'rx="4" stroke="#2b2b36" stroke-width="2"'); };
-  const head = (x, y) => '<g transform="translate(' + x + " " + y + ')"><g id="' + I("mvhead") + '">' + (noHead ? "" :
-    R(-21, -50, 42, 34, light ? "#33353c" : shade(b[0], 1.35), 'rx="5" stroke="#0b0b10" stroke-width="1.2"') + R(-21, -50, 42, 9, acc, 'rx="4"') +
-    '<circle cx="0" cy="-30" r="9" fill="#0d0d14" opacity=".55"/>' + R(-8, -16, 16, 9, "#8d8d99", 'rx="1.5"') +
-    '<polygon id="' + I("snz0") + '" points="-5,-7 5,-7 1.5,0 -1.5,0" fill="#c9a66b"/>') + "</g></g>";
+  const headCol = light ? "#33353c" : shade(b[0], 1.35);
+  const head = (x, y) => '<g transform="translate(' + x + " " + y + ')"><g id="' + I("mvhead") + '">' + (noHead ? "" : headArt(opt.style, headCol, acc, I(docks ? "snzA" : "snz0"))) + "</g></g>";
   const bedG = (y, x0, x1, more) => '<g id="' + I("mvbed") + '">' + (more || "") +
     '<polygon points="' + (x0 + 25) + "," + y + " " + (x1 - 25) + "," + y + " " + x1 + "," + (y + 26) + " " + x0 + "," + (y + 26) + '" fill="' + plate + '" stroke="#6a66b0" stroke-width="1.5"/>' +
     R(x0, y + 26, x1 - x0, 8, "#1b1838", 'rx="2" stroke="#352F6B"') + "</g>";
@@ -1184,15 +1216,26 @@ function modelPack(id, sfx, noHead) {
     } else {                                                  // open frame: the rear posts show through
       o.push(R(wx + 26, wy + 4, 12, wh - 4, b[1], 'opacity=".55"') + R(wx + ww - 38, wy + 4, 12, wh - 4, b[1], 'opacity=".55"') + R(wx + 26, wy + 4, ww - 52, 10, b[1], 'opacity=".55"'));
     }
-    const bedz = s.f === "box", railY = bedz ? wy + 30 : wyb - 40 + 13 - 48;
+    const dkH = docks ? 52 : 0;                               // room under the top of the frame for the row of docks
+    const bedz = s.f === "box", railY = bedz ? wy + 30 + dkH : wyb - 40 + 13 - 48;
     nozY = railY + 48;
     const bedY = nozY - 13;                                   // at Z = 0 the nozzle stands on the middle of the plate
-    M.z = bedz ? wyb - 44 - bedY : railY - (wy + 26); M.x = ww - 20 - 64;
+    M.z = bedz ? wyb - 44 - bedY : railY - (wy + 26 + dkH); M.x = ww - 20 - 64;
     if (bedz) o.push(R(wx + 44, wy + 16, 5, wh - 30, fillR, 'opacity=".7"') + R(wx + ww - 49, wy + 16, 5, wh - 30, fillR, 'opacity=".7"'));     // Z lead screws
     const gantry = '<g id="' + I("mvgan") + '">' + R(wx + 10, railY - 3, ww - 20, 7, fillR, 'rx="3"') + R(wx + 4, railY - 9, 18, 19, trim, 'rx="3"') + R(wx + ww - 22, railY - 9, 18, 19, trim, 'rx="3"') + head(300, nozY) + "</g>";
     const bed = bedG(bedY, 140, 460, bedz ? R(170, bedY + 30, 260, 9, "#15122b", 'rx="2"') : "");
     o.push(bedz ? gantry + bed : bed + gantry);               // the bed passes in front of a fixed gantry; a flying gantry passes in front of the bed
     A.bed = {x: 150, y: bedY, w: 300, h: 28};
+    if (docks) {                                              // one dock per tool across the top; a docked tool hangs in it, a spare dock is an outline
+      A.tools = []; M.docks = docks;
+      for (let i = 0; i < docks; i++) {
+        const x = +(wx + 34 + (ww - 68) * (i + .5) / docks).toFixed(1);
+        o.push(R(x - 12, wy + 3, 24, 7, trim, 'rx="2"') + R(x - 2, wy + 10, 4, 7, trim) + (i < nt ?
+          '<g id="' + I("dkh" + i) + '" transform="translate(' + x + " " + (wy + 50) + ') scale(.62)">' + headArt(opt.style, headCol, acc, I("snz" + i)) + "</g>" :
+          '<rect x="' + (x - 11) + '" y="' + (wy + 19) + '" width="22" height="28" rx="4" fill="none" stroke="' + trim + '" stroke-dasharray="3 3" opacity=".6"/>'));
+        if (i < nt) A.tools.push({x, y: wy + 30});
+      }
+    }
     if (fr) {                                                 // extrusion frame with a skirt
       o.push(R(70, 40, sd, 440 - bb, fillB, edge) + R(530 - sd, 40, sd, 440 - bb, fillB, edge) + R(70, 40, 460, tb, fillB, edge) + R(70, 480 - bb, 460, bb, fillB, 'rx="4" ' + edge));
       for (const [cx, cy] of [[70, 40], [530 - sd, 40]]) o.push(R(cx, cy, sd, tb, acc, 'opacity=".9"'));
@@ -1231,11 +1274,11 @@ function modelPack(id, sfx, noHead) {
     o.push('<g id="' + I("mvgan") + '">' + head(300, nozY) + "</g>");
     A.bed = {x: 170, y: bedY, w: 260, h: 26}; A.light = {x: 300, y: 50};
   }
-  if (!noHead) { A.tools = [{x: toolX, y: nozY - 33}]; M.head = true; }
+  if (!noHead) { if (!docks) A.tools = [{x: toolX, y: nozY - 33}]; M.head = true; }
   // smaller machines are drawn smaller, standing on the same floor
   const T = (x, y) => [300 + (x - 300) * sc, 490 + (y - 490) * sc];
-  for (const k in A) {
-    const p = k === "tools" ? A.tools[0] : A[k], [x, y] = T(p.x, p.y);
+  for (const k in A) for (const p of (k === "tools" ? A.tools : [A[k]])) {
+    const [x, y] = T(p.x, p.y);
     p.x = x; p.y = y; if (p.w) { p.w *= sc; p.h *= sc; }
   }
   for (const k of ["x", "y", "z", "arm"]) if (M[k]) M[k] *= sc;
@@ -1337,15 +1380,16 @@ function sceneInitImage(st) {
     const p = tl[i] || {x: W * (NT === 1 ? .5 : .28 + .44 * i / (NT - 1)), y: H * .27};
     const x = X(p.x), y = Y(p.y);
     TA[i] = {x, y: y - 28}; TOOLPT[i] = {x, y: y - 10};
-    const ride = mo && mo.head && i === 0;                     // this marker sits on the moving toolhead: its labels go above the head
+    const dk = !!(mo && mo.docks);                             // toolchanger: the markers sit on the docked tools and are smaller
+    const ride = mo && mo.head && i === 0 && !dk;              // this marker sits on the moving toolhead: its labels go above the head
     if (ride) { Object.assign(mo, {at: {x, y}, ta: TA[i], tp: TOOLPT[i]}); o.push('<g id="mvgano"><g id="mvheado">'); }
     if (UNITSEL === "u1") o.push('<g transform="translate(' + x + ',' + y + ')" pointer-events="none">' + u1Head(i) + "</g>");
     o.push('<circle id="sgl' + i + '" cx="' + x + '" cy="' + y + '" r="15" fill="#ff8a3a" opacity="0" pointer-events="none"/>' +
-      '<circle id="sdk' + i + '" cx="' + x + '" cy="' + y + '" r="' + (ride ? 7 : 9) + '" fill="#101016" stroke="#352F6B" stroke-width="1"/>' +
-      '<circle id="stip' + i + '" cx="' + x + '" cy="' + y + '" r="' + (ride ? 4.2 : 5.5) + '" fill="#2A2750"/>' +
-      '<text id="slb' + i + '" x="' + x + '" y="' + (y - 14) + '" text-anchor="middle" font-size="11" font-weight="600" fill="#6B66A5">' + (NT > 1 ? "T" + i : "") + '</text>' +
-      '<text id="sfh' + i + '" x="' + x + '" y="' + (ride ? y - 17 : y + 21) + '" text-anchor="middle" font-size="8" font-weight="700" fill="#8a8a96" stroke="#000" stroke-opacity=".45" stroke-width=".3" paint-order="stroke">' + (i < N ? "--" : "") + '</text>' +
-      '<text id="sfp' + i + '" x="' + x + '" y="' + (ride ? y - 26 : y + 30) + '" text-anchor="middle" font-size="6.5" font-weight="700" fill="#8a8a96" stroke="#000" stroke-opacity=".45" stroke-width=".3" paint-order="stroke"></text>');
+      '<circle id="sdk' + i + '" cx="' + x + '" cy="' + y + '" r="' + (ride ? 7 : dk ? 5 : 9) + '" fill="#101016" stroke="#352F6B" stroke-width="1"/>' +
+      '<circle id="stip' + i + '" cx="' + x + '" cy="' + y + '" r="' + (ride ? 4.2 : dk ? 3 : 5.5) + '" fill="#2A2750"/>' +
+      '<text id="slb' + i + '" x="' + x + '" y="' + (y - (dk ? 22 : 14)) + '" text-anchor="middle" font-size="' + (dk ? 9 : 11) + '" font-weight="600" fill="#6B66A5">' + (NT > 1 ? "T" + i : "") + '</text>' +
+      '<text id="sfh' + i + '" x="' + x + '" y="' + (ride ? y - 17 : dk ? y + 24 : y + 21) + '" text-anchor="middle" font-size="8" font-weight="700" fill="#8a8a96" stroke="#000" stroke-opacity=".45" stroke-width=".3" paint-order="stroke">' + (i < N ? "--" : "") + '</text>' +
+      '<text id="sfp' + i + '" x="' + x + '" y="' + (ride ? y - 26 : dk ? y + 32 : y + 30) + '" text-anchor="middle" font-size="6.5" font-weight="700" fill="#8a8a96" stroke="#000" stroke-opacity=".45" stroke-width=".3" paint-order="stroke"></text>');
     if (ride) o.push("</g></g>");
   }
   if (a.light && CFG.light) {
@@ -1580,6 +1624,11 @@ function sceneUpdate(st, cols, loaded) {
       e.innerHTML = tgtSpan(exName(i), "T" + i + " nozzle", ex.target || 0, true, ct); e.setAttribute("fill", tc > 50 ? "#d9582b" : "#8a8a96"); }
     setFan("sfp" + i, "P", ppv);
   }
+  if (PK.motion && PK.motion.docks) {                         // toolchanger: the tool in use rides the gantry, the others hang in their docks
+    const ai = st.toolchanger && st.toolchanger.tool_number === -1 ? -1 : Array.from({length: N}, (_, i) => exName(i)).indexOf(act);
+    for (let i = 0; i < N; i++) $("dkh" + i).style.display = i === ai ? "none" : "";
+    $("mvhead").style.display = ai < 0 ? "none" : "";
+  }
   const lo = CFG.light && CFG.light.object, lj = lo ? st[lo] : null;
   if (lj && Date.now() > lightHold) lightOn = lj.color_data ? (lj.color_data[0] || []).some(v => v > 0) : (typeof lj.value === "number" ? lj.value > 0 : lightOn);
   lightApply();
@@ -1711,7 +1760,7 @@ function reelSvg(s) {
   return '<svg class="slotsvg" viewBox="0 0 200 150" role="img">' +
     '<g class="spool" data-spool="' + s.i + '" tabindex="0" role="button" aria-label="Spool details for T' + s.i + '">' +
     '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="#14122b" stroke="#4b4690" stroke-width="4"/>' +
-    (s.loaded ? '<circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="' + c + '"/><circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="none" stroke="' + shade(c, .6) + '" stroke-dasharray="2 4" opacity=".6"/>' : "") +
+    (s.loaded ? '<circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="' + c + '"/><circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="none" stroke="' + shade(c, .6) + '" stroke-dasharray="2 4" opacity=".6" data-spin="1"/>' : "") +
     '<circle cx="' + cx + '" cy="' + cy + '" r="15" fill="#0F0D24" stroke="#4b4690" stroke-width="3"/><circle cx="' + cx + '" cy="' + cy + '" r="4" fill="#4b4690"/></g>' +
     '<text x="100" y="142" text-anchor="middle" fill="' + (heat ? "#E8B04F" : "#A29EDB") + '" font-size="15" font-weight="600">' +
     tgtSpan(exName(s.i), "T" + s.i + " nozzle", tgt, true, Math.round(temp) + '°' + (tgt > 0 || CONTROLS ? ' / ' + (tgt > 0 ? Math.round(tgt) + "°" : "off") : "")) + '</text></svg>';
@@ -1774,6 +1823,7 @@ function sanitizeSlotSvg(text) {
 // Template hooks (all optional):  data-fill="filament" / data-stroke="filament"  color from the loaded filament
 //   data-heat  fill follows the nozzle temperature    data-level="scale|height|width"  scaled by the filament left
 //   data-text="temp|target|tool|material|name|remaining|fan"    data-show="loaded|empty|active|idle|heating"
+//   data-spin="1"  turns about its own centre while that slot feeds filament
 function customSlot(s) {
   if (!TC.tpl) return "";
   const root = new DOMParser().parseFromString(TC.tpl, "image/svg+xml").documentElement;
@@ -1811,7 +1861,7 @@ async function applyGraphics() {
     const a = pp.anchors || {};
     PK = {id: pp.id, kind: "image", url: "/packs/printer/" + encodeURIComponent(pp.id) + "/" + encodeURIComponent(pp.file), width: pp.width, height: pp.height, anchors: a};
   } else if (MODELS[pp.id]) {
-    PK = Object.assign({id: pp.id, kind: "image"}, modelPack(pp.id, "", N > 1));
+    PK = Object.assign({id: pp.id, kind: "image"}, modelPack(pp.id, "", {tools: N, docks: CFG.docks, style: CFG.toolhead}));
   } else if (BUILTIN_IMAGES[pp.id]) {
     PK = Object.assign({id: pp.id, kind: "image"}, BUILTIN_IMAGES[pp.id]);
   } else PK = {id: "u1", kind: "u1"};
@@ -1983,7 +2033,7 @@ function afcSvg(s) {
       '<ellipse cx="' + cx + '" cy="' + cy + '" rx="' + rfx.toFixed(1) + '" ry="' + rf.toFixed(1) + '" fill="' + dark + '"/>' : "") +
     '<ellipse cx="' + fx + '" cy="' + cy + '" rx="' + RX + '" ry="' + RY + '" fill="url(#aff' + id + ')" stroke="#6a66b0" stroke-width="1.5"/>' +
     (s.loaded ? '<ellipse cx="' + fx + '" cy="' + cy + '" rx="' + rfx.toFixed(1) + '" ry="' + rf.toFixed(1) + '" fill="' + c + '" stroke="' + dark + '"/>' +
-      '<ellipse cx="' + fx + '" cy="' + cy + '" rx="' + rfx.toFixed(1) + '" ry="' + rf.toFixed(1) + '" fill="none" stroke="' + light + '" stroke-opacity=".35" stroke-dasharray="2 4"/>' : "") +
+      '<ellipse cx="' + fx + '" cy="' + cy + '" rx="' + rfx.toFixed(1) + '" ry="' + rf.toFixed(1) + '" fill="none" stroke="' + light + '" stroke-opacity=".5" stroke-dasharray="2 4" data-spin-dash="1"/>' : "") +
     // hub, axle stub
     '<ellipse cx="' + fx + '" cy="' + cy + '" rx="9" ry="20" fill="#0f0d24" stroke="#6a66b0"/>' +
     '<rect x="' + fx + '" y="' + (cy - 5) + '" width="16" height="10" rx="3" fill="#8a86c8"/><ellipse cx="' + (fx + 16) + '" cy="' + cy + '" rx="3" ry="5" fill="#b3b0e6"/></g>' +
@@ -2069,6 +2119,19 @@ function slotsQidi(st) {
   return out;
 }
 // QIDI Box status row (shares the AFC row): connection, what is loaded, each Box's temperature and humidity, drying
+// Toolchanger status row (klipper-toolchanger, as used by StealthChanger and ktc-easy); shares the AFC row
+function renderTcBar(st) {
+  if (CFG.provider !== "toolchanger") return;
+  const bar = document.getElementById("afcbar"), T = st.toolchanger || {}, pills = [];
+  const pill = (label, text, on, dim) => '<span class="pill' + (on ? " on" : "") + (dim ? " dim" : "") + '"><i></i>' + escH(label) + ": " + escH(cap(text)) + "</span>";
+  const tn = n => typeof n === "number" && n >= 0 ? "T" + n : "none";
+  if (T.status === "error") pills.push('<span class="pill off"><i></i>Toolchanger: Error</span>');
+  else if (T.status) pills.push(pill("Toolchanger", T.status, T.status === "ready", T.status === "uninitialized"));
+  pills.push(pill("Tool in use", tn(T.tool_number), T.tool_number >= 0, !(T.tool_number >= 0)));
+  if (T.has_detection) pills.push(pill("Tool detected", tn(T.detected_tool_number), T.detected_tool_number >= 0 && T.detected_tool_number === T.tool_number, !(T.detected_tool_number >= 0)));
+  bar.innerHTML = pills.join("");
+  bar.hidden = !pills.length;
+}
 function renderBoxBar(st) {
   if (CFG.provider !== "qidibox") return;
   const bar = document.getElementById("afcbar"), M = st.multi_color_controller || {}, pills = [];
@@ -2114,13 +2177,14 @@ function render(st) {
   renderMove(st);
   const qb = CFG.provider === "qidibox", afc = CFG.provider === "afc" || qb;      // both have one card per lane / slot feeding a single toolhead
   const slots = CFG.provider === "u1" ? slotsU1(st) : qb ? slotsQidi(st) : afc ? slotsAFC(st) : slotsExtruders(st), ts = st.toolhead.extruder;
-  renderBoxBar(st);
+  renderBoxBar(st); renderTcBar(st);
   let out = "";
   const sceneCols = [], sceneLoaded = [];
   for (const s of slots) {
     const i = s.i, ex = s.ex;
-    const isActive = afc ? s.isActive : ts === exName(i), heating = ex.target > 0;
-    const state = afc ? (isActive ? "ACTIVE" : s.status) : isActive ? "ACTIVE" : (ex.state === "PARKED" ? "Parked" : (ex.state || "").toLowerCase());
+    const tcp = CFG.provider === "toolchanger", noTool = !!(st.toolchanger && st.toolchanger.tool_number === -1);      // toolchanger with every tool docked
+    const isActive = afc ? s.isActive : ts === exName(i) && !noTool, heating = ex.target > 0;
+    const state = afc ? (isActive ? "ACTIVE" : s.status) : isActive ? "ACTIVE" : tcp ? "Docked" : (ex.state === "PARKED" ? "Parked" : (ex.state || "").toLowerCase());
     if (afc) { if (isActive) { const k = Math.min(N - 1, s.tool || 0); sceneCols[k] = s.col; sceneLoaded[k] = true; } }
     else { sceneCols[i] = s.col; sceneLoaded[i] = s.loaded; }
     spoolInfo[i] = {sp: s.sp, info: s.info, loaded: s.loaded, col: s.col, uid: s.uid, lane: afc && !qb ? s.lane : null, box: qb ? s : null, mat: s.mat, rem: s.rem, total: s.total};
@@ -2128,6 +2192,10 @@ function render(st) {
     const hf = afc ? null : st[slotFan(i).hotend];
     let fanLabel = "";
     if (!afc) spinSpeed[i] = 0;
+    {   // the spool turns with the filament: forwards while printing, backwards on a retract. Much faster than a real spool, so it can be seen
+      const ev = (st.motion_report || {}).live_extruder_velocity;
+      spoolSpd[i] = isActive && s.loaded && typeof ev === "number" && Math.abs(ev) > .05 ? Math.sign(ev) * clamp(Math.abs(ev) * 14, 25, 360) : 0;
+    }
     if (hf && typeof hf.speed === "number") {
       const rpm = typeof hf.rpm === "number" && hf.rpm > 0 ? hf.rpm : hf.speed * 17000;
       spinSpeed[i] = hf.speed > 0 ? Math.min(SPIN_MAX, rpm / 17000 * SPIN_MAX) : 0;
@@ -2155,7 +2223,13 @@ function render(st) {
 // (capped so it never strobes). Driven from requestAnimationFrame so the 2 s re-render doesn't restart it.
 const SPIN_MAX = 540;                 // degrees per second at full speed
 const spinSpeed = new Array(16).fill(0), spinAngle = new Array(16).fill(0);
+const spoolSpd = new Array(32).fill(0), spoolAng = new Array(32).fill(0);      // per card: degrees per second, and the angle it has reached
 function spinApply() {
+  document.querySelectorAll("#grid .tool").forEach((card, i) => {      // the cards are redrawn every poll, so the angle is put back each time
+    if (!spoolAng[i]) return;
+    card.querySelectorAll("[data-spin]").forEach(e => { e.style.transform = "rotate(" + spoolAng[i].toFixed(1) + "deg)"; });
+    card.querySelectorAll("[data-spin-dash]").forEach(e => e.setAttribute("stroke-dashoffset", (-spoolAng[i] * .3).toFixed(1)));
+  });
   for (let i = 0; i < N; i++) {
     const g = document.getElementById("knob" + i);
     if (g) g.setAttribute("transform", "rotate(" + spinAngle[i].toFixed(1) + " 110 214)");
@@ -2175,6 +2249,7 @@ function spinFrame(t) {
   let moved = false;
   for (let i = 0; i < N; i++) if (spinSpeed[i] > 0) { spinAngle[i] = (spinAngle[i] + spinSpeed[i] * dt) % 360; moved = true; }
   for (const k in FANPOS) if (fanSpd[k] > 0) { fanAng[k] = (fanAng[k] + fanSpd[k] * dt) % 360; moved = true; }
+  for (let i = 0; i < spoolSpd.length; i++) if (spoolSpd[i]) { spoolAng[i] = (spoolAng[i] + spoolSpd[i] * dt + 360) % 360 || .01; moved = true; }
   if (moved) spinApply();
   motionApply(dt);
   requestAnimationFrame(spinFrame);
@@ -2245,6 +2320,7 @@ async function tick() {
     const base = ["toolhead", "print_stats", "virtual_sdcard", "gcode_move", "motion_report"].concat(Array.from({length: N}, (_, i) => exName(i)), tmcObjs);
     if (CFG.provider === "u1") base.push("filament_detect", "filament_feed left", "filament_feed right");
     if (CFG.provider === "afc") base.push("AFC", ...afcLanes, ...afcParts);
+    if (CFG.provider === "toolchanger") base.push("toolchanger");
     if (CFG.provider === "qidibox") base.push("multi_color_controller", "save_variables", "box_extras", "filament_switch_sensor fila", ...boxObjs);
     if (CFG.light && CFG.light.object) base.push(CFG.light.object);
     const objs = base.map(n => encodeURIComponent(n)).join("&") + extra;
@@ -2836,7 +2912,7 @@ bootstrap();
     const ps = $("setpp"), ts = $("settp");
     if (!ps || !ts) return;
     const pid = ps.value || (CFG.model && CFG.model.id) || "generic";      // "" = automatic: the detected model
-    const pp = (CFG.packs.printer || []).find(p => p.id === pid), mp = modelPack(pid, "pv");
+    const pp = (CFG.packs.printer || []).find(p => p.id === pid), mp = modelPack(pid, "pv", {tools: N, docks: CFG.docks, style: CFG.toolhead});
     $("setppv").innerHTML = mp ? '<svg viewBox="0 0 600 520" style="width:100%;max-height:220px" role="img" aria-label="Printer preview">' + mp.body + "</svg>" :
       pp && packUrl(pp) ? '<img src="' + escH(packUrl(pp)) + '" alt="">' : pid === "u1" ? u1PrinterPreview() : "<i>no preview</i>";
     $("settpv").innerHTML = await slotPreview(ts.value);
@@ -2845,8 +2921,8 @@ bootstrap();
   }
 
   const fsOptions = () => {
-    const fs = CFG.filamentSystems || {selected: "auto", available: {}}, av = fs.available || {}, name = {u1: "Snapmaker U1 (RFID tags)", afc: "AFC / BoxTurtle (ArmoredTurtle)", qidibox: "QIDI Box", extruders: "Standard (one filament per extruder)"};
-    return [["auto", "Auto-detect (now: " + (name[CFG.provider] || CFG.provider) + ")", true], ["extruders", name.extruders, true], ["afc", name.afc + (av.afc ? "" : " - not detected"), !!av.afc], ["qidibox", name.qidibox + (av.qidibox ? "" : " - not detected"), !!av.qidibox], ["u1", name.u1 + (av.u1 ? "" : " - not detected"), !!av.u1]]
+    const fs = CFG.filamentSystems || {selected: "auto", available: {}}, av = fs.available || {}, name = {u1: "Snapmaker U1 (RFID tags)", afc: "AFC / BoxTurtle (ArmoredTurtle)", qidibox: "QIDI Box", toolchanger: "Toolchanger (StealthChanger / klipper-toolchanger)", extruders: "Standard (one filament per extruder)"};
+    return [["auto", "Auto-detect (now: " + (name[CFG.provider] || CFG.provider) + ")", true], ["extruders", name.extruders, true], ["afc", name.afc + (av.afc ? "" : " - not detected"), !!av.afc], ["qidibox", name.qidibox + (av.qidibox ? "" : " - not detected"), !!av.qidibox], ["toolchanger", name.toolchanger + (av.toolchanger ? "" : " - not detected"), !!av.toolchanger], ["u1", name.u1 + (av.u1 ? "" : " - not detected"), !!av.u1]]
       .map(([id, label, ok]) => '<option value="' + id + '"' + (id === fs.selected ? " selected" : "") + (ok ? "" : " disabled") + ">" + escH(label) + "</option>").join("");
   };
   function render() {
@@ -2875,6 +2951,9 @@ bootstrap();
       '<div><label>Toolchanger graphic</label><select id="setun">' + [["u1", "Snapmaker U1 toolchanger"], ["afc", "BoxTurtle unit (3D)"], ["none", "None"]].map(([v, l]) => '<option value="' + v + '"' + (v === (g.unit || "none") ? " selected" : "") + ">" + l + "</option>").join("") + '</select><div id="setunv" class="gprev tprev"></div></div>' +
       '<div><label>Spool graphic</label><select id="settp">' + opts("toolchanger", g.toolchanger) + '</select><div id="settpv" class="gprev tprev"></div></div></div>' +
       '<div class="sub gnote">' + (md.id ? "Detected: " + escH(md.label || md.id) + " (" + escH(md.why || "") + "). Automatic follows the printer; pick another if it guessed wrong." : "The model could not be detected (" + escH(md.why || "no answer") + "); pick a graphic.") + '</div>' +
+      '<div class="gopt"><label>Toolhead</label><select id="sethead"' + (CONTROLS ? "" : " disabled") + '>' + Object.keys(HEADS).map(k => '<option value="' + k + '"' + (k === (CFG.toolhead || "generic") ? " selected" : "") + ">" + escH(HEADS[k].label) + "</option>").join("") + "</select>" +
+      (N > 1 ? '<label>Docks</label><select id="setdocks"' + (CONTROLS ? "" : " disabled") + '><option value="">Automatic (' + N + ', one per tool)</option>' + Array.from({length: 13 - N}, (_, i) => N + i).map(d => '<option value="' + d + '"' + (d === CFG.docks ? " selected" : "") + ">" + d + "</option>").join("") + "</select>" : "") +
+      '<span class="sub">The look of the toolhead on a drawn printer' + (N > 1 ? ", and how many docks the toolchanger has (spare docks are drawn empty)" : "") + '.</span></div>' +
       '<div class="gopt"><label class="rad"><input type="checkbox" id="setmotion"' + (CFG.motion !== false ? " checked" : "") + (CONTROLS ? "" : " disabled") + '> Moving toolhead and bed</label>' +
       '<span class="sub">On a drawn printer the toolhead and the bed follow the printer\'s real position. Turn it off for a still picture; the fans keep spinning either way.</span></div>' +
       '<div class="gopt"><button id="setgbtn">Apply graphics</button><span class="sub">The three choices are independent: any printer picture with any toolchanger graphic and any spool style. The spool graphic is the filament roll on each tool / lane card.</span></div></div>' +
@@ -2887,7 +2966,7 @@ bootstrap();
       '<div class="srow"><label>Name</label><input id="tcname" maxlength="60" placeholder="My spool"><label>Id</label><input id="tcid" maxlength="40" placeholder="my-spool"><input id="tcfile" type="file" accept="image/svg+xml"></div>' +
       '<div id="tcprev" class="gprev tprev" hidden></div><button id="tcsave" hidden>Save slot graphic</button>' +
       '<div class="sub">One SVG per tool slot. Optional hooks on any element: <code>data-fill="filament"</code> / <code>data-stroke="filament"</code> (filament color), <code>data-heat="1"</code> (nozzle temperature color), ' +
-      '<code>data-level="scale|height|width"</code> (grows with filament left), <code>data-text="temp|target|tool|material|name|remaining|fan"</code>, <code>data-show="loaded|empty|active|idle|heating"</code>. Scripts, external links and global CSS are stripped.</div>' +
+      '<code>data-level="scale|height|width"</code> (grows with filament left), <code>data-text="temp|target|tool|material|name|remaining|fan"</code>, <code>data-show="loaded|empty|active|idle|heating"</code>, <code>data-spin="1"</code> (turns while that slot feeds filament). Scripts, external links and global CSS are stripped.</div>' +
       '<h4>Your slot graphics</h4>' + customs("toolchanger") + '</div>';
     $("setpp").onchange = $("settp").onchange = $("setun").onchange = previews;
     previews();
@@ -3012,6 +3091,8 @@ bootstrap();
       const v = ev.target.value;
       await reload((await post({action: "save_settings", light: v === "" ? null : v === "__none" ? false : v})).config); msg("Light button updated");
     });
+    if (ev.target.id === "sethead") await guard(async () => { await reload((await post({action: "save_settings", toolhead: ev.target.value})).config); msg("Toolhead changed"); });
+    if (ev.target.id === "setdocks") await guard(async () => { await reload((await post({action: "save_settings", docks: ev.target.value ? +ev.target.value : null})).config); msg("Docks changed"); });
     if (ev.target.id === "setmotion") await guard(async () => { await reload((await post({action: "save_settings", motion: ev.target.checked})).config); msg(ev.target.checked ? "Moving toolhead on" : "Moving toolhead off"); });
     if (["setcamrot", "setcamfh", "setcamfv"].includes(ev.target.id)) await guard(async () => {
       await reload((await post({action: "save_settings", camera: {rotation: +$("setcamrot").value, flipH: $("setcamfh").checked, flipV: $("setcamfv").checked}})).config); msg("Camera picture updated");

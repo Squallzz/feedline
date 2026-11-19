@@ -49,7 +49,7 @@ DEFAULT_CFG = {
     "printer": None,                 # Moonraker host (required, here or with --printer)
     "spoolman": None,                # Spoolman address the server uses: "host:port" or a URL ("http://192.168.1.20:7912"); null = no Spoolman. The Settings tab can override it
     "name": None,                    # header text; the UI setting overrides it; default = the printer's hostname
-    "provider": "auto",              # how filament slots are found: "auto" | "u1" (Snapmaker RFID) | "afc" (ArmoredTurtle AFC / BoxTurtle) | "qidibox" (QIDI Box) | "extruders"
+    "provider": "auto",              # how filament slots are found: "auto" | "u1" (Snapmaker RFID) | "afc" (ArmoredTurtle AFC / BoxTurtle) | "qidibox" (QIDI Box) | "toolchanger" (klipper-toolchanger: StealthChanger, ktc-easy) | "extruders"
     "tools": None,                   # number of tools; null = count the extruders Klipper reports
     "macros": None,                  # tool buttons, e.g. {"load": "AUTO_FEEDING EXTRUDER={n} LOAD=1", "pickup": "T{n}"}; "" disables one.
                                      # {n} = tool number, {nz} = number or "" for tool 0. Actions not listed are auto-detected
@@ -62,6 +62,8 @@ DEFAULT_CFG = {
     "tool_spools": None,             # {"0": 12, "1": 7}: fixed Spoolman spool per tool (provider "extruders")
     "temp_limits": {"extruder": 300, "heater_bed": 110, "heater_generic": 150},
     "graphics": {"printer": None, "toolchanger": None},
+    "toolhead": None,                # look of the toolhead on a drawn printer: one of TOOLHEADS; null = generic (Settings can change it)
+    "docks": None,                   # toolchanger: number of docks drawn (at least one per tool, up to 12); null = one per tool
     "motion": True,                  # drawn printer models: the toolhead and bed follow the printer's real position (Settings can turn it off)
     "allowed_hosts": [],             # extra Host names the dashboard answers to (IP addresses, single-label and .local/.lan/.ts.net names always work)
     "allow_embed": False,            # true = the page may be shown inside a frame on another site (e.g. a Home Assistant dashboard card)
@@ -143,6 +145,10 @@ def guess_model(cfg, objs, info):
             return "prusa-mk", "bed slinger named like a Prusa"
         return "bedslinger", kin + " kinematics"
     return None, "the printer's configuration could not be read"
+
+
+# toolhead looks the page can draw (HEADS in index.html); the names follow StealthChanger's list of supported toolheads
+TOOLHEADS = ("generic", "stealthburner", "ministealthburner", "dragonburner", "rapidburner", "anthead", "yavoth", "a4t", "xol", "jabberwocky", "blackbird")
 
 
 def thumb_path(filename, thumbs):
@@ -391,8 +397,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
         def with_tool(name, extra=""):
             p = self.tool_param(name) if n > 1 else None
             return name + (" %s={n}" % p if p else "") + extra
+        tc = self.provider() == "toolchanger"
+        if tc:                                                # klipper-toolchanger: T<n> exists for every numbered tool; UNSELECT_TOOL docks the one in use
+            if self.template_ok("T{n}"):
+                out["pickup"] = "T{n}"
+            elif has("SELECT_TOOL"):
+                out["pickup"] = "SELECT_TOOL T={n}"
+            if has("UNSELECT_TOOL"):
+                out["park"] = "UNSELECT_TOOL"
         # pick up a tool
-        if n > 1 and (self.template_ok("T{n}") or ("T%d" % n) in cmds):
+        if tc:
+            pass
+        elif n > 1 and (self.template_ok("T{n}") or ("T%d" % n) in cmds):
             out["pickup"] = "T{n}"
         else:
             for c in ("SELECT_TOOL", "TOOL_PICKUP", "PICKUP_TOOL", "TOOL_SELECT", "SELECT_EXTRUDER"):
@@ -403,7 +419,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if n > 1:
                     out["pickup"] = "ACTIVATE_EXTRUDER EXTRUDER=extruder{nz}"
         # park a tool
-        if n > 1 and self.template_ok("PARK_EXTRUDER{nz}"):
+        if tc:
+            pass
+        elif n > 1 and self.template_ok("PARK_EXTRUDER{nz}"):
             out["park"] = "PARK_EXTRUDER{nz}"
         else:
             for c in (("TOOL_DROPOFF", "PARK_TOOL", "DROPOFF_TOOL", "PARK_EXTRUDER") if n > 1 else ("PARK", "PARK_HEAD", "PARK_TOOLHEAD")):
@@ -602,16 +620,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
         nums = sorted(int(m.group(1)) for m in (re.fullmatch(r"box_stepper slot(\d+)", o) for o in self.objects()) if m)
         return ["slot%d" % n for n in nums if n < 16]
 
+    def tc_tools(self):
+        """Tool objects of a klipper-toolchanger setup ("toolchanger" plus "tool T0" ...), as used by StealthChanger and ktc-easy."""
+        objs = self.objects()
+        return sorted(o for o in objs if re.fullmatch(r"tool \S+", o)) if "toolchanger" in objs else []
+
     def provider(self):
         objs = self.objects()
         p = self.settings().get("provider") or self.cfg.get("provider") or "auto"
-        if (p == "afc" and not self.afc_lanes()) or (p == "u1" and "filament_detect" not in objs) or (p == "qidibox" and not self.qidi_slots()) or p not in ("u1", "afc", "qidibox", "extruders"):
+        if (p == "afc" and not self.afc_lanes()) or (p == "u1" and "filament_detect" not in objs) or (p == "qidibox" and not self.qidi_slots()) or (p == "toolchanger" and not self.tc_tools()) or p not in ("u1", "afc", "qidibox", "toolchanger", "extruders"):
             p = "auto"
         if p != "auto":
             return p
         if "filament_detect" in objs:
             return "u1"
-        return "afc" if self.afc_lanes() else "qidibox" if self.qidi_slots() else "extruders"
+        return "afc" if self.afc_lanes() else "qidibox" if self.qidi_slots() else "toolchanger" if self.tc_tools() else "extruders"
 
     def slot_count(self):
         """How many filament slots the tool buttons cover: Box slots on a QIDI Box, otherwise one per tool."""
@@ -791,6 +814,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                   "choices": [o for _, o, _, _ in self.light_choices()], "active": light.get("object")}},
             "name": name, "defaultName": c.get("name"), "graphics": gsel,
             "motion": bool(st["motion"]) if isinstance(st.get("motion"), bool) else bool(c.get("motion", True)),
+            "toolhead": next((v for v in (st.get("toolhead"), c.get("toolhead")) if v in TOOLHEADS), "generic"),
+            "docks": next((v for v in (st.get("docks"), c.get("docks")) if isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 12), None),
             # the printer graphic follows the detected model unless one was picked in Settings or config.json
             "model": {"id": mid, "label": "Snapmaker U1" if mid == "u1" else MODEL_LABEL.get(mid), "why": mwhy, "auto": picked not in self.pack_ids("printer")},
             "packs": {k: BUILTIN_PACKS[k] + self.custom_packs(k) for k in BUILTIN_PACKS},
@@ -798,7 +823,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             # QIDI Box: its slots, then "slot16", the printer's name for the external spool that bypasses the Box
             "lanes": self.afc_lanes() if prov == "afc" else self.qidi_slots() + ["slot16"] if prov == "qidibox" else [],
             "laneEdit": {k: v[0] in self.commands() for k, v in self.LANE_EDIT.items()} if prov == "afc" else {},
-            "filamentSystems": {"selected": st.get("provider") or "auto", "available": {"u1": "filament_detect" in self.objects(), "afc": bool(self.afc_lanes()), "qidibox": bool(self.qidi_slots())}},
+            "filamentSystems": {"selected": st.get("provider") or "auto", "available": {"u1": "filament_detect" in self.objects(), "afc": bool(self.afc_lanes()), "qidibox": bool(self.qidi_slots()), "toolchanger": bool(self.tc_tools())}},
             "actions": [a for a in ACTIONS if a in eff], "macros": eff,
             "light": {"object": light.get("object")} if light and light.get("on") and light.get("off") else None,
             "screen": {"interactive": "http://%s%s" % (host, scr.get("interactive", "/screen/"))} if scr and scr.get("snapshot") else None,
@@ -1228,8 +1253,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 st.pop("name", None)
         if "provider" in req:
             pv = req.get("provider")
-            if pv not in ("auto", "extruders", "afc", "u1", "qidibox"):
+            if pv not in ("auto", "extruders", "afc", "u1", "qidibox", "toolchanger"):
                 return self.jreply(400, {"error": "unknown filament system"})
+            if pv == "toolchanger" and not self.tc_tools():
+                return self.jreply(400, {"error": "no toolchanger found on this printer"})
             if pv == "qidibox" and not self.qidi_slots():
                 return self.jreply(400, {"error": "no QIDI Box found on this printer"})
             if pv == "afc" and not self.afc_lanes():
@@ -1253,6 +1280,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 st["screen"] = False
             else:
                 return self.jreply(400, {"error": "bad screen setting"})
+        if "toolhead" in req:                                 # drawn printer: the look of the toolhead (null = generic)
+            v = req["toolhead"]
+            if v is None:
+                st.pop("toolhead", None)
+            elif v in TOOLHEADS:
+                st["toolhead"] = v
+            else:
+                return self.jreply(400, {"error": "unknown toolhead"})
+        if "docks" in req:                                    # toolchanger: how many docks are drawn (null = one per tool)
+            v = req["docks"]
+            if v is None:
+                st.pop("docks", None)
+            elif isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 12:
+                st["docks"] = v
+            else:
+                return self.jreply(400, {"error": "docks must be 1 to 12"})
         if "motion" in req:                                   # drawn printer: toolhead and bed follow the printer (true / false; null = config.json)
             v = req["motion"]
             if v is None:

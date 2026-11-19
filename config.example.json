@@ -17,5 +17,7 @@
   "tool_spools": null,
   "temp_limits": {"extruder": 300, "heater_bed": 110, "heater_generic": 150},
   "graphics": {"printer": null, "toolchanger": null},
+  "toolhead": null,
+  "docks": null,
   "motion": true
 }
