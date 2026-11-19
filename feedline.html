@@ -2386,6 +2386,7 @@ bootstrap();
       '<div class="sub">New printers get the generic setup: temperatures, fans, jobs, console, files, camera (if Moonraker has one) and one pickup button per tool. Anyone who can open this page can add one, so keep the dashboard on a trusted network.</div></div>' +
       '<div class="vcard"><h3>Filament system</h3><div class="srow"><select id="setfs">' + fsOptions() + '</select><span class="sub">Decides how filament is read and which filament graphic is used. ' +
       'AFC / BoxTurtle (ArmoredTurtle) shows one 3D card per lane; it is detected automatically when a printer is added.</span></div></div>' +
+      optionsCard() +
       '<div class="vcard"><h3>Spoolman</h3><div class="srow"><label>Spoolman address</label><input id="smurl" placeholder="http://192.168.1.20:7912" spellcheck="false" value="' + escH(CFG.spoolmanServer || "") + '"' + (CONTROLS ? "" : " disabled") + '>' +
       '<button id="smsave"' + (CONTROLS ? "" : " disabled") + '>Save</button><button id="smreset"' + (CONTROLS ? "" : " disabled") + ' title="Go back to the value in config.json">Use config.json</button></div>' +
       '<div class="sub">' + (CFG.spoolmanServer ? "Connected to " + escH(CFG.spoolmanServer) + (CFG.spoolmanFromUi ? " (set here)" : " (from config.json)") : "No Spoolman configured.") +
@@ -2408,6 +2409,32 @@ bootstrap();
       '<h4>Your slot graphics</h4>' + customs("toolchanger") + '</div>';
     $("setpp").onchange = $("settp").onchange = $("setun").onchange = previews;
     previews();
+    probeScreen();
+  }
+  // printer options that used to need config.json: remote touchscreen and the light button
+  function optionsCard() {
+    const o = CFG.options || {screen: {}, light: {choices: []}}, ls = o.light, lock = CONTROLS ? "" : " disabled";
+    const lopts = [["", "Automatic" + (ls.mode === "auto" && ls.active ? " (" + ls.active + ")" : ls.mode === "auto" ? " (none found)" : "")], ["__none", "No light button"]]
+      .concat((ls.choices || []).map(c => [c, c]));
+    const cur = ls.mode === "none" ? "__none" : ls.mode === "pick" ? ls.active : "";
+    return '<div class="vcard"><h3>Printer options</h3>' +
+      '<div class="srow"><label class="rad"><input type="checkbox" id="setscr"' + (o.screen.on ? " checked" : "") + lock + '> Remote touchscreen</label>' +
+      '<button id="scrprobebtn" type="button">Check the printer</button><span id="scrprobe" class="sub"></span></div>' +
+      '<div class="sub">Shows the printer\'s own touchscreen on the picture and lets you click it to open the live, interactive screen. Needs a printer that serves it at <code>/screen/</code>, for example the Snapmaker U1 with the Paxx firmware\'s Remote Screen option turned on.' +
+      (o.screen.source === "config" ? " Currently on because of config.json; unticking here overrides it." : "") +
+      (o.screen.source === "ui" ? ' <button id="scrreset" type="button">Reset</button>' : "") + '</div>' +
+      '<div class="srow" style="margin-top:12px"><label>Light button</label><select id="setlight"' + lock + '>' +
+      lopts.map(([v, l]) => '<option value="' + escH(v) + '"' + (v === cur ? " selected" : "") + ">" + escH(l) + "</option>").join("") + '</select></div>' +
+      '<div class="sub">The button that switches the chamber / case light on the printer picture. Automatic picks the LED or light pin that looks like one; choose another from the list if it picked wrong, or hide the button.</div></div>';
+  }
+  async function probeScreen() {
+    const el = $("scrprobe"); if (!el) return;
+    el.textContent = "checking...";
+    try {
+      const j = await (await fetch("/api/screen/probe")).json();
+      el.textContent = j.ok ? "The printer serves a touchscreen picture." : j.reason === "not-found" ? "The printer answers but has no /screen/ page (is Remote Screen enabled?)." : "Could not reach the printer's web page.";
+      el.style.color = j.ok ? "#4ade80" : "#f0b35a";
+    } catch (e) { el.textContent = ""; }
   }
 
   // ----- anchor editor -----
@@ -2459,6 +2486,11 @@ bootstrap();
   async function guard(fn) { try { await fn(); } catch (e) { msg(String(e.message || e), true); } }
 
   root.addEventListener("change", async ev => {
+    if (ev.target.id === "setscr") await guard(async () => { await reload((await post({action: "save_settings", screen: ev.target.checked})).config); msg(ev.target.checked ? "Remote touchscreen on" : "Remote touchscreen off"); });
+    if (ev.target.id === "setlight") await guard(async () => {
+      const v = ev.target.value;
+      await reload((await post({action: "save_settings", light: v === "" ? null : v === "__none" ? false : v})).config); msg("Light button updated");
+    });
     if (ev.target.id === "setfs") await guard(async () => { await reload((await post({action: "save_settings", provider: ev.target.value})).config); msg("Filament system changed"); });
     if (ev.target.id === "pkfile" && ev.target.files[0]) await guard(async () => {
       const f = ev.target.files[0], data = await readFile(f), im = new Image();
@@ -2481,6 +2513,8 @@ bootstrap();
   root.addEventListener("click", ev => guard(async () => {
     const b = ev.target.closest("button"); if (!b) return;
     if (b.id === "setnamebtn") { await reload((await post({action: "save_settings", name: $("setname").value})).config); msg("Name saved"); }
+    else if (b.id === "scrprobebtn") probeScreen();
+    else if (b.id === "scrreset") { await reload((await post({action: "save_settings", screen: null})).config); msg("Touchscreen setting reset"); }
     else if (b.id === "setgbtn") { await reload((await post({action: "save_settings", graphics: {printer: $("setpp").value, toolchanger: $("settp").value, unit: $("setun").value}})).config); msg("Graphics applied"); }
     else if (b.id === "addbtn") {
       const j = await post({action: "add_printer", name: $("addname").value, host: $("addhost").value});

@@ -35,6 +35,7 @@ import base64
 import io
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
@@ -554,9 +555,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             name = (info or {}).get("hostname") or "Klipper printer"
         eff = self.effective_macros()
         cam = self.webcam()
-        scr = c.get("screen")
+        scr = self.screen_cfg()
         light = self.light_cfg()
+        ui_light = st.get("light")
         return {
+            "options": {"screen": {"on": bool(scr and scr.get("snapshot")), "source": "ui" if "screen" in st else ("config" if scr else "none")},
+                        "light": {"mode": "none" if ui_light is False else ("pick" if isinstance(ui_light, dict) and self.light_for(ui_light.get("object")) else "auto"),
+                                  "choices": [o for _, o, _, _ in self.light_choices()], "active": light.get("object")}},
             "name": name, "defaultName": c.get("name"), "graphics": gsel,
             "packs": {k: BUILTIN_PACKS[k] + self.custom_packs(k) for k in BUILTIN_PACKS},
             "provider": prov, "toolCount": self.tool_count(), "printerHost": host,
@@ -787,7 +792,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
     LIGHT_SKIP = re.compile(r"nozzle|logo|status|fan|heater|beeper|buzzer|power|psu|relay|probe|lcd|stepper|sensor|enable|reset|kill", re.I)
 
     def light_cfg(self):
-        """The light button: config.json "light" (false = none), else an LED or light pin found on the printer (never an unnamed pin)."""
+        """The light button. Order: choice made in Settings (false = none), config.json "light" (false = none), else the best LED / light pin found."""
+        ui = self.settings().get("light")
+        if ui is False:
+            return {}
+        if isinstance(ui, dict):
+            picked = self.light_for(ui.get("object"))
+            if picked:
+                return picked
         light = self.cfg.get("light")
         if light is False:
             return {}
@@ -795,7 +807,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return light
         return self.cached("light", 60, self.detect_light) or {}
 
-    def detect_light(self):
+    def light_choices(self):
+        """LEDs and light-named pins on the printer as (rank, object, on, off), best first. Never an unnamed pin."""
         cmds, found = self.commands(), []
         for o in self.objects():
             kind, _, name = o.partition(" ")
@@ -806,10 +819,35 @@ class Handler(http.server.BaseHTTPRequestHandler):
                               "SET_LED LED=%s RED=1 GREEN=1 BLUE=1 WHITE=1" % name, "SET_LED LED=%s RED=0 GREEN=0 BLUE=0 WHITE=0" % name))
             elif kind == "output_pin" and "SET_PIN" in cmds and self.LIGHT_HINT.search(name):
                 found.append((0, o, "SET_PIN PIN=%s VALUE=1" % name, "SET_PIN PIN=%s VALUE=0" % name))
-        if not found:
-            return {}
-        _, obj, on, off = sorted(found)[0]
-        return {"object": obj, "on": on, "off": off}
+        return sorted(found)
+
+    def light_for(self, obj):
+        for _, o, on, off in self.light_choices():
+            if o == obj:
+                return {"object": o, "on": on, "off": off}
+        return None
+
+    def detect_light(self):
+        ch = self.light_choices()
+        return {"object": ch[0][1], "on": ch[0][2], "off": ch[0][3]} if ch else {}
+
+    def screen_cfg(self):
+        """The remote touchscreen page: choice made in Settings (false = off), else config.json."""
+        st = self.settings()
+        if "screen" in st:
+            return st["screen"] if isinstance(st["screen"], dict) else None
+        s = self.cfg.get("screen")
+        return s if isinstance(s, dict) and s.get("snapshot") else None
+
+    def screen_probe(self):
+        """Does the printer serve a touchscreen picture at /screen/snapshot (e.g. the Paxx firmware's Remote Screen)?"""
+        try:
+            with urllib.request.urlopen("http://%s/screen/snapshot" % self.printer, timeout=4) as r:
+                return {"ok": r.status == 200 and r.headers.get("Content-Type", "").startswith("image/"), "reason": "found"}
+        except urllib.error.HTTPError:
+            return {"ok": False, "reason": "not-found"}
+        except Exception:  # noqa: BLE001
+            return {"ok": False, "reason": "unreachable"}
 
     def light_control(self, req):
         """Chamber LED (led cavity_led, RGBW; white only). Safe at any time, including during a print."""
@@ -963,6 +1001,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
             st.get("graphics", {}).pop("toolchanger", None)   # the filament graphic follows the filament system again
             st.get("graphics", {}).pop("unit", None)
             st.pop("macros", None)                            # tool-button macros were for the old system
+        if "screen" in req:                                   # remote touchscreen: true = on (Paxx paths), false = off, null = follow config.json
+            v = req["screen"]
+            if v is None:
+                st.pop("screen", None)
+            elif v is True:
+                st["screen"] = {"snapshot": "/screen/snapshot", "interactive": "/screen/"}
+            elif v is False:
+                st["screen"] = False
+            else:
+                return self.jreply(400, {"error": "bad screen setting"})
+        if "light" in req:                                    # light button: a detected LED / pin, false = none, null = automatic
+            v = req["light"]
+            if v is None:
+                st.pop("light", None)
+            elif v is False:
+                st["light"] = False
+            elif isinstance(v, str) and self.light_for(v):
+                st["light"] = {"object": v}
+            else:
+                return self.jreply(400, {"error": "that LED was not found on this printer"})
         mc = req.get("macros")
         if isinstance(mc, dict):
             cur = st.setdefault("macros", {})
@@ -1193,6 +1251,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.jreply(200, {"macros": self.user_macros(), "tool": self.effective_macros(), "detected": self.detect_macros(),
                                      "commands": sorted(c for c in self.commands() if not CMD_DENY.match(c) and not re.fullmatch(r"[GM]\d+", c)),
                                      "tools": self.tool_count()})
+        if route == "/api/screen/probe":
+            return self.jreply(200, self.screen_probe())
         if route == "/api/printers":
             return self.jreply(200, {"printers": self.printer_list()})
         if route == "/config/list":
@@ -1220,7 +1280,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not url:
                 return self.reply(404, "text/plain", b"no camera snapshot configured")
         elif route == "/screen/snapshot":                 # live view of the printer's touchscreen (view only)
-            scr = self.cfg.get("screen")
+            scr = self.screen_cfg()
             if not scr or not scr.get("snapshot"):
                 return self.reply(404, "text/plain", b"no touchscreen configured")
             url = "http://%s%s" % (self.printer, scr["snapshot"])

@@ -32,15 +32,17 @@ If your U1 runs [paxx12's SnapmakerU1 Extended Firmware](https://github.com/paxx
 
 *Top: the live screen in the drawn U1. Bottom: the interactive window, showing the printer's own print-status page.*
 
-To enable it, add this to `config.json` (the paths are on the printer) and restart Feedline:
+**To turn it on:** open **Settings > Printer options**, tick **Remote touchscreen**, and use **Check the printer** to confirm the printer serves it. No file editing needed.
 
-    "screen": {"snapshot": "/screen/snapshot", "interactive": "/screen/"}
+![Settings > Printer options: Remote touchscreen and Light button](docs/options.png)
+
+(Advanced: the same can be set in `config.json` with `"screen": {"snapshot": "/screen/snapshot", "interactive": "/screen/"}`; a choice made in Settings overrides it.)
 
 Notes:
-- Without a `screen` entry the screen on the picture is not clickable. It is not auto-detected.
+- It is off until you tick it: the screen on the picture is not clickable otherwise.
 - The window loads `http://<printer>/screen/` straight from your browser, so the browser must be able to reach the printer, not just Feedline's server. The live picture on the drawn screen goes through Feedline.
 - The window is a real remote control: taps are sent to the printer. Like the rest of Feedline it has no login, so anyone who can open the dashboard can use it.
-- Other printers can use it too if they serve a similar page: set `screen` to their paths, and the generic picture's screen area becomes clickable.
+- The generic printer picture has a screen area too, so any printer that serves its screen at `/screen/` can use this.
 
 ## Install (Linux, about two minutes)
 
@@ -84,8 +86,8 @@ See `config.example.json`. Only `printer` is required. Anything the browser coul
 | `provider` | `auto`, `u1` (Snapmaker RFID tags matched in Spoolman) or `extruders` (one slot per extruder; spool from `tool_spools` or Moonraker's active spool) |
 | `tools` | number of tools; null = count extruders |
 | `macros` | buttons per tool: `load`, `unload`, `park`, `pickup`. `{n}` = tool number, `{nz}` = number or empty for tool 0. Actions you leave out are auto-detected (`auto_macros: false` turns that off); `""` disables one |
-| `light` | `{"object","on","off"}` G-code for the chamber light button. Left out, Feedline looks for an LED (`led`, `neopixel`, `dotstar`, `pca9632`) or a light-named `output_pin` (name contains light/lamp/led/chamber/case...) and toggles it with `SET_LED` / `SET_PIN`; `false` hides the button |
-| `screen` | `{"snapshot","interactive"}` paths of the printer's remote touchscreen page, e.g. the Paxx firmware's `/screen/snapshot` and `/screen/` (see Remote touchscreen below) |
+| `light` | optional; normally use Settings > Printer options. `{"object","on","off"}` G-code for the light button; left out, an LED or light-named pin is found automatically; `false` hides the button |
+| `screen` | optional; normally use Settings > Printer options. `{"snapshot","interactive"}` paths of the printer's remote touchscreen page, e.g. `/screen/snapshot` and `/screen/` |
 | `webcam` | `{"mode","live","snapshot"}`; null = first webcam Moonraker reports |
 | `tool_fans` | per tool `{"hotend": "heater_fan ...", "part": "fan_generic ..."}` for the overlays |
 | `chamber` | `{"sensor","fan"}`; found by name when omitted |
@@ -96,6 +98,7 @@ See `config.example.json`. Only `printer` is required. Anything the browser coul
 - **Printers**: add more printers (name + IP/hostname). The server checks that Moonraker answers, rejects loopback/link-local
   addresses, and stores them in `printers.json`. Added printers use the generic setup (no custom macros). A header drop-down
   switches printers (cookie `printer`). The first printer comes from `config.json` and cannot be removed in the UI.
+- **Printer options**: tick **Remote touchscreen**, and choose which LED the **Light button** switches (Automatic finds one by name; or pick another / hide it). Per printer.
 - **Graphics**: three independent choices, per printer: the printer picture, the toolchanger graphic (the 3D BoxTurtle unit, or none) and the spool graphic (the filament roll on each tool/lane card: spool wheel, simple reel, 3D spool, none, or your own SVG). With AFC, a dotted line in the loaded filament's colour runs from the active lane to the toolhead.
 - **Upload a printer graphic** (PNG/JPEG/WebP/SVG, 3 MB): click or drag anchors on the picture: `bed`, `chamber`, `screen`
   (areas), `chamberTemp`, `partFan`, `chamberFan`, `light` (points) and one point per tool. All optional.
