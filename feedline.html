@@ -1383,17 +1383,25 @@ function sceneFeed() {
 
 // ---- Print info: ETA, speed, flow, filament used, slicer estimate (metadata of the current file) ----
 let meta = null, metaFile = "", thumbUrl = "";
+// Slicer thumbnail of a G-code file, as a path under /server/files/gcodes/ ("" = none). Moonraker lists thumbnails relative
+// to the file's folder. Some firmware (QIDI) also lists one with an absolute path on the printer's own disk; that one cannot
+// be fetched this way and is skipped. Only PNGs are used: that is what the dashboard server forwards.
+function thumbPath(fn, thumbs, biggest) {
+  const th = (thumbs || []).filter(t => t && typeof t.relative_path === "string" && /\.png$/.test(t.relative_path) &&
+      !/^[\/\\]/.test(t.relative_path) && !t.relative_path.split(/[\/\\]/).includes(".."))
+    .sort((a, b) => biggest ? b.width - a.width : a.width - b.width)[0];
+  if (!th) return "";
+  const dir = fn.includes("/") ? fn.slice(0, fn.lastIndexOf("/") + 1) : "";
+  return "/server/files/gcodes/" + (dir + th.relative_path).split("/").map(encodeURIComponent).join("/");
+}
 async function loadMeta(fn) {
   metaFile = fn; meta = null; thumbUrl = "";
   try {
     const m = (await jget(MR + "/server/files/metadata?filename=" + encodeURIComponent(fn))).result;
     if (metaFile !== fn) return;
     meta = m;
-    const th = (m.thumbnails || []).slice().sort((a, b) => b.width - a.width)[0];
-    if (th) {
-      const dir = fn.includes("/") ? fn.slice(0, fn.lastIndexOf("/") + 1) : "";
-      thumbUrl = MR + "/server/files/gcodes/" + (dir + th.relative_path).split("/").map(encodeURIComponent).join("/");
-    }
+    const tp = thumbPath(fn, m.thumbnails, true);
+    if (tp) thumbUrl = MR + tp;
   } catch (e) { /* no metadata: the card just shows what the live data gives */ }
 }
 const fmtDur = s => {
@@ -1448,8 +1456,17 @@ function reelSvg(s) {
 // Uploaded slot graphics are untrusted: scripts, event handlers, external references and page-wide CSS are removed, ids are
 // prefixed so they can never collide with the page's own, and CSS rules are scoped to the slot graphic.
 function sanitizeSlotSvg(text) {
-  const doc = new DOMParser().parseFromString(text, "image/svg+xml"), root = doc.documentElement;
-  if (!root || root.localName !== "svg" || doc.querySelector("parsererror")) return null;
+  let doc = new DOMParser().parseFromString(text, "image/svg+xml"), root = doc.documentElement;
+  if (root && root.localName === "svg" && !root.namespaceURI) {       // an <svg> without xmlns: parse it again as real SVG
+    doc = new DOMParser().parseFromString(String(text).replace(/<svg(?=[\s>\/])/, '<svg xmlns="' + SVGNS + '"'), "image/svg+xml"); root = doc.documentElement;
+  }
+  if (!root || root.localName !== "svg" || root.namespaceURI !== SVGNS || doc.querySelector("parsererror")) return null;
+  // The result is put back into the page as HTML text, and the HTML parser reads some things differently from the XML
+  // parser used here (a CDATA block inside a non-SVG element becomes live markup). So: CDATA becomes plain text,
+  // comments and processing instructions go, and only elements in the SVG namespace are kept.
+  const odd = [], tw = doc.createTreeWalker(root, NodeFilter.SHOW_ALL);
+  while (tw.nextNode()) { const t = tw.currentNode.nodeType; if (t === 4 || t === 7 || t === 8 || (t === 1 && tw.currentNode.namespaceURI !== SVGNS)) odd.push(tw.currentNode); }
+  for (const n of odd) { if (n.nodeType === 4) n.replaceWith(doc.createTextNode(n.data)); else n.remove(); }
   const bad = new Set(["script", "foreignobject", "iframe", "object", "embed", "audio", "video", "animate", "set", "animatetransform", "animatemotion", "a", "image"]);
   const ids = new Set();
   for (const el of [root, ...root.querySelectorAll("*")]) if (el.getAttribute("id")) ids.add(el.getAttribute("id"));
@@ -1481,7 +1498,14 @@ function sanitizeSlotSvg(text) {
     root.setAttribute("viewBox", "0 0 " + (w > 0 ? w : 200) + " " + (h > 0 ? h : 150));
   }
   root.removeAttribute("width"); root.removeAttribute("height");
-  return {tpl: new XMLSerializer().serializeToString(root), css: scoped};
+  const tpl = new XMLSerializer().serializeToString(root);
+  // last check, on what the HTML parser really makes of it (a <template> never runs or loads anything):
+  // every element must still be SVG and none may carry an event handler
+  const probe = document.createElement("template");
+  probe.innerHTML = tpl;
+  const els = [...probe.content.querySelectorAll("*")];
+  if (probe.content.childElementCount !== 1 || els.some(e => e.namespaceURI !== SVGNS || [...e.attributes].some(a => /^on/i.test(a.name)))) return null;
+  return {tpl, css: scoped.replace(/</g, "\\3C ")};      // "<" as a CSS escape: the rules can never close a <style> element
 }
 // Template hooks (all optional):  data-fill="filament" / data-stroke="filament"  color from the loaded filament
 //   data-heat  fill follows the nozzle temperature    data-level="scale|height|width"  scaled by the filament left
@@ -2010,10 +2034,8 @@ bootstrap();
   }
   const spoolIds = j => { const a = (j.auxiliary_data || []).find(x => x.provider === "spoolman" && x.name === "spool_ids"); return [...new Set(((a && a.value) || []).filter(v => v != null))]; };
   function thumbOf(j) {
-    const m = j.metadata || {}, t = (m.thumbnails || []).slice().sort((a, b) => a.width - b.width)[0];
-    if (!j.exists || !t) return "";
-    const dir = (j.filename.includes("/") ? j.filename.replace(/\/[^/]*$/, "/") : "");
-    return MRB + "/server/files/gcodes/" + (dir + t.relative_path).split("/").map(encodeURIComponent).join("/");
+    const tp = j.exists ? thumbPath(j.filename, (j.metadata || {}).thumbnails, false) : "";
+    return tp ? MRB + tp : "";
   }
   function jobsHtml() {
     const rows = jobs.filter(j => filter === "all" || j.status === filter);

@@ -71,6 +71,7 @@ BUILTIN_PACKS = {
     "printer": [{"id": "u1", "label": "Snapmaker U1 (drawn, live)"}, {"id": "generic", "label": "Generic printer (image)"}],
     "toolchanger": [{"id": "u1", "label": "Spool wheel"}, {"id": "reel", "label": "Simple reel"}, {"id": "afc", "label": "3D spool"}, {"id": "none", "label": "No graphic"}],
 }
+THUMB_SEG = r"[\w .()\[\]+@,&'!~=\-]+"      # one folder / file name in a thumbnail path: the characters slicers put in file names, never / \ ? # %
 PACK_ID = re.compile(r"[a-z0-9][a-z0-9_\-]{0,39}")
 MIME_EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg", "image/gif": ".gif"}
 EXT_MIME = {v: k for k, v in MIME_EXT.items()}
@@ -162,15 +163,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.reply(code, "application/json", json.dumps(obj).encode())
 
     # ---- small helpers on the printer ----
+    _down = {}                      # printer id -> time until which its Moonraker is treated as unreachable
+    DOWN_FOR = 10                   # seconds
+
     def cached(self, key, ttl, fn):
         key = (self.pid, key)
         hit = Handler._cache.get(key)
         if hit and time.time() - hit[0] < ttl:
             return hit[1]
+        if Handler._down.get(self.pid, 0) > time.time():
+            # Moonraker did not answer a moment ago (printer off or unplugged): use what is known instead of waiting
+            # for one timeout after another. Nothing is stored, so it is asked again as soon as the pause is over.
+            return hit[1] if hit else None
         try:
             val = fn()
-        except Exception:  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
             val = hit[1] if hit else None
+            if isinstance(e, OSError) and not isinstance(e, urllib.error.HTTPError):      # no connection / timeout; an HTTP error is an answer
+                Handler._down[self.pid] = time.time() + self.DOWN_FOR
         Handler._cache[key] = (time.time(), val)
         return val
 
@@ -1289,7 +1299,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif route in ("/printer/objects/query", "/printer/objects/list", "/server/gcode_store", "/server/files/metadata",
                      "/server/history/list", "/server/history/totals", "/server/spoolman/status"):            # job history (read-only)
             url = "http://%s:7125%s" % (self.printer, path)
-        elif re.fullmatch(r"/server/files/gcodes/(?:[\w .()\-]+/)*\.thumbs/[\w .()\-]+\.png", urllib.parse.unquote(route)):
+        elif (re.fullmatch(r"/server/files/gcodes/(?:%s/)*\.thumbs/%s\.png" % (THUMB_SEG, THUMB_SEG), urllib.parse.unquote(route))
+              and not any(s in (".", "..") for s in urllib.parse.unquote(route).split("/"))):      # no stepping out of the gcodes folder
             url = "http://%s:7125%s" % (self.printer, route)        # slicer thumbnail of the current job (read-only)
         elif route == "/api/config":
             return self.jreply(200, self.public_config())
