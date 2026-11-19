@@ -18,6 +18,30 @@ Works with any Klipper + Moonraker printer; ships with a drawn Snapmaker U1 view
 ![Macros tab with the tool-button macros and every macro on the printer](docs/macros.png)
 
 *Macros: edit what the Load / Unload / Park / Pickup buttons run, or run any user macro.*
+
+## Remote touchscreen (Snapmaker U1 with the Paxx firmware)
+
+If your U1 runs [paxx12's SnapmakerU1 Extended Firmware](https://github.com/paxx12-snapmaker-u1/SnapmakerU1-Extended-Firmware) with its **Remote Screen** option turned on (in the firmware's config page), the printer serves its touchscreen at `http://<printer>/screen/`. Feedline uses that in two ways:
+
+1. The screen on the drawn U1 shows a live picture of the real touchscreen (refreshed about once a second).
+2. **Click the screen in the picture** (it gets a purple outline when you hover) and a window opens with the live, interactive touchscreen: you can tap it from the browser just like at the printer. Close it with the x.
+
+![The drawn U1 with the touchscreen outlined, ready to click](docs/screen-button.png)
+
+![The remote touchscreen window open on top of the dashboard](docs/screen-open.png)
+
+*Screenshots were taken while the printer's display was asleep, so the screen is black; it shows the printer's real UI when the display is awake.*
+
+To enable it, add this to `config.json` (the paths are on the printer) and restart Feedline:
+
+    "screen": {"snapshot": "/screen/snapshot", "interactive": "/screen/"}
+
+Notes:
+- Without a `screen` entry the screen on the picture is not clickable. It is not auto-detected.
+- The window loads `http://<printer>/screen/` straight from your browser, so the browser must be able to reach the printer, not just Feedline's server. The live picture on the drawn screen goes through Feedline.
+- The window is a real remote control: taps are sent to the printer. Like the rest of Feedline it has no login, so anyone who can open the dashboard can use it.
+- Other printers can use it too if they serve a similar page: set `screen` to their paths, and the generic picture's screen area becomes clickable.
+
 ## Install (Linux, about two minutes)
 
 Requirements: Python 3.8+ (nothing to `pip install`), and a Klipper printer whose Moonraker answers on port 7125 from this machine.
@@ -61,7 +85,7 @@ See `config.example.json`. Only `printer` is required. Anything the browser coul
 | `tools` | number of tools; null = count extruders |
 | `macros` | buttons per tool: `load`, `unload`, `park`, `pickup`. `{n}` = tool number, `{nz}` = number or empty for tool 0. Actions you leave out are auto-detected (`auto_macros: false` turns that off); `""` disables one |
 | `light` | `{"object","on","off"}` G-code for the chamber light button. Left out, Feedline looks for an LED (`led`, `neopixel`, `dotstar`, `pca9632`) or a light-named `output_pin` (name contains light/lamp/led/chamber/case...) and toggles it with `SET_LED` / `SET_PIN`; `false` hides the button |
-| `screen` | `{"snapshot","interactive"}` paths of a touchscreen page (U1) |
+| `screen` | `{"snapshot","interactive"}` paths of the printer's remote touchscreen page, e.g. the Paxx firmware's `/screen/snapshot` and `/screen/` (see Remote touchscreen below) |
 | `webcam` | `{"mode","live","snapshot"}`; null = first webcam Moonraker reports |
 | `tool_fans` | per tool `{"hotend": "heater_fan ...", "part": "fan_generic ..."}` for the overlays |
 | `chamber` | `{"sensor","fan"}`; found by name when omitted |
