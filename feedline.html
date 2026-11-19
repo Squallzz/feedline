@@ -349,7 +349,7 @@
 </nav>
 <header>
   <h1 id="pname">Printer</h1><select id="psel" hidden title="Switch printer"></select>
-  <span id="conn" class="pill">connecting...</span>
+  <span id="conn" class="pill">Connecting...</span>
   <div id="job"></div>
   <span id="printctl" hidden>
     <button id="pbtn" data-print="pause">Pause</button>
@@ -363,7 +363,7 @@
 <section id="cam"><div class="box">
   <div class="hd"><span class="tn">Camera</span>
     <span><button id="cammode" class="badge" title="Switch between live video and 1 fps snapshots">Use snapshots</button>
-    <span id="camstat" class="badge">loading</span></span></div>
+    <span id="camstat" class="badge">Loading</span></span></div>
   <div id="camview"><iframe id="camframe" title="Printer camera (live)" allow="autoplay; fullscreen"></iframe>
   <img id="camlive" alt="Printer camera (live)" hidden>
   <img id="camimg" alt="Printer camera" hidden></div>
@@ -385,7 +385,7 @@
 </div></section>
 <section id="pinfo"><h2>Print</h2><div id="pgrid"></div></section>
 <section id="con"><h2>Console</h2><div class="box">
-  <div class="hd"><span class="tn">Live</span><span id="constat" class="badge">loading</span></div>
+  <div class="hd"><span class="tn">Live</span><span id="constat" class="badge">Loading</span></div>
   <pre id="conlog"></pre>
 </div></section>
 <section id="fans"><h2>Fan speeds</h2><div id="fgrid"></div></section>
@@ -426,7 +426,7 @@
   <div class="fwrap">
     <div class="fside"><input id="ffilter" type="search" placeholder="Search files..."><div id="ftree"></div></div>
     <div class="fmain">
-      <div class="fbar"><span id="fpath" class="fp">No file open</span><span id="fbadge" class="badge" hidden></span><span id="fdirty" style="color:var(--warn)" hidden>&bull; unsaved</span>
+      <div class="fbar"><span id="fpath" class="fp">No file open</span><span id="fbadge" class="badge" hidden></span><span id="fdirty" style="color:var(--warn)" hidden>&bull; Unsaved</span>
         <span style="margin-left:auto;display:flex;gap:8px"><button id="frevert" disabled>Revert</button><button id="freload" disabled>Reload</button><button id="fsave" class="go" disabled>Save (Ctrl+S)</button></span></div>
       <div id="fnote" style="padding:6px 14px;font-size:12px;color:var(--sub);border-bottom:1px solid #231f4a">Pick a file on the left. Saving keeps a copy of the previous version on the dashboard server, and changes only take effect after Klipper/Moonraker is next restarted (this dashboard never restarts them). JSON and factory files are view-only.</div>
       <div class="fedit"><pre id="edgut">1</pre><div class="edwrap"><pre id="edhl" aria-hidden="true"></pre><textarea id="edta" spellcheck="false" wrap="off" readonly></textarea></div></div>
@@ -434,7 +434,7 @@
   </div>
 </section>
 <section id="v-console" class="view" hidden style="max-width:none">
-  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px"><h2 style="margin:0">Console</h2><span id="fconstat" class="badge">loading</span>
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px"><h2 style="margin:0">Console</h2><span id="fconstat" class="badge">Loading</span>
     <input id="confilter" type="search" placeholder="Filter lines..." style="background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:inherit;font-size:13px;padding:5px 10px;width:220px">
     <label style="font-size:12.5px;color:var(--muted);display:flex;gap:6px;align-items:center"><input id="conhidetemp" type="checkbox"> Hide temperature reports</label>
     <span id="concount" style="font-size:12px;color:var(--sub);margin-left:auto"></span></div>
@@ -496,6 +496,7 @@ const shade = (h, f) => {            // f<1 darker, f>1 lighter
 };
 
 const spoolInfo = [];     // per tool: matched Spoolman spool + printer tag info, for the details modal
+const cap = s => { s = String(s == null ? "" : s); return s.charAt(0).toUpperCase() + s.slice(1); };      // status chips and badges start with a capital
 const escH = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 function openSpool(i) {
   const d = spoolInfo[i]; if (!d) return;
@@ -913,7 +914,7 @@ function renderAfcBar(st) {
   if (CFG.provider === "qidibox") return;                     // the same row shows the QIDI Box status (renderBoxBar)
   if (CFG.provider !== "afc") { bar.hidden = true; return; }
   const pills = [], one = pre => afcParts.filter(n => n.startsWith(pre + " ")).length < 2;
-  const pill = (label, text, on, dim) => '<span class="pill' + (on ? " on" : "") + (dim ? " dim" : "") + '"><i></i>' + escH(label) + ": " + escH(text) + "</span>";
+  const pill = (label, text, on, dim) => '<span class="pill' + (on ? " on" : "") + (dim ? " dim" : "") + '"><i></i>' + escH(label) + ": " + escH(cap(text)) + "</span>";
   const sub = (n, pre, what) => one(pre) ? what : what + " (" + n.split(" ").slice(1).join(" ") + ")";
   const bool = (...vs) => vs.find(v => typeof v === "boolean");
   for (const n of afcParts) {
@@ -1038,8 +1039,8 @@ async function conPoll() {
         if (atBottom) conlog.scrollTop = conlog.scrollHeight;
         conFirst = false;
       }
-      constat.textContent = "live";
-    } catch (e) { constat.textContent = "offline"; }
+      constat.textContent = "Live";
+    } catch (e) { constat.textContent = "Offline"; }
   }
   setTimeout(conPoll, 2000);
 }
@@ -2037,7 +2038,7 @@ function slotsQidi(st) {
 function renderBoxBar(st) {
   if (CFG.provider !== "qidibox") return;
   const bar = document.getElementById("afcbar"), M = st.multi_color_controller || {}, pills = [];
-  const pill = (label, text, on, dim) => '<span class="pill' + (on ? " on" : "") + (dim ? " dim" : "") + '"><i></i>' + escH(label) + ": " + escH(text) + "</span>";
+  const pill = (label, text, on, dim) => '<span class="pill' + (on ? " on" : "") + (dim ? " dim" : "") + '"><i></i>' + escH(label) + ": " + escH(cap(text)) + "</span>";
   const hw = M.hardware || {}, ex = M.extruder || {}, op = M.operation || {}, last = (M.slots || {}).last_loaded;
   if (M.hardware) pills.push(pill("QIDI Box", hw.connected ? (hw.box_count > 1 ? hw.box_count + " connected" : "connected") : "not connected", !!hw.connected, !hw.connected));
   const act = (SLOTSNOW || []).find(s => s.isActive);
@@ -2047,7 +2048,7 @@ function renderBoxBar(st) {
   for (const n of boxObjs.filter(o => o.startsWith("aht20_f "))) {
     const o = st[n] || {}, h = st["heater_generic " + n.split(" ")[1]] || {};
     if (typeof o.temperature !== "number") continue;
-    pills.push(pill("Box air", o.temperature.toFixed(0) + "°" + (typeof o.humidity === "number" ? " · " + Math.round(o.humidity) + "% humidity" : "") + (h.target > 0 ? " · drying to " + Math.round(h.target) + "°" : ""), h.target > 0));
+    pills.push(pill("Box air", o.temperature.toFixed(0) + "°" + (typeof o.humidity === "number" ? " · " + Math.round(o.humidity) + "% Humidity" : "") + (h.target > 0 ? " · Drying to " + Math.round(h.target) + "°" : ""), h.target > 0));
   }
   if (op.error) pills.push('<span class="pill off"><i></i>Box error: ' + escH(String(typeof op.error === "string" ? op.error : JSON.stringify(op.error)).slice(0, 80)) + "</span>");
   bar.innerHTML = pills.join("");
@@ -2101,7 +2102,7 @@ function render(st) {
     Object.assign(s, {isActive, fanLabel});
     out += '<div class="tool' + (isActive ? " active" : "") + (s.loaded ? "" : " empty") + '">' +
       '<div class="top"><span class="tn">' + escH(s.label || "T" + i) + '</span>' +
-      '<span class="badge' + (isActive ? " active" : heating ? " heat" : "") + '">' + (heating && !isActive ? "Heating" : state) + '</span></div>' +
+      '<span class="badge' + (isActive ? " active" : heating ? " heat" : "") + '">' + (heating && !isActive ? "Heating" : escH(cap(state))) + '</span></div>' +
       slotGraphic(s) +
       '<div class="mat">' + escH(s.title) + '</div>' +
       '<div class="brand">' + escH(s.brand) + '</div>' +
@@ -2217,15 +2218,15 @@ async function tick() {
     if (CFG.spoolman && Date.now() - spoolsAt > 15000) await loadSpools();
     const st = j.result.status;
     render(st);
-    conn.textContent = "connected";
+    conn.textContent = "Connected";
     conn.className = "pill on";
     const p = st.print_stats;
     document.getElementById("job").textContent = p.state === "printing" || p.state === "paused"
-      ? p.state + (st.virtual_sdcard ? " " + Math.round(st.virtual_sdcard.progress * 100) + "%" : "") + ": " + p.filename + (p.info && p.info.total_layer ? "  (layer " + p.info.current_layer + "/" + p.info.total_layer + ")" : "")
-      : "state: " + p.state;
+      ? cap(p.state) + (st.virtual_sdcard ? " " + Math.round(st.virtual_sdcard.progress * 100) + "%" : "") + ": " + p.filename + (p.info && p.info.total_layer ? "  (layer " + p.info.current_layer + "/" + p.info.total_layer + ")" : "")
+      : "State: " + cap(p.state);
     document.getElementById("foot").textContent = "updated " + new Date().toLocaleTimeString() + "  -  " + CFG.name + " (" + PRINTER + ")";
   } catch (e) {
-    conn.textContent = "offline";
+    conn.textContent = "Offline";
     conn.className = "pill off";
   }
 }
@@ -2248,7 +2249,7 @@ function setCam(m) {
   if (live && mjpeg) { if (camlive.getAttribute("src") !== CAM_PAGE) camlive.src = CAM_PAGE; }
   else camlive.removeAttribute("src");                           // no src: the browser stops reading the stream
   cambtn.textContent = live ? "Use snapshots" : "Use live video";
-  camstat.textContent = live ? (mjpeg ? "connecting" : "live (WebRTC)") : "loading";
+  camstat.textContent = live ? (mjpeg ? "Connecting" : "Live (WebRTC)") : "Loading";
   camLayout();
 }
 // The camera view. The box keeps the picture's own shape (4:3, 16:9, ...) so it fills it without bars, and the picture is
@@ -2268,14 +2269,14 @@ function camLayout() {
   }
 }
 const camShape = im => { if (im.naturalWidth && im.naturalHeight) { camNat = [im.naturalWidth, im.naturalHeight]; camLayout(); } };
-camlive.addEventListener("load", () => { camShape(camlive); if (camMode === "live") camstat.textContent = "live (MJPEG)"; });
-camlive.addEventListener("error", () => { if (camMode === "live" && camlive.getAttribute("src")) camstat.textContent = "unavailable"; });
+camlive.addEventListener("load", () => { camShape(camlive); if (camMode === "live") camstat.textContent = "Live (MJPEG)"; });
+camlive.addEventListener("error", () => { if (camMode === "live" && camlive.getAttribute("src")) camstat.textContent = "Unavailable"; });
 cambtn.onclick = () => setCam(camMode === "live" ? "snap" : "live");
 function camNext() {
   if (document.hidden || camMode !== "snap") return setTimeout(camNext, 1000);
   const im = new Image();
-  im.onload = () => { camimg.src = im.src; camShape(im); camstat.textContent = "live"; setTimeout(camNext, 800); };
-  im.onerror = () => { camstat.textContent = "unavailable"; setTimeout(camNext, 4000); };
+  im.onload = () => { camimg.src = im.src; camShape(im); camstat.textContent = "Live"; setTimeout(camNext, 800); };
+  im.onerror = () => { camstat.textContent = "Unavailable"; setTimeout(camNext, 4000); };
   im.src = HOSTED ? withP("/cam/snapshot?t=" + Date.now()) : MR_HTTP + "/webcam/snapshot.jpg?t=" + Date.now();
 }
 let MR_HTTP = HOSTED ? "" : "http://" + PRINTER;
@@ -2374,7 +2375,7 @@ bootstrap();
     const rows = jobs.filter(j => filter === "all" || j.status === filter);
     const counts = {all: jobs.length}; jobs.forEach(j => counts[j.status] = (counts[j.status] || 0) + 1);
     let h = '<div class="seg">' + ["all", ...Object.keys(counts).filter(k => k !== "all")].map(k =>
-      '<button data-f="' + esc(k) + '" class="' + (k === filter ? "on" : "") + '">' + esc(k === "all" ? "All" : k.replace(/_/g, " ")) + " (" + counts[k] + ")</button>").join("") + "</div>";
+      '<button data-f="' + esc(k) + '" class="' + (k === filter ? "on" : "") + '">' + esc(k === "all" ? "All" : cap(k.replace(/_/g, " "))) + " (" + counts[k] + ")</button>").join("") + "</div>";
     h += '<div class="vcard" style="padding:6px 8px"><table class="jobtbl"><thead><tr><th></th><th>File</th><th>Status</th><th>Started</th><th>Print time</th><th>Filament</th><th>Materials (click for Spoolman info)</th></tr></thead><tbody>';
     h += rows.map(j => {
       const m = j.metadata || {}, th = thumbOf(j), ids = spoolIds(j), used = m.filament_used_mm || [], cols = m.filament_colors || [];
@@ -2383,7 +2384,7 @@ bootstrap();
       if (!mats) mats = '<span class="dots">' + cols.filter((c, i) => (used[i] || 0) > 0).map(c => '<i style="background:' + esc(c) + '"></i>').join("") + "</span>";
       return "<tr><td>" + (th ? '<img src="' + esc(th) + '" alt="" onerror="this.style.visibility=\'hidden\'">' : '<div style="width:44px;height:44px"></div>') + "</td>" +
         '<td class="fn" title="' + esc(j.filename) + '">' + esc(j.filename) + "</td>" +
-        '<td><span class="st ' + esc(j.status) + '">' + esc(String(j.status).replace(/_/g, " ")) + "</span></td>" +
+        '<td><span class="st ' + esc(j.status) + '">' + esc(cap(String(j.status).replace(/_/g, " "))) + "</span></td>" +
         "<td>" + (j.start_time ? new Date(j.start_time * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"}) : "-") + "</td>" +
         "<td>" + (j.print_duration ? dur(j.print_duration) : "-") + (m.estimated_time ? ' <span style="color:var(--sub)">/ ' + dur(m.estimated_time) + "</span>" : "") + "</td>" +
         "<td>" + (j.filament_used ? (j.filament_used / 1000).toFixed(2) + " m" : "-") + (m.filament_weight_total ? ' <span style="color:var(--sub)">(' + m.filament_weight_total.toFixed(0) + " g est.)</span>" : "") + "</td>" +
@@ -2433,7 +2434,7 @@ bootstrap();
     $("histbreak").innerHTML = tot2 ? '<div style="display:flex;height:14px;border-radius:7px;overflow:hidden;background:#1D1A42">' +
       Object.entries(c).map(([k, v]) => '<div title="' + esc(k) + ": " + v + '" style="width:' + (v / tot2 * 100) + "%;background:" + (col[k] || "#7A63F2") + '"></div>').join("") + "</div>" +
       '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;color:var(--muted)">' + Object.entries(c).map(([k, v]) =>
-        '<span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + (col[k] || "#7A63F2") + ';margin-right:6px"></i>' + esc(k.replace(/_/g, " ")) + " " + v + " (" + Math.round(v / tot2 * 100) + "%)</span>").join("") + "</div>" : '<span style="color:var(--sub)">No finished jobs yet.</span>';
+        '<span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + (col[k] || "#7A63F2") + ';margin-right:6px"></i>' + esc(cap(k.replace(/_/g, " "))) + " " + v + " (" + Math.round(v / tot2 * 100) + "%)</span>").join("") + "</div>" : '<span style="color:var(--sub)">No finished jobs yet.</span>';
   }
 
   // ---------- Tune: bed mesh ----------
@@ -2551,8 +2552,8 @@ bootstrap();
     if (atBottom) box.scrollTop = box.scrollHeight;
   }
   async function loadConsole() {
-    try { conItems = (await get("/server/gcode_store?count=1000")).result.gcode_store; $("fconstat").textContent = "live"; renderFullCon(); }
-    catch (e) { $("fconstat").textContent = "offline"; throw e; }
+    try { conItems = (await get("/server/gcode_store?count=1000")).result.gcode_store; $("fconstat").textContent = "Live"; renderFullCon(); }
+    catch (e) { $("fconstat").textContent = "Offline"; throw e; }
   }
   $("confilter").addEventListener("input", renderFullCon); $("conhidetemp").addEventListener("change", renderFullCon);
   // ---------- Files: config browser + editor ----------
@@ -2618,7 +2619,7 @@ bootstrap();
   function edState() {
     const ro = !fs_.cur || !fs_.editable || !canWrite(), d = edDirty();
     $("edta").readOnly = ro; $("fdirty").hidden = !d; $("fsave").disabled = ro || !d; $("frevert").disabled = !d; $("freload").disabled = !fs_.cur;
-    const b = $("fbadge"); b.hidden = !fs_.cur; b.textContent = !fs_.editable ? "view-only" : canWrite() ? "editable" : "controls disabled"; 
+    const b = $("fbadge"); b.hidden = !fs_.cur; b.textContent = !fs_.editable ? "View-only" : canWrite() ? "Editable" : "Controls disabled";
   }
   function setNote(msg, bad) { const n = $("fnote"); n.textContent = msg; n.style.color = bad ? "var(--bad)" : "var(--sub)"; }
   async function openFile(p, force) {
@@ -2632,7 +2633,7 @@ bootstrap();
   }
   async function saveFile() {
     if (!fs_.cur || !fs_.editable || !edDirty()) return;
-    const printing = /printing|paused/.test(($("job") || {}).textContent || "");
+    const printing = /printing|paused/i.test(($("job") || {}).textContent || "");
     if (!confirm("Save changes to " + fs_.cur + "?" + (printing ? "\n\nA print is running. The file is only read on restart, so the print is not affected." : "") + "\n\nThe previous version is backed up on the dashboard server first.")) return;
     $("fsave").disabled = true; setNote("Saving...");
     try {
@@ -2674,7 +2675,7 @@ bootstrap();
   const ovTurn = v => !v ? "" : (v.flipH ? " scaleX(-1)" : "") + (v.flipV ? " scaleY(-1)" : "") + (v.rotation ? " rotate(" + (+v.rotation || 0) + "deg)" + (v.rotation % 180 ? " scale(.5625)" : "") : "");
   async function loadOverview() {
     let list;
-    try { list = (await get("/api/overview")).printers || []; $("ovstat").textContent = ""; } catch (e) { $("ovstat").textContent = "offline"; throw e; }
+    try { list = (await get("/api/overview")).printers || []; $("ovstat").textContent = ""; } catch (e) { $("ovstat").textContent = "Offline"; throw e; }
     const grid = $("ovgrid"), sig = list.map(p => p.id + ":" + (p.online && p.camera ? "c" : (p.model && p.model.id) || "-")).join("|");
     if (sig !== ovSig) {                                       // build the cards once; after that only their contents change (no flicker)
       ovSig = sig;
@@ -2689,7 +2690,7 @@ bootstrap();
       const c = [...grid.querySelectorAll(".ovcard")].find(e => e.dataset.id === p.id); if (!c) return;
       const state = !p.online ? "offline" : p.klippy && p.klippy !== "ready" ? p.klippy : p.state;
       c.classList.toggle("off", !p.online); c.classList.toggle("here", !!p.active);
-      const st = c.querySelector(".ovst"); st.textContent = state; st.className = "ovst " + String(state).replace(/[^a-z]/gi, "");
+      const st = c.querySelector(".ovst"); st.textContent = cap(String(state).replace(/_/g, " ")); st.className = "ovst " + String(state).replace(/[^a-z]/gi, "");
       c.querySelector(".ovbody").innerHTML = ovBody(p);
       const cam = c.querySelector(".ovcam"), th = c.querySelector(".ovthumb"), q2 = "p=" + encodeURIComponent(p.id);
       if (cam && !document.hidden) { const im = new Image(); im.onload = () => { cam.src = im.src; cam.style.transform = ovTurn(p.camera).trim(); }; im.src = "/cam/snapshot?" + q2 + "&t=" + Date.now(); }
