@@ -83,6 +83,30 @@ Notes:
 - Color, material and weight come from Spoolman when the tag is matched, and from the tag otherwise.
 - This tag matching is for Snapmaker U1 printers (filament system "Snapmaker U1"). Other printers show Moonraker's active Spoolman spool on the active tool, or a fixed spool per tool set with `tool_spools` in `config.json`.
 - Spoolman has no login either, so keep both on a trusted network.
+## Where to run it
+
+Feedline is one small Python process (it used about 20 MB of memory on the test setup) that sits between your browser and your printers. It has to be on a machine that is **always on** and can reach the printer. Recommended, best first:
+
+| Where | Notes |
+| --- | --- |
+| **A small VM or LXC container** (Proxmox, ESXi, Hyper-V, a cloud-free home server) | Recommended. Debian or Ubuntu, 1 vCPU and a few hundred MB of RAM is plenty. Isolated from the printer, easy to snapshot, and a good place to run Spoolman and the auto-add helper too. This is how it was developed and tested. |
+| **The machine that already runs Spoolman** | Same idea without a new VM: install it next to Spoolman. Then Spoolman's address is simply `127.0.0.1:7912`. |
+| **A Raspberry Pi or other always-on Linux box** | Fine, including the Pi that runs Klipper and Moonraker for a non-Snapmaker printer. Not tested on every board, but it needs only Python 3.8+ and systemd. |
+| **A Windows or Mac PC** | Works for trying it out (`python feedline_server.py ...`, see Run), but `install.sh` and the service file are Linux only, and the dashboard is down whenever the PC sleeps. |
+| **On the printer itself** | Not recommended. On the Snapmaker U1 the system is rebuilt on every boot, so an install would not survive without changing how the printer boots, memory is tight (about 500 MB free when idle), and a firmware update can wipe it. On a Klipper Pi it is fine (see above). |
+
+**Network requirements**
+- **Feedline server to printer:** TCP 7125 (Moonraker). Also TCP 80 on the printer for the touchscreen picture, if you use the remote screen.
+- **Feedline server to Spoolman:** the Spoolman port (default 7912), if you use Spoolman. The auto-add helper needs the same two connections.
+- **Your browser to Feedline:** TCP 8081 (or the `--port` you chose).
+- **Your browser to the printer** (directly, not through Feedline): for the live camera stream and the interactive touchscreen window. The camera also works in snapshot mode without this.
+- If printers and servers are on different VLANs or subnets, open those paths in your firewall. A VM on a separate VLAN is fine as long as it can reach the printer and Spoolman.
+
+**Tips**
+- Give the machine a fixed address (DHCP reservation) so bookmarks keep working.
+- Feedline has no login, so keep the VM on your home network or put it behind a reverse proxy that handles sign-in and HTTPS (see [SECURITY.md](SECURITY.md)). If a reverse proxy runs on the same machine, start Feedline with `--bind 127.0.0.1`.
+- To show it inside Home Assistant, add an iframe or webpage card and set `"allow_embed": true` in `config.json`.
+- Several printers? One Feedline instance handles them all (Settings > Printers).
 ## Install (Linux, about two minutes)
 
 Requirements: Python 3.8+ (nothing to `pip install`), and a Klipper printer whose Moonraker answers on port 7125 from this machine.
