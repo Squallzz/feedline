@@ -644,7 +644,7 @@ function toolSvg(i, col, frac, temp, target, active, loaded, fanLabel) {
     '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="#1D1A42" stroke="#352F6B" stroke-width="2"/>' +
     // wound filament
     (loaded ? '<circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="url(#w' + i + ')"/>' +
-      '<circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="none" stroke="' + dark + '" stroke-width="1" stroke-dasharray="2 4" opacity=".6" data-spin="1"/>' : "") +
+      '<circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="none" stroke="' + dark + '" stroke-width="1" stroke-dasharray="2 4" opacity=".6" data-spin="1"/>' + spinMarks(cx, cy, 26, rf - 3) : "") +
     // hub
     '<circle cx="' + cx + '" cy="' + cy + '" r="22" fill="#0F0D24" stroke="#352F6B" stroke-width="2"/><g data-spin="1">' + spokes + "</g>" +
     '<circle cx="' + cx + '" cy="' + cy + '" r="6" fill="#352F6B"/></g>' +
@@ -1753,6 +1753,14 @@ function renderPrintInfo(st) {
     tile("Flow", active && flow != null ? flow.toFixed(1) + sm("mm³/s") : "-", typeof gm.extrude_factor === "number" ? "flow factor " + Math.round(gm.extrude_factor * 100) + "%" : "") +
     tile("Filament used", used != null && active ? (used / 1000).toFixed(2) + " m" + sm(g != null ? "≈" + g.toFixed(0) + " g" : "") : "-", g != null ? "about " + g.toFixed(1) + " g of " + wt.toFixed(1) + " g total" : "");
 }
+// Spokes that turn with the spool (data-spin): six, so the group's centre is the spool's centre. Light with a dark edge,
+// so they stand out on white filament as well as on black.
+function spinMarks(cx, cy, r0, r1) {
+  if (!(r1 > r0 + 3)) return "";
+  const ln = (a, w, col, op) => { const c = Math.cos(a * Math.PI / 180), q = Math.sin(a * Math.PI / 180);
+    return '<line x1="' + (cx + r0 * c).toFixed(1) + '" y1="' + (cy + r0 * q).toFixed(1) + '" x2="' + (cx + r1 * c).toFixed(1) + '" y2="' + (cy + r1 * q).toFixed(1) + '" stroke="' + col + '" stroke-opacity="' + op + '" stroke-width="' + w + '" stroke-linecap="round"/>'; };
+  return '<g data-spin="1" pointer-events="none">' + [0, 60, 120, 180, 240, 300].map(a => ln(a, 5.5, "#000", .4) + ln(a, 3, "#fff", .85)).join("") + "</g>";
+}
 // ---- Toolchanger graphics: built-in "reel" and uploaded SVG templates ----
 function reelSvg(s) {
   const c = s.loaded ? s.col : "#2A2750", temp = s.ex.temperature || 0, tgt = s.ex.target || 0, heat = tgt > 0 || temp > 60;
@@ -1760,7 +1768,7 @@ function reelSvg(s) {
   return '<svg class="slotsvg" viewBox="0 0 200 150" role="img">' +
     '<g class="spool" data-spool="' + s.i + '" tabindex="0" role="button" aria-label="Spool details for T' + s.i + '">' +
     '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="#14122b" stroke="#4b4690" stroke-width="4"/>' +
-    (s.loaded ? '<circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="' + c + '"/><circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="none" stroke="' + shade(c, .6) + '" stroke-dasharray="2 4" opacity=".6" data-spin="1"/>' : "") +
+    (s.loaded ? '<circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="' + c + '"/><circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="none" stroke="' + shade(c, .6) + '" stroke-dasharray="2 4" opacity=".6" data-spin="1"/>' + spinMarks(cx, cy, 19, rf - 3) : "") +
     '<circle cx="' + cx + '" cy="' + cy + '" r="15" fill="#0F0D24" stroke="#4b4690" stroke-width="3"/><circle cx="' + cx + '" cy="' + cy + '" r="4" fill="#4b4690"/></g>' +
     '<text x="100" y="142" text-anchor="middle" fill="' + (heat ? "#E8B04F" : "#A29EDB") + '" font-size="15" font-weight="600">' +
     tgtSpan(exName(s.i), "T" + s.i + " nozzle", tgt, true, Math.round(temp) + '°' + (tgt > 0 || CONTROLS ? ' / ' + (tgt > 0 ? Math.round(tgt) + "°" : "off") : "")) + '</text></svg>';
@@ -2033,7 +2041,8 @@ function afcSvg(s) {
       '<ellipse cx="' + cx + '" cy="' + cy + '" rx="' + rfx.toFixed(1) + '" ry="' + rf.toFixed(1) + '" fill="' + dark + '"/>' : "") +
     '<ellipse cx="' + fx + '" cy="' + cy + '" rx="' + RX + '" ry="' + RY + '" fill="url(#aff' + id + ')" stroke="#6a66b0" stroke-width="1.5"/>' +
     (s.loaded ? '<ellipse cx="' + fx + '" cy="' + cy + '" rx="' + rfx.toFixed(1) + '" ry="' + rf.toFixed(1) + '" fill="' + c + '" stroke="' + dark + '"/>' +
-      '<ellipse cx="' + fx + '" cy="' + cy + '" rx="' + rfx.toFixed(1) + '" ry="' + rf.toFixed(1) + '" fill="none" stroke="' + light + '" stroke-opacity=".5" stroke-dasharray="2 4" data-spin-dash="1"/>' : "") +
+      '<ellipse cx="' + fx + '" cy="' + cy + '" rx="' + rfx.toFixed(1) + '" ry="' + rf.toFixed(1) + '" fill="none" stroke="' + light + '" stroke-opacity=".5" stroke-dasharray="2 4" data-spin-dash="1"/>' +
+      '<g transform="translate(' + fx + " " + cy + ") scale(" + (RX / RY).toFixed(3) + ' 1)">' + spinMarks(0, 0, 23, rf - 3) + "</g>" : "") +
     // hub, axle stub
     '<ellipse cx="' + fx + '" cy="' + cy + '" rx="9" ry="20" fill="#0f0d24" stroke="#6a66b0"/>' +
     '<rect x="' + fx + '" y="' + (cy - 5) + '" width="16" height="10" rx="3" fill="#8a86c8"/><ellipse cx="' + (fx + 16) + '" cy="' + cy + '" rx="3" ry="5" fill="#b3b0e6"/></g>' +
@@ -2194,7 +2203,7 @@ function render(st) {
     if (!afc) spinSpeed[i] = 0;
     {   // the spool turns with the filament: forwards while printing, backwards on a retract. Much faster than a real spool, so it can be seen
       const ev = (st.motion_report || {}).live_extruder_velocity;
-      spoolSpd[i] = isActive && s.loaded && typeof ev === "number" && Math.abs(ev) > .05 ? Math.sign(ev) * clamp(Math.abs(ev) * 14, 25, 360) : 0;
+      spoolSpd[i] = isActive && s.loaded && typeof ev === "number" && Math.abs(ev) > .05 ? Math.sign(ev) * clamp(Math.abs(ev) * 30, 70, 420) : 0;
     }
     if (hf && typeof hf.speed === "number") {
       const rpm = typeof hf.rpm === "number" && hf.rpm > 0 ? hf.rpm : hf.speed * 17000;
