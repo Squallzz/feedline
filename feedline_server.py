@@ -1,0 +1,1253 @@
+#!/usr/bin/env python3
+"""Feedline: serve the printer dashboard and proxy the two READ-ONLY calls it needs, so a browser only
+ever talks to this one host (no CORS, no extra firewall rules):
+
+  GET /                          -> index.html
+  GET /api/config, /api/printers -> what the page needs to know (name, graphics, features) / the configured printers
+  GET /printer/objects/query?... -> printer Moonraker (object queries only)
+  GET /api/v1/spool              -> local Spoolman
+  GET /webcam/snapshot.jpg       -> printer camera (single JPEG frame)
+  GET /screen/snapshot           -> printer touchscreen (single PNG frame, view only)
+
+  GET /server/gcode_store        -> recent console history (read-only)
+  GET /server/files/metadata     -> slicer metadata of the current file (estimated time, filament totals)
+  POST /control {"action","tool"} -> load/unload/pickup/park for T0-T3: refused while a print runs or is paused
+  POST /control {"action":"fan","fan","speed"} -> part fan / fan_generic speed 0-1 (any time; hotend fans excluded)
+  POST /control {"action"}        -> pause (only while printing), resume (only while paused),
+                                    cancel (only while printing or paused)
+
+  POST /control {"action":"jog","axis","dist"} / {"action":"home","axes"} / {"action":"motors_off"} -> idle only
+
+  GET /config/list, GET /config/read?path=  -> browse / read files in the printer's config folder
+  POST /control {"action":"save_config","path","content","modified"} -> save a text config file (backed up here first)
+
+Nothing else is forwarded: no free-form G-code and no other Moonraker endpoints.
+"""
+import argparse
+import hmac
+import http.server
+import json
+import logging
+import os
+import re
+import socket
+import ipaddress
+import base64
+import io
+import threading
+import time
+import urllib.parse
+import urllib.request
+import zipfile
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Configuration. config.json (written by the admin, never by the web UI) says which printer this is and which macros
+# the dashboard may run. settings.json (written by the UI) only holds cosmetic choices: the name and the graphics.
+# ---------------------------------------------------------------------------------------------------------------------
+DEFAULT_CFG = {
+    "printer": None,                 # Moonraker host (required, here or with --printer)
+    "spoolman": None,                # Spoolman address the server uses: "host:port" or a URL ("http://192.168.1.20:7912"); null = no Spoolman. The Settings tab can override it
+    "name": None,                    # header text; the UI setting overrides it; default = the printer's hostname
+    "provider": "auto",              # how filament slots are found: "auto" | "u1" (Snapmaker RFID) | "afc" (ArmoredTurtle AFC / BoxTurtle) | "extruders"
+    "tools": None,                   # number of tools; null = count the extruders Klipper reports
+    "macros": None,                  # tool buttons, e.g. {"load": "AUTO_FEEDING EXTRUDER={n} LOAD=1", "pickup": "T{n}"}; "" disables one.
+                                     # {n} = tool number, {nz} = number or "" for tool 0. Actions not listed are auto-detected
+    "auto_macros": True,             # find load/unload/park/pickup macros by name when not configured
+    "light": None,                   # {"object": "led cavity_led", "on": "<gcode>", "off": "<gcode>"}
+    "screen": None,                  # {"snapshot": "/screen/snapshot", "interactive": "/screen/"} (printers with a touchscreen page)
+    "webcam": None,                  # {"mode": "webrtc|mjpeg|snapshot", "live": "/url", "snapshot": "/url"}; null = ask Moonraker
+    "tool_fans": None,               # [{"hotend": "heater_fan e0_nozzle_fan", "part": "fan"}, ...] per tool, for the overlays
+    "chamber": None,                 # {"sensor": "temperature_sensor cavity", "fan": "fan_generic cavity_fan"}
+    "tool_spools": None,             # {"0": 12, "1": 7}: fixed Spoolman spool per tool (provider "extruders")
+    "temp_limits": {"extruder": 300, "heater_bed": 110, "heater_generic": 150},
+    "graphics": {"printer": None, "toolchanger": None},
+    "auth": None,                    # {"user": "admin", "password": "..."}: HTTP Basic login for the whole dashboard (or set FEEDLINE_PASSWORD / FEEDLINE_USER). Strongly recommended
+    "allowed_hosts": [],             # extra Host names the dashboard answers to (IP addresses, single-label and .local/.lan/.ts.net names always work)
+    "allow_embed": False,            # true = the page may be shown inside a frame on another site (e.g. a Home Assistant dashboard card)
+    "allow_config_edit": True,       # false = the Files tab is read-only (config files can then not be changed from the browser)
+}
+HOST_SUFFIXES = (".local", ".lan", ".home.arpa", ".internal", ".localdomain", ".ts.net")
+BUILTIN_PACKS = {
+    "printer": [{"id": "u1", "label": "Snapmaker U1 (drawn, live)"}, {"id": "generic", "label": "Generic printer (image)"}],
+    "toolchanger": [{"id": "u1", "label": "Spool wheel"}, {"id": "reel", "label": "Simple reel"}, {"id": "afc", "label": "3D spool"}, {"id": "none", "label": "No graphic"}],
+}
+PACK_ID = re.compile(r"[a-z0-9][a-z0-9_\-]{0,39}")
+MIME_EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/svg+xml": ".svg", "image/gif": ".gif"}
+EXT_MIME = {v: k for k, v in MIME_EXT.items()}
+MAX_PACK_IMAGE = 3 * 1024 * 1024
+ACTIONS = ("load", "unload", "park", "pickup")
+CMD_DENY = re.compile(r"^(FIRMWARE_)?RESTART$|^SAVE_CONFIG$|^M112$|^SHUTDOWN|^EMERGENCY|^FIRMWARE|^FLASH", re.I)
+TOOL_ARGS = ("TOOL", "T", "EXTRUDER", "N", "INDEX", "TOOLHEAD", "TOOL_NUMBER")
+RECT_ANCHORS = ("bed", "chamber", "screen")
+POINT_ANCHORS = ("chamberTemp", "partFan", "chamberFan", "light")
+
+
+def load_json(path, default):
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return default
+
+
+def write_json_atomic(path, obj):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(obj, fh, indent=2)
+    os.replace(tmp, path)
+
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    printer = spoolman = spoolman_cfg = root = None
+    state = "/var/lib/feedline"
+    cfg = dict(DEFAULT_CFG)
+    _cache = {}
+
+    timeout = 30                    # a client that stops sending cannot hold a thread forever
+    auth = None                     # (user, password) when the login is enabled
+
+    def log_message(self, *a):
+        pass
+
+    def reply(self, code, ctype, body, headers=None):
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        if not Handler.cfg.get("allow_embed"):
+            self.send_header("X-Frame-Options", "DENY")                 # no clickjacking of the control buttons
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def blocked(self):
+        """True (after answering) when the request must not be served: unknown Host name (DNS rebinding) or missing login."""
+        host = (self.headers.get("Host") or "").strip().lower()
+        name = host[1:host.index("]")] if host.startswith("[") and "]" in host else host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+        ok = bool(name) and ("." not in name or name.endswith(HOST_SUFFIXES) or name in [str(h).lower() for h in Handler.cfg.get("allowed_hosts") or []])
+        if not ok:
+            try:
+                ipaddress.ip_address(name)
+                ok = True
+            except ValueError:
+                pass
+        if not ok:
+            self.reply(421, "text/plain", b"unknown host name: add it to allowed_hosts in config.json")
+            return True
+        if Handler.auth:
+            sent = self.headers.get("Authorization", "")
+            try:
+                user, _, pw = base64.b64decode(sent.split(" ", 1)[1]).decode("utf-8").partition(":") if sent.lower().startswith("basic ") else ("", "", "")
+            except Exception:  # noqa: BLE001
+                user = pw = ""
+            if not (hmac.compare_digest(user.encode(), Handler.auth[0].encode()) & hmac.compare_digest(pw.encode(), Handler.auth[1].encode())):
+                self.reply(401, "text/plain", b"login required", {"WWW-Authenticate": 'Basic realm="Feedline", charset="UTF-8"'})
+                return True
+        return False
+
+    def jreply(self, code, obj):
+        self.reply(code, "application/json", json.dumps(obj).encode())
+
+    # ---- small helpers on the printer ----
+    def cached(self, key, ttl, fn):
+        key = (self.pid, key)
+        hit = Handler._cache.get(key)
+        if hit and time.time() - hit[0] < ttl:
+            return hit[1]
+        try:
+            val = fn()
+        except Exception:  # noqa: BLE001
+            val = hit[1] if hit else None
+        Handler._cache[key] = (time.time(), val)
+        return val
+
+    def mget(self, path, timeout=8):
+        with urllib.request.urlopen("http://%s:7125%s" % (self.printer, path), timeout=timeout) as r:
+            return json.load(r)
+
+    # ---- several printers: "main" comes from config.json; the others are added in the UI and kept in printers.json ----
+    pid = "main"
+
+    def extra_printers(self):
+        out = load_json(os.path.join(self.state, "printers.json"), {}).get("printers", [])
+        return [p for p in out if isinstance(p, dict) and PACK_ID.fullmatch(str(p.get("id", ""))) and p.get("host")]
+
+    def select_printer(self):
+        want = self.headers.get("X-Printer") or ""
+        if not want:
+            m = re.search(r"(?:^|;\s*)printer=([^;]*)", self.headers.get("Cookie", ""))
+            want = urllib.parse.unquote(m.group(1)) if m else ""
+        self.pid, self.printer, self.cfg = "main", Handler.printer, Handler.cfg
+        for p in self.extra_printers():
+            if p["id"] == want:
+                c = dict(DEFAULT_CFG)
+                c.update({"printer": p["host"], "name": p.get("name"), "provider": p.get("provider") or "auto", "spoolman": Handler.cfg.get("spoolman"), "spoolman_url": Handler.cfg.get("spoolman_url")})
+                self.pid, self.printer, self.cfg = p["id"], p["host"], c
+                break
+
+    # ---- macros: detected from Klipper, customisable (only commands Klipper really has, never free-form G-code) ----
+    def commands(self):
+        got = self.cached("cmds", 60, lambda: {k.upper() for k in self.mget("/printer/gcode/help")["result"]})
+        return got or set()
+
+    def macro_info(self):
+        def load():
+            cfg = self.mget("/printer/objects/query?configfile=settings", 20)["result"]["status"]["configfile"]["settings"]
+            out = {}
+            for sec, v in cfg.items():
+                if not sec.startswith("gcode_macro "):
+                    continue
+                params = []
+                for m in re.finditer(r"params(?:\.|\[\s*['\"])([A-Za-z_]\w*)(?:['\"]\s*\])?(?:\s*\|\s*default\(([^)]*)\))?", str(v.get("gcode", ""))):
+                    if m.group(1).upper() not in [p["name"] for p in params]:
+                        params.append({"name": m.group(1).upper(), "default": (m.group(2) or "").strip("'\" ") or None})
+                out[sec.split(" ", 1)[1].upper()] = {"description": v.get("description") or "", "params": params}
+            return out
+        return self.cached("minfo", 300, load) or {}
+
+    def user_macros(self):
+        info = self.macro_info()
+        out = []
+        for o in self.objects():
+            if o.startswith("gcode_macro "):
+                name = o.split(" ", 1)[1]
+                if not name.startswith("_"):
+                    i = info.get(name.upper(), {})
+                    out.append({"name": name, "description": i.get("description", ""), "params": i.get("params", []),
+                                "blocked": bool(CMD_DENY.match(name))})
+        return sorted(out, key=lambda m: m["name"].upper())
+
+    def template_ok(self, base):
+        """True when every tool's expansion of a macro name (T{n}, PARK_EXTRUDER{nz}) is a command Klipper has."""
+        cmds = self.commands()
+        for i in range(self.tool_count()):
+            nm = base.replace("{nz}", str(i) if i else "").replace("{n}", str(i)).upper()
+            if nm not in cmds or CMD_DENY.match(nm):
+                return False
+        return True
+
+    def base_ok(self, base):
+        known = {d.split(" ", 1)[0] for d in self.detect_macros().values()}
+        return base in known or self.template_ok(base)
+
+    def tool_param(self, macro):
+        ps = [p["name"] for p in (self.macro_info().get(macro.upper()) or {}).get("params", [])]
+        for c in TOOL_ARGS:
+            if c in ps:
+                return c
+        return None
+
+    def detect_macros(self):
+        if not self.cfg.get("auto_macros", True):
+            return {}
+        cmds, info, n, out = self.commands(), self.macro_info(), self.tool_count(), {}
+        has = lambda name: name in cmds
+        if self.provider() == "afc":                          # one card per lane: {lane} is the lane's name
+            for act, c in (("load", "TOOL_LOAD LANE={lane}"), ("unload", "LANE_UNLOAD LANE={lane}"), ("park", "TOOL_UNLOAD LANE={lane}"), ("pickup", "CHANGE_TOOL LANE={lane}")):
+                if has(c.split(" ")[0]):
+                    out[act] = c
+            return out
+        if has("AUTO_FEEDING") and "filament_detect" in self.objects():      # Snapmaker U1: tools and parking are native commands, not macros
+            return {"load": "AUTO_FEEDING EXTRUDER={n} LOAD=1", "unload": "AUTO_FEEDING EXTRUDER={n} UNLOAD=1", "pickup": "T{n}", "park": "PARK_EXTRUDER{nz}"}
+        def with_tool(name, extra=""):
+            p = self.tool_param(name) if n > 1 else None
+            return name + (" %s={n}" % p if p else "") + extra
+        # pick up a tool
+        if n > 1 and (self.template_ok("T{n}") or ("T%d" % n) in cmds):
+            out["pickup"] = "T{n}"
+        else:
+            for c in ("SELECT_TOOL", "TOOL_PICKUP", "PICKUP_TOOL", "TOOL_SELECT", "SELECT_EXTRUDER"):
+                if has(c) and self.tool_param(c):
+                    out["pickup"] = with_tool(c)
+                    break
+            else:
+                if n > 1:
+                    out["pickup"] = "ACTIVATE_EXTRUDER EXTRUDER=extruder{nz}"
+        # park a tool
+        if n > 1 and self.template_ok("PARK_EXTRUDER{nz}"):
+            out["park"] = "PARK_EXTRUDER{nz}"
+        else:
+            for c in (("TOOL_DROPOFF", "PARK_TOOL", "DROPOFF_TOOL", "PARK_EXTRUDER") if n > 1 else ("PARK", "PARK_HEAD", "PARK_TOOLHEAD")):
+                if has(c):
+                    out["park"] = with_tool(c)
+                    break
+        # load / unload
+        ps = {p["name"] for p in (info.get("AUTO_FEEDING") or {}).get("params", [])}
+        if has("AUTO_FEEDING") and {"EXTRUDER", "LOAD", "UNLOAD"} <= ps:
+            out["load"], out["unload"] = "AUTO_FEEDING EXTRUDER={n} LOAD=1", "AUTO_FEEDING EXTRUDER={n} UNLOAD=1"
+        else:
+            for act, names in (("load", ("LOAD_FILAMENT", "FILAMENT_LOAD", "M701", "LOAD_FILAMENT_MACRO")), ("unload", ("UNLOAD_FILAMENT", "FILAMENT_UNLOAD", "M702", "UNLOAD_FILAMENT_MACRO"))):
+                for c in names:
+                    if has(c):
+                        out[act] = with_tool(c)
+                        break
+        return out
+
+    def effective_macros(self):
+        det, cfgm, ui = None, self.cfg.get("macros") or {}, self.settings().get("macros") or {}
+        out = {}
+        for a in ACTIONS:
+            if a in ui:
+                if ui[a]:
+                    out[a] = {"template": ui[a], "source": "custom"}
+            elif a in cfgm:
+                if cfgm[a]:
+                    out[a] = {"template": cfgm[a], "source": "config"}
+            else:
+                det = self.detect_macros() if det is None else det
+                if det.get(a):
+                    out[a] = {"template": det[a], "source": "detected"}
+        return out
+
+    def clean_macro(self, tmpl):
+        tmpl = " ".join(str(tmpl or "").split())
+        if not tmpl:
+            return ""
+        m = re.fullmatch(r"([A-Za-z_][A-Za-z0-9_]*(?:\{nz\}|\{n\})?)((?: [A-Za-z_][A-Za-z0-9_]*=[\w.\-+/:{}]*)*)", tmpl)
+        if not m or not self.base_ok(m.group(1)):
+            raise ValueError("%r is not a command this printer has (check the name; arguments must look like NAME=value)" % tmpl)
+        return tmpl
+
+    def macro_command(self, req):
+        name = str(req.get("name") or "")
+        macro = next((m for m in self.user_macros() if m["name"] == name), None)
+        if not macro or macro["blocked"]:
+            raise ValueError("unknown or blocked macro")
+        params = req.get("params") or {}
+        if not isinstance(params, dict) or len(params) > 12:
+            raise ValueError("bad parameters")
+        parts = [name]
+        for k, v in params.items():
+            v = "" if v is None else str(v).strip()
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(k)) or not re.fullmatch(r"[\w.\-+/:]{0,64}", v):
+                raise ValueError("parameter %s: use letters, digits and . - + / : only" % k)
+            if v != "":
+                parts.append("%s=%s" % (k, v))
+        return " ".join(parts)
+
+    def settings_path(self):
+        return os.path.join(self.state, "settings.json" if self.pid == "main" else "settings-%s.json" % self.pid)
+
+    def printer_list(self):
+        main = {"id": "main", "name": Handler.cfg.get("name") or load_json(os.path.join(self.state, "settings.json"), {}).get("name") or Handler.printer, "host": Handler.printer, "main": True}
+        st = load_json(os.path.join(self.state, "settings.json"), {})
+        if st.get("name"):
+            main["name"] = st["name"]
+        out = [main]
+        for p in self.extra_printers():
+            n = load_json(os.path.join(self.state, "settings-%s.json" % p["id"]), {}).get("name") or p.get("name") or p["host"]
+            out.append({"id": p["id"], "name": n, "host": p["host"], "main": False})
+        for p in out:
+            p["active"] = p["id"] == self.pid
+        return out
+
+    def add_printer(self, req):
+        name = str(req.get("name") or "").strip()[:60]
+        host = str(req.get("host") or "").strip().lower()
+        if not re.fullmatch(r"[a-z0-9]([a-z0-9.\-]{0,251}[a-z0-9])?", host):
+            return self.jreply(400, {"error": "enter the printer's IP address or hostname (no http://, no port)"})
+        try:
+            addrs = {ipaddress.ip_address(a[4][0]) for a in socket.getaddrinfo(host, 7125, type=socket.SOCK_STREAM)}
+        except (OSError, ValueError):
+            return self.jreply(400, {"error": "cannot resolve " + host})
+        if any(a.is_loopback or a.is_link_local or a.is_unspecified or a.is_multicast for a in addrs):
+            return self.jreply(400, {"error": "that address is not allowed"})
+        lst = self.extra_printers()
+        if len(lst) >= 11 or any(p["host"] == host for p in lst) or host == str(Handler.printer).lower():
+            return self.jreply(409, {"error": "too many printers, or that printer is already added"})
+        try:
+            with urllib.request.urlopen("http://%s:7125/server/info" % host, timeout=5) as r:
+                if "result" not in json.load(r):
+                    raise ValueError("not Moonraker")
+        except Exception:  # noqa: BLE001
+            return self.jreply(400, {"error": "no Moonraker answered at %s:7125" % host})
+        detected = {"afc": False, "u1": False}
+        try:                                                  # first look at what filament system the printer has
+            with urllib.request.urlopen("http://%s:7125/printer/objects/list" % host, timeout=6) as r:
+                objs = json.load(r)["result"]["objects"]
+            detected["u1"] = "filament_detect" in objs
+            detected["afc"] = "AFC" in objs and any(re.match(r"AFC_(stepper|lane) \S", o) for o in objs)
+        except Exception:  # noqa: BLE001
+            pass
+        base = re.sub(r"[^a-z0-9]+", "-", (name or host).lower()).strip("-")[:30] or "printer"
+        ids = {p["id"] for p in lst} | {"main"}
+        pid, n = base, 2
+        while pid in ids:
+            pid, n = "%s-%d" % (base, n), n + 1
+        lst.append({"id": pid, "name": name or host, "host": host, "provider": "u1" if detected["u1"] else "afc" if detected["afc"] else "auto"})
+        write_json_atomic(os.path.join(self.state, "printers.json"), {"printers": lst})
+        logging.info("added printer %s (%s)", pid, host)
+        self.jreply(200, {"ok": True, "id": pid, "detected": detected, "printers": self.printer_list()})
+
+    def remove_printer(self, req):
+        pid = str(req.get("id") or "")
+        lst = self.extra_printers()
+        if pid == "main" or pid not in [p["id"] for p in lst]:
+            return self.jreply(404, {"error": "no such printer (the main printer is set in config.json)"})
+        write_json_atomic(os.path.join(self.state, "printers.json"), {"printers": [p for p in lst if p["id"] != pid]})
+        try:
+            os.remove(os.path.join(self.state, "settings-%s.json" % pid))
+        except OSError:
+            pass
+        logging.info("removed printer %s", pid)
+        self.jreply(200, {"ok": True, "printers": self.printer_list()})
+
+    def objects(self):
+        return self.cached("objects", 20, lambda: self.mget("/printer/objects/list")["result"]["objects"]) or []
+
+    def afc_lanes(self):
+        """Lane names of an ArmoredTurtle AFC (BoxTurtle) install: objects "AFC" plus "AFC_stepper <lane>" / "AFC_lane <lane>"."""
+        objs = self.objects()
+        if "AFC" not in objs:
+            return []
+        return [o.split(" ", 1)[1] for o in objs if re.match(r"AFC_(stepper|lane) \S", o)]
+
+    def provider(self):
+        objs = self.objects()
+        p = self.settings().get("provider") or self.cfg.get("provider") or "auto"
+        if (p == "afc" and not self.afc_lanes()) or (p == "u1" and "filament_detect" not in objs) or p not in ("u1", "afc", "extruders"):
+            p = "auto"
+        if p != "auto":
+            return p
+        if "filament_detect" in objs:
+            return "u1"
+        return "afc" if self.afc_lanes() else "extruders"
+
+    def tool_count(self):
+        n = self.cfg.get("tools")
+        if isinstance(n, int) and 0 < n <= 16:
+            return n
+        objs = self.objects()
+        return max(1, sum(1 for o in objs if re.fullmatch(r"extruder\d*", o)))
+
+    def settings(self):
+        return load_json(self.settings_path(), {})
+
+    def custom_packs(self, kind):
+        out = []
+        base = os.path.join(self.state, "packs", kind)
+        try:
+            names = sorted(os.listdir(base))
+        except OSError:
+            return out
+        for pid in names:
+            p = load_json(os.path.join(base, pid, "pack.json"), None)
+            if isinstance(p, dict) and PACK_ID.fullmatch(pid):
+                p["id"], p["kind"], p["custom"] = pid, kind, True
+                out.append(p)
+        return out
+
+    def pack_ids(self, kind):
+        return [p["id"] for p in BUILTIN_PACKS[kind]] + [p["id"] for p in self.custom_packs(kind)]
+
+    def webcam(self):
+        """Resolve the camera: explicit config first, otherwise the first enabled webcam Moonraker knows about."""
+        host = "http://%s" % self.printer
+        absu = lambda u: u if re.match(r"https?://", u or "") else (host + (u if (u or "").startswith("/") else "/" + (u or "")))
+        w = self.cfg.get("webcam")
+        if not w:
+            def find():
+                for c in self.mget("/server/webcams/list")["result"]["webcams"]:
+                    if c.get("enabled", True):
+                        return c
+            c = self.cached("webcam", 60, find)
+            if not c:
+                return {"mode": "none", "live": None, "snapshot": None}
+            svc = (c.get("service") or "").lower()
+            su = c.get("stream_url") or ""
+            mode = "webrtc" if "webrtc" in svc or su.rstrip("/").endswith("webrtc") else ("mjpeg" if "mjpeg" in svc or "stream" in su else "snapshot")
+            return {"mode": mode, "live": absu(su) if su and mode != "snapshot" else None, "snapshot": absu(c.get("snapshot_url")) if c.get("snapshot_url") else None}
+        return {"mode": w.get("mode") or ("webrtc" if w.get("live") else "snapshot"), "live": absu(w["live"]) if w.get("live") else None,
+                "snapshot": absu(w["snapshot"]) if w.get("snapshot") else None}
+
+    @staticmethod
+    def parse_spoolman(raw):
+        """Accepts "host:port", "host" or a full URL ("http://host:7912", "https://spoolman.lan/prefix").
+        Returns (scheme, netloc, hostname, prefix) or raises ValueError."""
+        s = str(raw or "").strip()
+        if not s:
+            raise ValueError("empty")
+        if "://" not in s:
+            s = "http://" + s
+        u = urllib.parse.urlsplit(s)
+        if u.scheme not in ("http", "https") or not u.hostname or u.username or u.password or u.query or u.fragment:
+            raise ValueError("enter a Spoolman address like http://192.168.1.20:7912")
+        if not re.fullmatch(r"[A-Za-z0-9]([A-Za-z0-9.\-]{0,251}[A-Za-z0-9])?|[0-9a-fA-F:]+", u.hostname):
+            raise ValueError("bad host name")
+        try:
+            u.port
+        except ValueError:
+            raise ValueError("bad port")
+        prefix = u.path.rstrip("/")
+        if prefix and (not re.fullmatch(r"(/[A-Za-z0-9._~\-]+)+", prefix) or any(p in (".", "..") for p in prefix.split("/"))):
+            raise ValueError("bad path")
+        return u.scheme, u.netloc, u.hostname, prefix
+
+    def spoolman_base(self):
+        """Base URL this server uses to reach Spoolman (no trailing slash), or None."""
+        if not self.spoolman:
+            return None
+        try:
+            scheme, netloc, _, prefix = self.parse_spoolman(self.spoolman)
+        except ValueError:
+            return None
+        return "%s://%s%s" % (scheme, netloc, prefix)
+
+    def spoolman_url(self):
+        """Where the browser should open Spoolman: config "spoolman_url", else the address above
+        (with this dashboard's host name when Spoolman runs on the same machine as localhost)."""
+        if not self.spoolman:
+            return None
+        u = self.cfg.get("spoolman_url")
+        if u:
+            return u.rstrip("/")
+        try:
+            scheme, netloc, host, prefix = self.parse_spoolman(self.spoolman)
+        except ValueError:
+            return None
+        if host in ("127.0.0.1", "localhost", "::1"):
+            me = (self.headers.get("Host") or "").rsplit(":", 1)[0]
+            if me:
+                port = netloc.rpartition(":")[2] if ":" in netloc and not netloc.endswith("]") else ""
+                netloc = me + (":" + port if port.isdigit() else "")
+        return "%s://%s%s" % (scheme, netloc, prefix)
+
+    def set_spoolman(self, req):
+        """Settings tab: point the dashboard at a Spoolman running elsewhere ("" = back to config.json)."""
+        raw = str(req.get("url") or "").strip()
+        path = os.path.join(self.state, "spoolman.json")
+        if not raw:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            Handler.spoolman = Handler.spoolman_cfg
+            return self.jreply(200, {"ok": True, "config": self.public_config()})
+        try:
+            scheme, netloc, host, prefix = self.parse_spoolman(raw)
+            addrs = {ipaddress.ip_address(a[4][0]) for a in socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)}
+        except ValueError as e:
+            return self.jreply(400, {"error": str(e)})
+        except OSError:
+            return self.jreply(400, {"error": "cannot resolve that host"})
+        if any(a.is_link_local or a.is_unspecified or a.is_multicast for a in addrs):
+            return self.jreply(400, {"error": "that address is not allowed"})
+        base = "%s://%s%s" % (scheme, netloc, prefix)
+        try:
+            with urllib.request.urlopen(base + "/api/v1/info", timeout=6) as r:
+                info = json.load(r)
+            if not isinstance(info, dict) or "version" not in info:
+                raise ValueError("not Spoolman")
+        except Exception:  # noqa: BLE001
+            return self.jreply(400, {"error": "no Spoolman answered at %s/api/v1/info (is it running, and reachable from this server?)" % base})
+        write_json_atomic(path, {"url": base})
+        Handler.spoolman = base
+        logging.info("spoolman set to %s", base)
+        self.jreply(200, {"ok": True, "version": info.get("version"), "config": self.public_config()})
+
+    def public_config(self):
+        st, c, host = self.settings(), self.cfg, self.printer
+        prov = self.provider()
+        gsel = {}
+        for kind, dflt in (("printer", "u1" if prov == "u1" else "generic"), ("toolchanger", {"u1": "u1", "afc": "afc"}.get(prov, "reel"))):
+            want = (st.get("graphics") or {}).get(kind) or (c.get("graphics") or {}).get(kind) or dflt
+            gsel[kind] = want if want in self.pack_ids(kind) else dflt
+        # "toolchanger" is the spool/slot style of the lane cards; "unit" is the separate BoxTurtle unit picture (afc | none)
+        un = (st.get("graphics") or {}).get("unit") or (c.get("graphics") or {}).get("unit")
+        gsel["unit"] = un if un in ("afc", "u1", "none") else ("afc" if prov == "afc" else "none")
+        name = (st.get("name") or "").strip() or c.get("name")
+        if not name:
+            info = self.cached("pinfo", 300, lambda: self.mget("/printer/info")["result"])
+            name = (info or {}).get("hostname") or "Klipper printer"
+        eff = self.effective_macros()
+        cam = self.webcam()
+        scr = c.get("screen")
+        light = c.get("light")
+        return {
+            "name": name, "defaultName": c.get("name"), "graphics": gsel,
+            "packs": {k: BUILTIN_PACKS[k] + self.custom_packs(k) for k in BUILTIN_PACKS},
+            "provider": prov, "toolCount": self.tool_count(), "printerHost": host,
+            "lanes": self.afc_lanes() if prov == "afc" else [],
+            "laneEdit": {k: v[0] in self.commands() for k, v in self.LANE_EDIT.items()} if prov == "afc" else {},
+            "filamentSystems": {"selected": st.get("provider") or "auto", "available": {"u1": "filament_detect" in self.objects(), "afc": bool(self.afc_lanes())}},
+            "actions": [a for a in ACTIONS if a in eff], "macros": eff,
+            "light": {"object": light.get("object")} if light and light.get("on") and light.get("off") else None,
+            "screen": {"interactive": "http://%s%s" % (host, scr.get("interactive", "/screen/"))} if scr and scr.get("snapshot") else None,
+            "camera": {"mode": cam["mode"], "live": cam["live"], "snapshot": bool(cam["snapshot"])},
+            "toolFans": c.get("tool_fans"), "chamber": c.get("chamber"), "toolSpools": c.get("tool_spools"),
+            "tempLimits": c.get("temp_limits"), "spoolman": bool(self.spoolman_base()), "spoolmanUrl": self.spoolman_url(),
+            "spoolmanServer": self.spoolman_base(), "spoolmanFromUi": bool(self.spoolman) and self.spoolman != Handler.spoolman_cfg,
+        }
+
+    busy = threading.Lock()
+
+    # AFC lane data (what the lane card shows): material, colour, weight. Fixed AFC commands with validated values only.
+    LANE_EDIT = {"material": ("SET_MATERIAL", "MATERIAL"), "color": ("SET_COLOR", "COLOR"), "weight": ("SET_WEIGHT", "WEIGHT")}
+
+    def lane_script(self, req):
+        if self.provider() != "afc":
+            raise ValueError("this printer does not use AFC")
+        lane = req.get("lane")
+        if lane not in self.afc_lanes() or not re.fullmatch(r"[\w.\-]{1,40}", str(lane)):
+            raise ValueError("unknown lane")
+        cmds, lines = self.commands(), []
+        for key in ("material", "color", "weight"):      # material first: AFC validates the colour against the lane's material
+            if req.get(key) is None:
+                continue
+            name, param = self.LANE_EDIT[key]
+            if name not in cmds:
+                raise ValueError("this AFC version has no " + name)
+            v = req[key]
+            if key == "material":
+                v = str(v).strip()
+                if not re.fullmatch(r"[A-Za-z0-9+.\-]{1,24}", v):
+                    raise ValueError("material: letters, digits and + . - only (max 24)")
+            elif key == "color":
+                v = str(v).strip().lstrip("#")
+                if not re.fullmatch(r"[0-9a-fA-F]{6}", v):
+                    raise ValueError("colour must be 6 hex digits")
+                v = v.upper()
+            else:
+                try:
+                    w = float(v)
+                except (TypeError, ValueError):
+                    raise ValueError("weight must be a number")
+                if isinstance(v, bool) or not 0 <= w <= 20000:
+                    raise ValueError("weight must be 0-20000 g")
+                v = str(int(round(w)))
+            lines.append("%s LANE=%s %s=%s" % (name, lane, param, v))
+        if not lines:
+            raise ValueError("nothing to change")
+        return "\n".join(lines)
+
+    def lane_control(self, req):
+        script = self.lane_script(req)
+        if not self.busy.acquire(blocking=False):
+            return self.reply(409, "application/json", b'{"error":"another command is still running"}')
+        try:
+            url = "http://%s:7125/printer/gcode/script?script=%s" % (self.printer, urllib.parse.quote(script))
+            logging.info("running %s", script.replace("\n", " ; "))
+            with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=30) as r:
+                r.read()
+            self.reply(200, "application/json", json.dumps({"ok": True, "cmd": script.replace("\n", " ; ")}).encode())
+        except Exception as e:  # noqa: BLE001
+            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+        finally:
+            self.busy.release()
+
+    def command_for(self, action, tool, lane=None):
+        """Tool buttons run a macro template from config.json (admin-owned), never text sent by the browser."""
+        if action not in ("load", "unload", "pickup", "park") or not isinstance(tool, int) or isinstance(tool, bool):
+            return None
+        afc = self.provider() == "afc"
+        if afc:
+            if lane not in self.afc_lanes():
+                return None
+        elif not 0 <= tool < self.tool_count():
+            return None
+        eff = self.effective_macros().get(action)
+        if not eff:
+            return None
+        tmpl = eff["template"]
+        base = tmpl.split(" ", 1)[0]
+        if eff["source"] != "config" and not self.base_ok(base):
+            return None
+        return tmpl.replace("{lane}", lane or "").replace("{nz}", str(tool) if tool else "").replace("{n}", str(tool))
+
+    # print controls use Moonraker's own endpoints and are only valid in certain print states
+    PRINT_ACTIONS = {"pause": ("pause", ("printing",)),
+                     "resume": ("resume", ("paused",)),
+                     "cancel": ("cancel", ("printing", "paused")),
+                     "estop": ("emergency_stop", None)}     # M112: allowed in every state (no state lookup, so it works even when Klipper is unhappy); Klipper then needs a firmware restart
+
+    def print_state(self):
+        url = "http://%s:7125/printer/objects/query?print_stats" % self.printer
+        with urllib.request.urlopen(url, timeout=8) as r:
+            return json.load(r)["result"]["status"]["print_stats"]["state"]
+
+    def print_control(self, action):
+        endpoint, allowed = self.PRINT_ACTIONS[action]
+        try:
+            state = self.print_state() if allowed else None
+            if allowed and state not in allowed:
+                return self.reply(409, "application/json",
+                                  json.dumps({"error": "refused: cannot %s while printer is %s" % (action, state)}).encode())
+            url = "http://%s:7125/printer/%s" % (self.printer, endpoint if endpoint == "emergency_stop" else "print/" + endpoint)
+            logging.info("print control: %s", action)
+            with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=60) as r:
+                r.read()
+            self.reply(200, "application/json", json.dumps({"ok": True, "cmd": action}).encode())
+        except Exception as e:  # noqa: BLE001
+            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+
+    def fan_control(self, req):
+        """Set a controllable fan: the part fan ("fan") or a fan_generic. heater_fan* (hotend/PSU fans) are
+        driven by Klipper from heater temperature and are deliberately not settable here."""
+        name = str(req.get("fan", ""))
+        try:
+            speed = float(req.get("speed"))
+        except (TypeError, ValueError):
+            speed = -1
+        if not 0 <= speed <= 1 or not re.fullmatch(r"[A-Za-z0-9_]+", name):
+            return self.reply(400, "application/json", b'{"error":"bad request"}')
+        try:
+            with urllib.request.urlopen("http://%s:7125/printer/objects/list" % self.printer, timeout=8) as r:
+                objs = json.load(r)["result"]["objects"]
+            if name != "fan" and ("fan_generic " + name) not in objs:
+                return self.reply(400, "application/json", b'{"error":"not a controllable fan"}')
+            cmd = ("M106 S%d" % round(speed * 255)) if name == "fan" else "SET_FAN_SPEED FAN=%s SPEED=%.2f" % (name, speed)
+            url = "http://%s:7125/printer/gcode/script?script=%s" % (self.printer, urllib.parse.quote(cmd))
+            logging.info("running %s", cmd)
+            with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=15) as r:
+                r.read()
+            self.reply(200, "application/json", json.dumps({"ok": True, "cmd": cmd}).encode())
+        except Exception as e:  # noqa: BLE001
+            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+
+    # Fluidd-style movement. Only while the printer is idle; jogs are sent as ABSOLUTE moves computed from the current
+    # position (and clamped to the axis limits), so a failed move can never leave the printer stuck in relative mode.
+    JOG_STEPS = (0.1, 1, 10, 50, 100)
+    JOG_FEED = {"X": 6000, "Y": 6000, "Z": 600}      # mm/min
+    HOME = {"all": "G28", "xy": "G28 X Y", "z": "G28 Z"}
+
+    def move_control(self, req):
+        action = req.get("action")
+        try:
+            if action == "home":
+                script = self.HOME.get(str(req.get("axes")))
+            elif action == "motors_off":
+                script = "M84"
+            elif action == "goto":      # absolute position for one axis, clamped to the axis limits
+                axis, pos = str(req.get("axis")), float(req.get("pos"))
+                script = ("goto", axis, pos) if axis in self.JOG_FEED and -1000 < pos < 1000 else None
+            else:  # jog
+                axis, dist = str(req.get("axis")), float(req.get("dist"))
+                if axis not in self.JOG_FEED or abs(dist) not in self.JOG_STEPS:
+                    script = None
+                else:
+                    script = ("jog", axis, dist)
+        except (TypeError, ValueError):
+            script = None
+        if not script:
+            return self.reply(400, "application/json", b'{"error":"bad request"}')
+        if not self.busy.acquire(blocking=False):
+            return self.reply(409, "application/json", b'{"error":"another command is still running"}')
+        try:
+            base = "http://%s:7125/printer/objects/query?print_stats&toolhead&gcode_move" % self.printer
+            with urllib.request.urlopen(base, timeout=8) as r:
+                st = json.load(r)["result"]["status"]
+            if st["print_stats"]["state"] in ("printing", "paused"):
+                return self.reply(409, "application/json",
+                                  json.dumps({"error": "refused: printer is %s" % st["print_stats"]["state"]}).encode())
+            if isinstance(script, tuple):
+                kind, axis, dist = script
+                i = "XYZ".index(axis)
+                if axis.lower() not in st["toolhead"].get("homed_axes", ""):
+                    return self.reply(409, "application/json", json.dumps({"error": "home %s first" % axis}).encode())
+                lo, hi = st["toolhead"]["axis_minimum"][i], st["toolhead"]["axis_maximum"][i]
+                want = dist if kind == "goto" else st["gcode_move"]["gcode_position"][i] + dist
+                target = min(hi, max(lo, want))
+                script = "G90\nG1 %s%.3f F%d" % (axis, target, self.JOG_FEED[axis])
+            url = "http://%s:7125/printer/gcode/script?script=%s" % (self.printer, urllib.parse.quote(script))
+            logging.info("running %s", script.replace("\n", " ; "))
+            with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=300) as r:
+                r.read()
+            self.reply(200, "application/json", json.dumps({"ok": True, "cmd": script}).encode())
+        except Exception as e:  # noqa: BLE001
+            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+        finally:
+            self.busy.release()
+
+    def temp_limit(self, heater):
+        """Safety cap for a heater the dashboard may set: nozzles, the bed, or a heater_generic (chamber etc.)."""
+        lim = self.cfg.get("temp_limits") or {}
+        if re.fullmatch(r"extruder\d*", heater):
+            return lim.get("extruder", 300)
+        if heater == "heater_bed":
+            return lim.get("heater_bed", 110)
+        if re.fullmatch(r"heater_generic [\w\-]+", heater):
+            return lim.get("heater_generic", 150)
+        return None
+
+    def temp_control(self, req):
+        """Set a heater target (0 = off). Klipper's own max_temp still applies on top of these caps."""
+        heater = str(req.get("heater", ""))
+        try:
+            target = float(req.get("target"))
+        except (TypeError, ValueError):
+            target = -1
+        cap = self.temp_limit(heater)
+        if cap is None or not 0 <= target <= cap:
+            return self.reply(400, "application/json", b'{"error":"bad request"}')
+        cmd = "SET_HEATER_TEMPERATURE HEATER=%s TARGET=%d" % (heater.split(" ", 1)[-1] if heater.startswith("heater_generic ") else heater, round(target))
+        try:
+            url = "http://%s:7125/printer/gcode/script?script=%s" % (self.printer, urllib.parse.quote(cmd))
+            logging.info("running %s", cmd)
+            with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=15) as r:
+                r.read()
+            self.reply(200, "application/json", json.dumps({"ok": True, "cmd": cmd}).encode())
+        except Exception as e:  # noqa: BLE001
+            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+
+    def light_control(self, req):
+        """Chamber LED (led cavity_led, RGBW; white only). Safe at any time, including during a print."""
+        on = req.get("on")
+        light = self.cfg.get("light") or {}
+        if not isinstance(on, bool) or not light.get("on") or not light.get("off"):
+            return self.reply(400, "application/json", b'{"error":"no light configured"}')
+        cmd = light["on"] if on else light["off"]
+        try:
+            url = "http://%s:7125/printer/gcode/script?script=%s" % (self.printer, urllib.parse.quote(cmd))
+            logging.info("running %s", cmd)
+            with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=15) as r:
+                r.read()
+            self.reply(200, "application/json", json.dumps({"ok": True, "cmd": cmd}).encode())
+        except Exception as e:  # noqa: BLE001
+            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+
+    # ---- config file browser / editor (Moonraker "config" root) ----
+    EDIT_EXT = (".cfg", ".conf", ".ini", ".txt", ".md", ".yaml", ".yml")      # everything else is view-only
+    MAX_EDIT = 512 * 1024
+    backups = "/var/lib/feedline/backups"
+
+    @staticmethod
+    def safe_path(p):
+        """Relative path inside the config root: plain names only, no '..', no hidden files."""
+        p = str(p or "")
+        segs = p.split("/")
+        if not p or len(p) > 200 or any(not re.fullmatch(r"[\w .()+@\-]+", s) or s in (".", "..") or s.startswith(".") for s in segs):
+            return None
+        return "/".join(segs)
+
+    def editable(self, p):
+        return p.lower().endswith(self.EDIT_EXT) and not re.match(r"factory", os.path.basename(p), re.I)
+
+    def fetch_config(self, p):
+        url = "http://%s:7125/server/files/config/%s" % (self.printer, urllib.parse.quote(p))
+        with urllib.request.urlopen(url, timeout=15) as r:
+            return r.read(self.MAX_EDIT * 2 + 1), r.headers.get("Last-Modified", "")
+
+    def config_read(self, query):
+        p = self.safe_path(urllib.parse.parse_qs(query).get("path", [""])[0])
+        if not p:
+            return self.reply(400, "application/json", b'{"error":"bad path"}')
+        try:
+            raw, mod = self.fetch_config(p)
+            if len(raw) > self.MAX_EDIT * 2:
+                return self.reply(413, "application/json", b'{"error":"file too large to open"}')
+            try:
+                text = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                return self.reply(415, "application/json", b'{"error":"not a UTF-8 text file"}')
+            self.reply(200, "application/json", json.dumps({"path": p, "content": text, "modified": mod,
+                                                            "editable": self.editable(p) and len(raw) <= self.MAX_EDIT}).encode())
+        except Exception as e:  # noqa: BLE001
+            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+
+    def config_save(self, req):
+        p, content, base = self.safe_path(req.get("path")), req.get("content"), str(req.get("modified") or "")
+        if not p or not isinstance(content, str) or not self.editable(p):
+            return self.reply(400, "application/json", b'{"error":"bad request or file is view-only"}')
+        data = content.encode("utf-8")
+        if len(data) > self.MAX_EDIT or b"\x00" in data:
+            return self.reply(400, "application/json", b'{"error":"file too large or not text"}')
+        if not self.busy.acquire(blocking=False):
+            return self.reply(409, "application/json", b'{"error":"another command is still running"}')
+        try:
+            old, mod = self.fetch_config(p)
+            if base and mod and base != mod:
+                return self.reply(409, "application/json", json.dumps({"error": "the file changed on the printer since you opened it - reload it first"}).encode())
+            os.makedirs(self.backups, exist_ok=True)              # keep the previous version before anything is overwritten
+            bk = os.path.join(self.backups, "%s.%s.bak" % (p.replace("/", "__"), time.strftime("%Y%m%d-%H%M%S")))
+            with open(bk, "wb") as fh:
+                fh.write(old)
+            prefix = p.replace("/", "__") + "."
+            for stale in sorted(f for f in os.listdir(self.backups) if f.startswith(prefix) and f.endswith(".bak"))[:-20]:
+                os.remove(os.path.join(self.backups, stale))      # keep the newest 20 backups per file
+            d, name = os.path.split(p)
+            boundary = "----feedline%d" % int(time.time() * 1000)
+            parts = []
+            for k, v in (("root", "config"), ("path", d)):
+                parts.append(("--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n" % (boundary, k, v)).encode())
+            parts.append(("--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"%s\"\r\nContent-Type: application/octet-stream\r\n\r\n" % (boundary, name)).encode() + data + b"\r\n")
+            parts.append(("--%s--\r\n" % boundary).encode())
+            body = b"".join(parts)
+            rq = urllib.request.Request("http://%s:7125/server/files/upload" % self.printer, data=body, method="POST",
+                                        headers={"Content-Type": "multipart/form-data; boundary=" + boundary})
+            logging.info("saving config %s (%d bytes, backup %s)", p, len(data), bk)
+            with urllib.request.urlopen(rq, timeout=30) as r:
+                r.read()
+            check, newmod = self.fetch_config(p)
+            if check != data:
+                return self.reply(502, "application/json", json.dumps({"error": "saved but the printer's copy does not match; backup: " + os.path.basename(bk)}).encode())
+            self.reply(200, "application/json", json.dumps({"ok": True, "modified": newmod, "backup": os.path.basename(bk)}).encode())
+        except Exception as e:  # noqa: BLE001
+            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+        finally:
+            self.busy.release()
+
+    # ---- log export: the current klippy.log and moonraker.log (download only) ----
+    LOGS = ("klippy.log", "moonraker.log")
+
+    def logs_export(self, query):
+        name = urllib.parse.parse_qs(query).get("name", [""])[0]
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+
+        def get(n):
+            with urllib.request.urlopen("http://%s:7125/server/files/logs/%s" % (self.printer, n), timeout=90) as r:
+                return r.read()
+        try:
+            if name == "all":
+                buf = io.BytesIO()
+                with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                    for n in self.LOGS:
+                        z.writestr(n, get(n))
+                body, fname, ctype = buf.getvalue(), "feedline-logs-%s.zip" % stamp, "application/zip"
+            elif name in self.LOGS:
+                body, fname, ctype = get(name), "%s-%s.log" % (name[:-4], stamp), "text/plain; charset=utf-8"
+            else:
+                return self.reply(400, "text/plain", b"bad log name")
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Content-Disposition", 'attachment; filename="%s"' % fname)
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+        except Exception as e:  # noqa: BLE001
+            self.reply(502, "text/plain", str(e).encode())
+
+    # ---- cosmetic settings and graphics packs (the web UI may change these; nothing here can run G-code) ----
+    def save_settings(self, req):
+        st = self.settings()
+        if "name" in req:
+            name = str(req.get("name") or "").strip()[:60]
+            if name:
+                st["name"] = name
+            else:
+                st.pop("name", None)
+        if "provider" in req:
+            pv = req.get("provider")
+            if pv not in ("auto", "extruders", "afc", "u1"):
+                return self.jreply(400, {"error": "unknown filament system"})
+            if pv == "afc" and not self.afc_lanes():
+                return self.jreply(400, {"error": "no AFC (BoxTurtle) found on this printer"})
+            if pv == "u1" and "filament_detect" not in self.objects():
+                return self.jreply(400, {"error": "this printer has no Snapmaker filament detection"})
+            if pv == "auto":
+                st.pop("provider", None)
+            else:
+                st["provider"] = pv
+            st.get("graphics", {}).pop("toolchanger", None)   # the filament graphic follows the filament system again
+            st.get("graphics", {}).pop("unit", None)
+            st.pop("macros", None)                            # tool-button macros were for the old system
+        mc = req.get("macros")
+        if isinstance(mc, dict):
+            cur = st.setdefault("macros", {})
+            for a in ACTIONS:
+                if a in mc:
+                    if mc[a] is None:
+                        cur.pop(a, None)
+                    else:
+                        try:
+                            cur[a] = self.clean_macro(mc[a])
+                        except ValueError as e:
+                            return self.jreply(400, {"error": str(e)})
+            if not cur:
+                st.pop("macros", None)
+        g = req.get("graphics")
+        if isinstance(g, dict):
+            cur = st.setdefault("graphics", {})
+            for kind in BUILTIN_PACKS:
+                v = g.get(kind)
+                if v is None:
+                    continue
+                if v == "" or v not in self.pack_ids(kind):
+                    cur.pop(kind, None)
+                else:
+                    cur[kind] = v
+            u = g.get("unit")
+            if u in ("afc", "u1", "none"):
+                cur["unit"] = u
+            elif u == "":
+                cur.pop("unit", None)
+        write_json_atomic(self.settings_path(), st)
+        self.jreply(200, {"ok": True, "config": self.public_config()})
+
+    @staticmethod
+    def clean_num(v, lo=-10000, hi=10000):
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not lo <= v <= hi:
+            raise ValueError("bad number")
+        return round(float(v), 2)
+
+    def clean_anchors(self, a):
+        out = {}
+        for k in RECT_ANCHORS:
+            r = (a or {}).get(k)
+            if isinstance(r, dict):
+                out[k] = {n: self.clean_num(r.get(n), 0 if n in "wh" else -10000) for n in ("x", "y", "w", "h")}
+        for k in POINT_ANCHORS:
+            p = (a or {}).get(k)
+            if isinstance(p, dict):
+                out[k] = {n: self.clean_num(p.get(n)) for n in ("x", "y")}
+        tl = (a or {}).get("tools")
+        if isinstance(tl, list):
+            out["tools"] = [{n: self.clean_num(t.get(n)) for n in ("x", "y")} if isinstance(t, dict) else None for t in tl[:16]]
+        return out
+
+    def save_pack(self, req):
+        kind, pid = req.get("kind"), str(req.get("id") or "")
+        if kind not in BUILTIN_PACKS or not PACK_ID.fullmatch(pid) or pid in [p["id"] for p in BUILTIN_PACKS[kind]]:
+            return self.jreply(400, {"error": "bad pack id (use a-z, 0-9, - and _; built-in ids are reserved)"})
+        d = os.path.join(self.state, "packs", kind, pid)
+        old = load_json(os.path.join(d, "pack.json"), {})
+        pack = {"label": (str(req.get("label") or pid).strip()[:60] or pid), "file": old.get("file")}
+        f = req.get("file")
+        if isinstance(f, dict):
+            m = re.fullmatch(r"data:([\w/+.\-]+);base64,([A-Za-z0-9+/=\s]+)", str(f.get("data") or ""))
+            ext = MIME_EXT.get(m.group(1)) if m else None
+            if not ext or (kind == "toolchanger" and ext != ".svg"):
+                return self.jreply(400, {"error": "unsupported image type" + (" (slot graphics must be SVG)" if kind == "toolchanger" else "")})
+            try:
+                raw = base64.b64decode(m.group(2), validate=False)
+            except Exception:  # noqa: BLE001
+                return self.jreply(400, {"error": "bad image data"})
+            if not raw or len(raw) > MAX_PACK_IMAGE:
+                return self.jreply(413, {"error": "image too large (3 MB max)"})
+            if ext == ".svg" and not re.search(rb"<svg[\s>]", raw[:4096]):
+                return self.jreply(400, {"error": "not an SVG file"})
+            pack["file"] = "image" + ext if kind == "printer" else "slot.svg"
+        if not pack["file"]:
+            return self.jreply(400, {"error": "a graphic is required"})
+        try:
+            if kind == "printer":
+                pack["width"], pack["height"] = int(self.clean_num(req.get("width"), 20, 8000)), int(self.clean_num(req.get("height"), 20, 8000))
+                pack["anchors"] = self.clean_anchors(req.get("anchors"))
+            else:
+                pack["layout"] = {"columns": None}
+        except ValueError:
+            return self.jreply(400, {"error": "bad dimensions or anchors"})
+        os.makedirs(d, exist_ok=True)
+        if isinstance(f, dict):
+            for fn in os.listdir(d):
+                if fn.startswith("image") or fn == "slot.svg":
+                    os.remove(os.path.join(d, fn))
+            with open(os.path.join(d, pack["file"]), "wb") as fh:
+                fh.write(raw)
+        write_json_atomic(os.path.join(d, "pack.json"), pack)
+        logging.info("saved %s pack %s", kind, pid)
+        self.jreply(200, {"ok": True, "config": self.public_config()})
+
+    def delete_pack(self, req):
+        kind, pid = req.get("kind"), str(req.get("id") or "")
+        d = os.path.join(self.state, "packs", str(kind), pid)
+        if kind not in BUILTIN_PACKS or not PACK_ID.fullmatch(pid) or not os.path.isdir(d):
+            return self.jreply(404, {"error": "no such custom pack"})
+        for fn in os.listdir(d):
+            os.remove(os.path.join(d, fn))
+        os.rmdir(d)
+        st = self.settings()
+        if (st.get("graphics") or {}).get(kind) == pid:
+            st["graphics"].pop(kind)
+            write_json_atomic(self.settings_path(), st)
+        self.jreply(200, {"ok": True, "config": self.public_config()})
+
+    def serve_pack(self, route):
+        m = re.fullmatch(r"/packs/(printer|toolchanger)/([a-z0-9][a-z0-9_\-]{0,39})/(pack\.json|image\.[a-z]{3,4}|slot\.svg)", route)
+        if not m:
+            return self.reply(404, "text/plain", b"not found")
+        p = os.path.join(self.state, "packs", m.group(1), m.group(2), m.group(3))
+        try:
+            with open(p, "rb") as fh:
+                body = fh.read()
+        except OSError:
+            return self.reply(404, "text/plain", b"not found")
+        ctype = "application/json" if p.endswith(".json") else EXT_MIME.get(os.path.splitext(p)[1], "application/octet-stream")
+        # uploaded SVGs are untrusted: render them sandboxed so scripts inside can never run on this origin
+        self.reply(200, ctype, body, {"Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:",
+                                      "X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache"})
+
+    def serve_builtin_graphic(self, route):
+        m = re.fullmatch(r"/graphics/([\w\-]+\.(?:svg|png))", route)
+        if not m:
+            return self.reply(404, "text/plain", b"not found")
+        try:
+            with open(os.path.join(self.root, "graphics", m.group(1)), "rb") as fh:
+                body = fh.read()
+        except OSError:
+            return self.reply(404, "text/plain", b"not found")
+        self.reply(200, "image/svg+xml" if m.group(1).endswith(".svg") else "image/png", body,
+                   {"Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'", "Cache-Control": "no-cache"})
+
+    def do_POST(self):
+        if self.blocked():
+            return
+        if self.path.split("?")[0] != "/control":
+            return self.reply(404, "text/plain", b"not found")
+        if self.headers.get("X-Feedline-Control") != "1":      # blocks cross-site form posts
+            return self.reply(403, "application/json", b'{"error":"missing control header"}')
+        self.select_printer()
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+            if n < 0 or n > 6 * 1024 * 1024:
+                return self.jreply(413, {"error": "request too large"})
+            req = json.loads(self.rfile.read(n) or b"{}")
+            if req.get("action") in self.PRINT_ACTIONS:
+                return self.print_control(req["action"])
+            if req.get("action") == "fan":
+                return self.fan_control(req)
+            if req.get("action") == "temp":
+                return self.temp_control(req)
+            if req.get("action") == "save_config":
+                if not Handler.cfg.get("allow_config_edit", True):
+                    return self.jreply(403, {"error": "config editing is disabled (allow_config_edit)"})
+                return self.config_save(req)
+            if req.get("action") == "add_printer":
+                return self.add_printer(req)
+            if req.get("action") == "remove_printer":
+                return self.remove_printer(req)
+            if req.get("action") == "save_settings":
+                return self.save_settings(req)
+            if req.get("action") == "save_pack":
+                return self.save_pack(req)
+            if req.get("action") == "delete_pack":
+                return self.delete_pack(req)
+            if req.get("action") == "light":
+                return self.light_control(req)
+            if req.get("action") == "set_spoolman":
+                return self.set_spoolman(req)
+            if req.get("action") == "set_lane":
+                return self.lane_control(req)
+            if req.get("action") in ("home", "jog", "goto", "motors_off"):
+                return self.move_control(req)
+            if req.get("action") == "run_macro":
+                cmd = self.macro_command(req)
+            else:
+                cmd = self.command_for(req.get("action"), req.get("tool"), req.get("lane"))
+        except ValueError as e:
+            return self.jreply(400, {"error": str(e)})
+        except Exception:  # noqa: BLE001
+            cmd = None
+        if not cmd:
+            return self.reply(400, "application/json", b'{"error":"bad request"}')
+        cmds = [cmd]
+        if req.get("action") == "load" and self.provider() == "afc":
+            # Load on a BoxTurtle lane swaps: if another lane is already loaded to the toolhead, unload it first
+            try:
+                cur = self.mget("/printer/objects/query?AFC=current_load")["result"]["status"]["AFC"].get("current_load")
+                if isinstance(cur, str) and cur and cur != req.get("lane") and cur in self.afc_lanes():
+                    pre = self.command_for("park", req.get("tool"), cur)
+                    if pre:
+                        cmds.insert(0, pre)
+            except Exception:  # noqa: BLE001
+                pass
+        if not self.busy.acquire(blocking=False):
+            return self.reply(409, "application/json", b'{"error":"another command is still running"}')
+        try:
+            state_url = "http://%s:7125/printer/objects/query?print_stats" % self.printer
+            with urllib.request.urlopen(state_url, timeout=8) as r:
+                state = json.load(r)["result"]["status"]["print_stats"]["state"]
+            if state in ("printing", "paused"):
+                return self.reply(409, "application/json",
+                                  json.dumps({"error": "refused: printer is %s" % state}).encode())
+            for c in cmds:                                   # one after the other; Moonraker answers when each has finished
+                url = "http://%s:7125/printer/gcode/script?script=%s" % (self.printer, urllib.parse.quote(c))
+                logging.info("running %s", c)
+                with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=900) as r:
+                    r.read()
+            self.reply(200, "application/json", json.dumps({"ok": True, "cmd": " then ".join(cmds)}).encode())
+        except Exception as e:  # noqa: BLE001
+            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+        finally:
+            self.busy.release()
+
+    def do_GET(self):
+        if self.blocked():
+            return
+        path = self.path
+        route = path.split("?")[0]
+        self.select_printer()
+        if route == "/api/macros":
+            return self.jreply(200, {"macros": self.user_macros(), "tool": self.effective_macros(), "detected": self.detect_macros(),
+                                     "commands": sorted(c for c in self.commands() if not CMD_DENY.match(c) and not re.fullmatch(r"[GM]\d+", c)),
+                                     "tools": self.tool_count()})
+        if route == "/api/printers":
+            return self.jreply(200, {"printers": self.printer_list()})
+        if route == "/config/list":
+            url = "http://%s:7125/server/files/list?root=config" % self.printer
+        elif route == "/logs/export":
+            return self.logs_export(urllib.parse.urlparse(path).query)
+        elif route == "/config/read":
+            return self.config_read(urllib.parse.urlparse(path).query)
+        elif route in ("/", "/index.html"):
+            with open(os.path.join(self.root, "index.html"), "rb") as f:
+                return self.reply(200, "text/html; charset=utf-8", f.read())
+        elif route in ("/printer/objects/query", "/printer/objects/list", "/server/gcode_store", "/server/files/metadata",
+                     "/server/history/list", "/server/history/totals", "/server/spoolman/status"):            # job history (read-only)
+            url = "http://%s:7125%s" % (self.printer, path)
+        elif re.fullmatch(r"/server/files/gcodes/(?:[\w .()\-]+/)*\.thumbs/[\w .()\-]+\.png", urllib.parse.unquote(route)):
+            url = "http://%s:7125%s" % (self.printer, route)        # slicer thumbnail of the current job (read-only)
+        elif route == "/api/config":
+            return self.jreply(200, self.public_config())
+        elif route.startswith("/packs/"):
+            return self.serve_pack(route)
+        elif route.startswith("/graphics/"):
+            return self.serve_builtin_graphic(route)
+        elif route in ("/cam/snapshot", "/webcam/snapshot.jpg"):          # one camera frame (the browser polls this)
+            url = self.webcam().get("snapshot")
+            if not url:
+                return self.reply(404, "text/plain", b"no camera snapshot configured")
+        elif route == "/screen/snapshot":                 # live view of the printer's touchscreen (view only)
+            scr = self.cfg.get("screen")
+            if not scr or not scr.get("snapshot"):
+                return self.reply(404, "text/plain", b"no touchscreen configured")
+            url = "http://%s%s" % (self.printer, scr["snapshot"])
+        elif route == "/api/v1/spool" and self.spoolman_base():
+            url = self.spoolman_base() + path
+        else:
+            return self.reply(404, "text/plain", b"not found")
+        try:
+            with urllib.request.urlopen(url, timeout=8) as r:
+                self.reply(r.status, r.headers.get("Content-Type", "application/json"), r.read())
+        except Exception as e:  # noqa: BLE001
+            self.reply(502, "text/plain", str(e).encode())
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--port", type=int, default=8081)
+    ap.add_argument("--bind", default="0.0.0.0", help="address to listen on (127.0.0.1 = this machine only, e.g. behind a reverse proxy)")
+    ap.add_argument("--printer", help="Moonraker host (overrides config.json)")
+    ap.add_argument("--spoolman", help="Spoolman host:port (overrides config.json)")
+    ap.add_argument("--root", default="/opt/feedline", help="folder holding index.html and graphics/")
+    ap.add_argument("--config", help="admin config file (default: <root>/config.json)")
+    ap.add_argument("--state", default="/var/lib/feedline", help="writable folder for settings.json, custom graphics and config backups")
+    a = ap.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    cfg = dict(DEFAULT_CFG)
+    cfg.update(load_json(a.config or os.path.join(a.root, "config.json"), {}))
+    Handler.printer = a.printer or cfg.get("printer")
+    Handler.spoolman_cfg = a.spoolman if a.spoolman is not None else cfg.get("spoolman")
+    Handler.spoolman = (load_json(os.path.join(a.state, "spoolman.json"), {}).get("url")) or Handler.spoolman_cfg      # Settings tab wins over config.json
+    if not Handler.printer:
+        ap.error("no printer: set \"printer\" in config.json or pass --printer HOST")
+    Handler.cfg, Handler.root, Handler.state = cfg, a.root, a.state
+    Handler.backups = os.path.join(a.state, "backups")
+    au = cfg.get("auth") or {}
+    pw = os.environ.get("FEEDLINE_PASSWORD") or au.get("password")
+    if pw:
+        Handler.auth = (os.environ.get("FEEDLINE_USER") or au.get("user") or "admin", str(pw))
+    else:
+        logging.warning("WARNING: no login configured - anyone who can reach port %d can control the printer. "
+                        "Set \"auth\" in config.json or FEEDLINE_PASSWORD, or keep it on a trusted network.", a.port)
+    logging.info("Feedline listening on %s:%d for printer %s", a.bind, a.port, Handler.printer)
+    http.server.ThreadingHTTPServer((a.bind, a.port), Handler).serve_forever()
+
+
+if __name__ == "__main__":
+    main()

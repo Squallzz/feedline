@@ -1,0 +1,21 @@
+{
+  "printer": "192.168.1.50",
+  "name": "My printer",
+  "auth": null,
+  "allowed_hosts": [],
+  "allow_embed": false,
+  "allow_config_edit": true,
+  "spoolman": null,
+  "spoolman_url": null,
+  "provider": "auto",
+  "tools": null,
+  "macros": {"pickup": "T{n}"},
+  "light": null,
+  "screen": null,
+  "webcam": null,
+  "tool_fans": null,
+  "chamber": null,
+  "tool_spools": null,
+  "temp_limits": {"extruder": 300, "heater_bed": 110, "heater_generic": 150},
+  "graphics": {"printer": null, "toolchanger": null}
+}

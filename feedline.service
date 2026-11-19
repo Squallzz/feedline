@@ -1,0 +1,25 @@
+[Unit]
+Description=Feedline Klipper dashboard
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/feedline/feedline_server.py --port 8081 --root /opt/feedline --state /var/lib/feedline
+Restart=always
+RestartSec=3
+DynamicUser=yes
+StateDirectory=feedline
+StateDirectoryMode=0750
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target
