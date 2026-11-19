@@ -499,8 +499,16 @@ function openSpool(i) {
     add("Color", d.loaded ? '<i class="sw" style="background:' + escH(d.col) + '"></i>' + escH(d.col) : ""); add("Weight", inf.WEIGHT ? inf.WEIGHT + " g" : ""); add("Tag UID", escH(d.uid));
     body = (rows.length ? "<table>" + rows.join("") + "</table>" : "<p>No filament detected.</p>") + (d.loaded ? "<p>This tag has no matching spool in Spoolman yet.</p>" : "");
   }
+  if (d.box) {                                                // QIDI Box slot: what was set for it on the printer
+    const b = d.box, r2 = [], row = (k, v) => { if (v) r2.push("<tr><th>" + escH(k) + "</th><td>" + v + "</td></tr>"); };
+    title = b.label + " · " + (b.loaded ? b.title : "Empty");
+    row("Material", escH(b.mat)); row("Vendor", escH(b.vendor)); row("Color", b.loaded ? '<i class="sw" style="background:' + escH(b.col) + '"></i>' + escH(b.col) : "");
+    row("Nozzle temp", escH(b.temps)); row("Drying temp", escH(b.boxTemp)); row("State", escH(b.status)); row("Printed as", escH(b.map)); row("Slot", escH(b.unit + ", " + b.lane));
+    body = (b.loaded ? "<table>" + r2.join("") + "</table>" : "<p>No filament in this slot.</p>") +
+      '<p class="sub">Material and color are what was set for this slot on the printer (or read from the spool\'s tag). The Box does not weigh the spool, so there is no remaining amount.</p>';
+  }
   if (d.lane) { title = d.lane + " · " + (d.loaded ? title : "Empty"); body = laneEditForm(d) + body; }
-  document.getElementById("spmodal-body").innerHTML = (d.lane ? "<h2>" : '<h2>T' + i + " &middot; ") + escH(title) + "</h2>" + body;
+  document.getElementById("spmodal-body").innerHTML = (d.lane || d.box ? "<h2>" : '<h2>T' + i + " &middot; ") + escH(title) + "</h2>" + body;
   document.getElementById("spmodal").hidden = false;
 }
 // AFC: change a lane's material / color / weight; the server turns it into SET_MATERIAL / SET_COLOR / SET_WEIGHT
@@ -591,10 +599,10 @@ function actions(i, loaded, isActive, ex, s) {
   const offered = ((CFG && CFG.actions) || []);
   if (!CONTROLS || !offered.length) return "";
   const locked = running || printState === "printing" || printState === "paused";
-  const afc = CFG.provider === "afc";
-  const can = afc ? {load: loaded && !isActive, unload: loaded, park: isActive, pickup: loaded && !isActive} : {load: loaded, unload: loaded, park: isActive, pickup: !isActive};
+  const afc = CFG.provider === "afc", qb = CFG.provider === "qidibox";      // QIDI Box: Load a waiting slot, Unload the one in the toolhead; the button's tool is the T number the slot is mapped to
+  const can = afc ? {load: loaded && !isActive, unload: loaded, park: isActive, pickup: loaded && !isActive} : qb ? {load: loaded && !isActive, unload: isActive} : {load: loaded, unload: loaded, park: isActive, pickup: !isActive};
   return '<div class="acts">' + (afc ? ["park", "load", "unload"] : ["load", "unload", "park", "pickup"]).filter(a => offered.includes(a)).map(a =>
-    '<button data-act="' + a + '" data-tool="' + i + '"' + (afc ? ' data-lane="' + escH(s.lane) + '"' : "") + (locked || !can[a] ? " disabled" : "") + '>' + (afc ? AFC_LABEL[a] : LABEL[a]) + '</button>').join("") +
+    '<button data-act="' + a + '" data-tool="' + (qb ? s.tool : i) + '"' + (afc ? ' data-lane="' + escH(s.lane) + '"' : "") + (locked || !can[a] ? " disabled" : "") + '>' + (afc ? AFC_LABEL[a] : LABEL[a]) + '</button>').join("") +
     '</div>';
 }
 const CONFIRM = {
@@ -801,7 +809,7 @@ document.getElementById("grid").addEventListener("click", ev => {
 
 // ---- Temperatures: every heater / temperature sensor the printer reports (discovered, like Fluidd) ----
 const TEMP_RE = /^(heater_bed|heater_generic |temperature_sensor |temperature_fan |extruder\d*$)/;
-let tempObjs = null, tmcObjs = [], afcLanes = [], afcParts = [];       // afcParts: AFC_extruder / AFC_hub / AFC_buffer objects (Turtleneck)
+let tempObjs = null, tmcObjs = [], afcLanes = [], afcParts = [], boxObjs = [];      // boxObjs: QIDI Box slots, its humidity sensor and its drying heater;       // afcParts: AFC_extruder / AFC_hub / AFC_buffer objects (Turtleneck)
 let CH = {sensor: null, fan: null};          // chamber sensor / fan: from the configuration or found by name
 const hist = {};
 const HIST_MAX = 150;      // about 5 minutes at one sample per 2 s
@@ -874,6 +882,7 @@ function fanKey(n) { return n === "fan" ? "fan" : n.replace(/^fan_generic /, "")
 // whatever a printer does not report is simply not shown.
 function renderAfcBar(st) {
   const bar = document.getElementById("afcbar");
+  if (CFG.provider === "qidibox") return;                     // the same row shows the QIDI Box status (renderBoxBar)
   if (CFG.provider !== "afc") { bar.hidden = true; return; }
   const pills = [], one = pre => afcParts.filter(n => n.startsWith(pre + " ")).length < 2;
   const pill = (label, text, on, dim) => '<span class="pill' + (on ? " on" : "") + (dim ? " dim" : "") + '"><i></i>' + escH(label) + ": " + escH(text) + "</span>";
@@ -1045,9 +1054,9 @@ const fanSvg = (id, cx, cy, r) => '<circle cx="' + cx + '" cy="' + cy + '" r="' 
 //   f     family: "box" enclosed cube, bed moves in Z   "gantry" cube with a flying gantry, bed fixed
 //                 "sling" open frame, bed moves in Y, gantry in Z   "delta" three towers
 //   b     body colors [top, bottom]   acc accent color   sc size   frame: built from extrusions   open: no panels
-//   scr   where the screen is: "tr" top right, "base" in the base, "none"
+//   scr   where the screen is: "tr" top right, "tc" top centre, "base" in the base, "none"
 const MODELS = {
-  "qidi-plus4": {f: "box", b: ["#454851", "#27292e"], acc: "#3d8bfd", scr: "tr"},
+  "qidi-plus4": {f: "box", b: ["#454851", "#27292e"], acc: "#3d8bfd", scr: "tc"},
   "qidi-xmax3": {f: "box", b: ["#34363c", "#1c1d21"], acc: "#3d8bfd", scr: "tr", top: 74},
   "qidi-xplus3": {f: "box", b: ["#34363c", "#1c1d21"], acc: "#3d8bfd", scr: "tr", sc: .93},
   "qidi-q1pro": {f: "box", b: ["#50535c", "#2c2e34"], acc: "#3d8bfd", scr: "tr", sc: .86},
@@ -1133,7 +1142,7 @@ function modelPack(id, sfx, noHead) {
         R(wx, wy, ww, wh, "none", 'rx="6" stroke="' + (light ? "#1b1b22" : "#08080b") + '" stroke-width="5"') + R(70, 40 + tb - 3, 460, 3, acc, 'opacity=".85"') +
         '<polygon points="' + (wx + 8) + "," + (wy + 4) + " " + (wx + 74) + "," + (wy + 4) + " " + (wx + 40) + "," + (wyb - 4) + " " + (wx + 8) + "," + (wyb - 4) + '" fill="#fff" opacity=".05"/>' +
         R(wx + ww + 10, wy + wh * .42, 8, 66, light ? "#1b1b22" : "#08080b", 'rx="3"') + R(96, 480, 46, 7, "#101014", 'rx="2"') + R(458, 480, 46, 7, "#101014", 'rx="2"'));
-      if (s.scr === "tr") o.push(screen(404, 40 + (tb - Math.min(48, tb - 14)) / 2, 96, Math.min(48, tb - 14)));
+      if (s.scr === "tr" || s.scr === "tc") o.push(screen(s.scr === "tc" ? 252 : 404, 40 + (tb - Math.min(48, tb - 14)) / 2, 96, Math.min(48, tb - 14)));
       A.light = {x: 513, y: wy + 26};
     }
   } else if (s.f === "sling") {
@@ -1314,6 +1323,15 @@ function drawConnectors() {
       const ln = '<line x1="' + outX(p[0]).toFixed(1) + '" y1="' + (POFF + (p[1] - TOP) * PSCALE).toFixed(1) + '" x2="' + outX(t.x).toFixed(1) + '" y2="' + (POFF + (t.y - TOP) * PSCALE).toFixed(1) + '" stroke-linecap="round" fill="none" ';
       h += ln + 'stroke="#000" stroke-opacity=".55" stroke-width="' + (act ? 5.5 : 4.5) + '" stroke-dasharray="0.1 8"/>' + ln + 'stroke="' + col + '" stroke-opacity="' + (act ? 1 : .65) + '" stroke-width="' + (act ? 3.4 : 2.6) + '" stroke-dasharray="0.1 8"/>';
     });
+  }
+  if (r.width && !AFCS && TA.length === 1 && cards.length > 1) {      // several slots feeding one toolhead (QIDI Box): one line, from the slot in use
+    const ai = SLOTSNOW.findIndex(s => s.isActive && s.loaded), c = cards[ai], t = TA[0];
+    if (c) {
+      const cr = c.getBoundingClientRect(), col = btLift(SLOTSNOW[ai].col);
+      const ln = '<line x1="' + ((cr.left + cr.width / 2 - r.left) * 1000 / r.width).toFixed(1) + '" y1="0" x2="' + outX(t.x).toFixed(1) + '" y2="' + (POFF + (t.y - TOP) * PSCALE).toFixed(1) + '" stroke-linecap="round" stroke-dasharray="0.1 8" ';
+      h += ln + 'stroke="#000" stroke-opacity=".5" stroke-width="5.5"/>' + ln + 'stroke="' + col + '" stroke-width="3.4"/>';
+    }
+    g.innerHTML = h; return;
   }
   if (!r.width || TA.length > 4 || cards.length !== TA.length) { g.innerHTML = h; return; }
   cards.forEach((c, i) => {
@@ -1758,7 +1776,7 @@ async function applyGraphics() {
 
 // ---- ArmoredTurtle AFC / BoxTurtle: one slot per lane ----
 const AFC_LABEL = {load: "Load", park: "Unload", unload: "Eject", pickup: "Change to"};      // Load = TOOL_LOAD, Unload = TOOL_UNLOAD, Eject = LANE_UNLOAD (pickup/CHANGE_TOOL is not shown)
-const AFC_LED = {"Tooled": "#4ade80", "Tool Loaded": "#4ade80", "Loaded": "#9580FF", "Error": "#ff5a5a", "Tool Loading": "#E8B04F", "Tool Unloading": "#E8B04F", "HUB Loading": "#E8B04F",
+const AFC_LED = {"In use": "#4ade80", "Ready": "#9580FF", "Tooled": "#4ade80", "Tool Loaded": "#4ade80", "Loaded": "#9580FF", "Error": "#ff5a5a", "Tool Loading": "#E8B04F", "Tool Unloading": "#E8B04F", "HUB Loading": "#E8B04F",
   "Ejecting": "#E8B04F", "Calibrating": "#E8B04F", "Infinite Runout": "#ff9a4a"};
 const afcColor = c => { c = String(c || "").replace(/^#/, ""); return /^[0-9a-fA-F]{6}/.test(c) ? "#" + c.slice(0, 6).toUpperCase() : "#808080"; };
 function slotsAFC(st) {
@@ -1942,6 +1960,46 @@ function slotsU1(st) {                       // Snapmaker U1: RFID tags (filamen
   }
   return out;
 }
+// QIDI Box: one slot per spool bay (four per Box), all feeding the one toolhead. The Box's controller reports each slot's
+// state (0 empty, 1 filament waiting in the Box, 2 loaded into the toolhead) and what was set for it on the printer
+// (material, color, vendor); firmware without that object still gives the states through the saved variables.
+// Slots are named as on the printer's screen: Box number + bay letter (slot0 = 1A, slot5 = 2B).
+function slotsQidi(st) {
+  const M = st.multi_color_controller || {}, V = (st.save_variables || {}).variables || {}, sl = M.slots || {}, out = [];
+  window.__fd = [];
+  (CFG.lanes || []).forEach((name, i) => {
+    const n = +name.replace(/\D/g, "") || 0, state = +(((sl.states || {})[name]) != null ? sl.states[name] : V[name]) || 0;
+    const m = (sl.materials || {})[name] || {}, f = m.filament || {};
+    const loaded = state > 0, isActive = state === 2;
+    let tool = n;                                              // the T number this slot answers to (value_t3 = "slot0" means T3 prints from slot0)
+    for (let t = 0; t < 16; t++) if (V["value_t" + t] === name) { tool = t; break; }
+    const mat = String(f.type || ""), title = String(f.filament || mat || "Filament"), temps = f.min_temp && f.max_temp ? f.min_temp + " - " + f.max_temp + " °C" : "";
+    out.push({i, ex: isActive ? (st[exName(0)] || {}) : {}, info: {}, loaded, uid: "", sp: null, col: m.color ? afcColor(m.color) : "#808080", mat, rem: null, total: 0, isActive,
+      lane: name, tool, label: (Math.floor(n / 4) + 1) + "ABCD"[n % 4], status: isActive ? "In use" : loaded ? "Ready" : "Empty", map: "T" + tool, unit: "Box " + (Math.floor(n / 4) + 1),
+      frac: loaded ? .7 : .05, spool: "left", remTxt: "-", title: loaded ? title : "Empty", brand: loaded ? String(m.vendor || "") : "no filament",
+      vendor: String(m.vendor || ""), temps, boxTemp: +f.box_max_temp > 0 ? "up to " + f.box_max_temp + " °C" : ""});
+  });
+  return out;
+}
+// QIDI Box status row (shares the AFC row): connection, what is loaded, each Box's temperature and humidity, drying
+function renderBoxBar(st) {
+  if (CFG.provider !== "qidibox") return;
+  const bar = document.getElementById("afcbar"), M = st.multi_color_controller || {}, pills = [];
+  const pill = (label, text, on, dim) => '<span class="pill' + (on ? " on" : "") + (dim ? " dim" : "") + '"><i></i>' + escH(label) + ": " + escH(text) + "</span>";
+  const hw = M.hardware || {}, ex = M.extruder || {}, op = M.operation || {}, last = (M.slots || {}).last_loaded;
+  if (M.hardware) pills.push(pill("QIDI Box", hw.connected ? (hw.box_count > 1 ? hw.box_count + " connected" : "connected") : "not connected", !!hw.connected, !hw.connected));
+  const act = (SLOTSNOW || []).find(s => s.isActive);
+  pills.push(pill("Loaded", act ? act.label + " · " + act.title : "none", !!act, !act));
+  if (typeof ex.filament_detected === "boolean") pills.push(pill("Toolhead sensor", ex.filament_detected ? "filament present" : "clear", ex.filament_detected));
+  for (const n of boxObjs.filter(o => o.startsWith("aht20_f "))) {
+    const o = st[n] || {}, h = st["heater_generic " + n.split(" ")[1]] || {};
+    if (typeof o.temperature !== "number") continue;
+    pills.push(pill("Box air", o.temperature.toFixed(0) + "°" + (typeof o.humidity === "number" ? " · " + Math.round(o.humidity) + "% humidity" : "") + (h.target > 0 ? " · drying to " + Math.round(h.target) + "°" : ""), h.target > 0));
+  }
+  if (op.error) pills.push('<span class="pill off"><i></i>Box error: ' + escH(String(typeof op.error === "string" ? op.error : JSON.stringify(op.error)).slice(0, 80)) + "</span>");
+  bar.innerHTML = pills.join("");
+  bar.hidden = !pills.length;
+}
 function slotsExtruders(st) {                // any Klipper printer: one slot per extruder, spool from config or Moonraker's active Spoolman spool
   const act = st.toolhead.extruder, out = [], fixed = (CFG && CFG.toolSpools) || {};
   window.__fd = [];
@@ -1966,7 +2024,9 @@ function render(st) {
   renderAfcBar(st);
   window.__st = st;
   renderMove(st);
-  const afc = CFG.provider === "afc", slots = CFG.provider === "u1" ? slotsU1(st) : afc ? slotsAFC(st) : slotsExtruders(st), ts = st.toolhead.extruder;
+  const qb = CFG.provider === "qidibox", afc = CFG.provider === "afc" || qb;      // both have one card per lane / slot feeding a single toolhead
+  const slots = CFG.provider === "u1" ? slotsU1(st) : qb ? slotsQidi(st) : afc ? slotsAFC(st) : slotsExtruders(st), ts = st.toolhead.extruder;
+  renderBoxBar(st);
   let out = "";
   const sceneCols = [], sceneLoaded = [];
   for (const s of slots) {
@@ -1975,7 +2035,7 @@ function render(st) {
     const state = afc ? (isActive ? "ACTIVE" : s.status) : isActive ? "ACTIVE" : (ex.state === "PARKED" ? "Parked" : (ex.state || "").toLowerCase());
     if (afc) { if (isActive) { const k = Math.min(N - 1, s.tool || 0); sceneCols[k] = s.col; sceneLoaded[k] = true; } }
     else { sceneCols[i] = s.col; sceneLoaded[i] = s.loaded; }
-    spoolInfo[i] = {sp: s.sp, info: s.info, loaded: s.loaded, col: s.col, uid: s.uid, lane: afc ? s.lane : null, mat: s.mat, rem: s.rem, total: s.total};
+    spoolInfo[i] = {sp: s.sp, info: s.info, loaded: s.loaded, col: s.col, uid: s.uid, lane: afc && !qb ? s.lane : null, box: qb ? s : null, mat: s.mat, rem: s.rem, total: s.total};
     // hotend fan for this head: drives the label and the spin speed of the orange knob
     const hf = afc ? null : st[slotFan(i).hotend];
     let fanLabel = "";
@@ -2081,6 +2141,7 @@ async function tick() {
       tmcObjs = l.result.objects.filter(n => /^tmc\d+ /.test(n));
       afcParts = l.result.objects.includes("AFC") ? l.result.objects.filter(n => /^AFC_(extruder|hub|buffer) \S/.test(n)) : [];
       afcLanes = l.result.objects.includes("AFC") ? l.result.objects.filter(n => /^AFC_(stepper|lane) \S/.test(n)) : [];
+      boxObjs = l.result.objects.filter(n => /^(box_stepper slot\d+|aht20_f \S+|heater_generic heater_box\d*)$/.test(n));
       CH = {sensor: (CFG.chamber && CFG.chamber.sensor) || tempObjs.find(n => /^(temperature_sensor|temperature_fan|heater_generic) .*(chamber|cavity|enclosure)/i.test(n)) || null,
             fan: (CFG.chamber && CFG.chamber.fan) || fanObjs.find(n => /^fan_generic .*(chamber|cavity)/i.test(n)) || null};
       if (!CFG.fromServer && !CFG.discovered) {          // opened as a file: work out what this printer is from Klipper itself
@@ -2096,6 +2157,7 @@ async function tick() {
     const base = ["toolhead", "print_stats", "virtual_sdcard", "gcode_move", "motion_report"].concat(Array.from({length: N}, (_, i) => exName(i)), tmcObjs);
     if (CFG.provider === "u1") base.push("filament_detect", "filament_feed left", "filament_feed right");
     if (CFG.provider === "afc") base.push("AFC", ...afcLanes, ...afcParts);
+    if (CFG.provider === "qidibox") base.push("multi_color_controller", "save_variables", ...boxObjs);
     if (CFG.light && CFG.light.object) base.push(CFG.light.object);
     const objs = base.map(n => encodeURIComponent(n)).join("&") + extra;
     const j = await jget(MR + "/printer/objects/query?" + objs);
@@ -2201,7 +2263,7 @@ async function applyConfig(c) {
   document.getElementById("pname").textContent = c.name;
   document.title = c.name + " · Feedline";
   const stage = document.getElementById("stage");
-  const slotsN = c.provider === "afc" && c.lanes && c.lanes.length ? c.lanes.length : N;
+  const slotsN = (c.provider === "afc" || c.provider === "qidibox") && c.lanes && c.lanes.length ? c.lanes.length : N;
   stage.style.setProperty("--n", slotsN); stage.style.setProperty("--cols", Math.min(slotsN, 4));
   mvEl.hidden = !CONTROLS;
   document.getElementById("navsettings").hidden = !CONTROLS;
@@ -2628,8 +2690,8 @@ bootstrap();
   }
 
   const fsOptions = () => {
-    const fs = CFG.filamentSystems || {selected: "auto", available: {}}, av = fs.available || {}, name = {u1: "Snapmaker U1 (RFID tags)", afc: "AFC / BoxTurtle (ArmoredTurtle)", extruders: "Standard (one filament per extruder)"};
-    return [["auto", "Auto-detect (now: " + (name[CFG.provider] || CFG.provider) + ")", true], ["extruders", name.extruders, true], ["afc", name.afc + (av.afc ? "" : " - not detected"), !!av.afc], ["u1", name.u1 + (av.u1 ? "" : " - not detected"), !!av.u1]]
+    const fs = CFG.filamentSystems || {selected: "auto", available: {}}, av = fs.available || {}, name = {u1: "Snapmaker U1 (RFID tags)", afc: "AFC / BoxTurtle (ArmoredTurtle)", qidibox: "QIDI Box", extruders: "Standard (one filament per extruder)"};
+    return [["auto", "Auto-detect (now: " + (name[CFG.provider] || CFG.provider) + ")", true], ["extruders", name.extruders, true], ["afc", name.afc + (av.afc ? "" : " - not detected"), !!av.afc], ["qidibox", name.qidibox + (av.qidibox ? "" : " - not detected"), !!av.qidibox], ["u1", name.u1 + (av.u1 ? "" : " - not detected"), !!av.u1]]
       .map(([id, label, ok]) => '<option value="' + id + '"' + (id === fs.selected ? " selected" : "") + (ok ? "" : " disabled") + ">" + escH(label) + "</option>").join("");
   };
   function render() {

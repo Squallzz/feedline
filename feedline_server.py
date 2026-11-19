@@ -49,7 +49,7 @@ DEFAULT_CFG = {
     "printer": None,                 # Moonraker host (required, here or with --printer)
     "spoolman": None,                # Spoolman address the server uses: "host:port" or a URL ("http://192.168.1.20:7912"); null = no Spoolman. The Settings tab can override it
     "name": None,                    # header text; the UI setting overrides it; default = the printer's hostname
-    "provider": "auto",              # how filament slots are found: "auto" | "u1" (Snapmaker RFID) | "afc" (ArmoredTurtle AFC / BoxTurtle) | "extruders"
+    "provider": "auto",              # how filament slots are found: "auto" | "u1" (Snapmaker RFID) | "afc" (ArmoredTurtle AFC / BoxTurtle) | "qidibox" (QIDI Box) | "extruders"
     "tools": None,                   # number of tools; null = count the extruders Klipper reports
     "macros": None,                  # tool buttons, e.g. {"load": "AUTO_FEEDING EXTRUDER={n} LOAD=1", "pickup": "T{n}"}; "" disables one.
                                      # {n} = tool number, {nz} = number or "" for tool 0. Actions not listed are auto-detected
@@ -338,7 +338,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def template_ok(self, base):
         """True when every tool's expansion of a macro name (T{n}, PARK_EXTRUDER{nz}) is a command Klipper has."""
         cmds = self.commands()
-        for i in range(self.tool_count()):
+        for i in range(self.slot_count()):
             nm = base.replace("{nz}", str(i) if i else "").replace("{n}", str(i)).upper()
             if nm not in cmds or CMD_DENY.match(nm):
                 return False
@@ -364,6 +364,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             for act, c in (("load", "TOOL_LOAD LANE={lane}"), ("unload", "LANE_UNLOAD LANE={lane}"), ("park", "TOOL_UNLOAD LANE={lane}"), ("pickup", "CHANGE_TOOL LANE={lane}")):
                 if has(c.split(" ")[0]):
                     out[act] = c
+            return out
+        if self.provider() == "qidibox":                      # one card per Box slot; {n} is the tool number the slot is mapped to (T0 = slot0 unless remapped)
+            for act, names in (("load", ("LOAD_T{n}", "T{n}")), ("unload", ("ULOAD_T{n}", "UNLOAD_T{n}"))):      # a wrapper macro that homes / checks first is preferred when the printer has one
+                for c in names:
+                    if self.template_ok(c):
+                        out[act] = c
+                        break
             return out
         if has("AUTO_FEEDING") and "filament_detect" in self.objects():      # Snapmaker U1: tools and parking are native commands, not macros
             return {"load": "AUTO_FEEDING EXTRUDER={n} LOAD=1", "unload": "AUTO_FEEDING EXTRUDER={n} UNLOAD=1", "pickup": "T{n}", "park": "PARK_EXTRUDER{nz}"}
@@ -520,16 +527,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return []
         return [o.split(" ", 1)[1] for o in objs if re.match(r"AFC_(stepper|lane) \S", o)]
 
+    def qidi_slots(self):
+        """Slot names of a QIDI Box (objects "box_stepper slot0" ...), in order; four per Box."""
+        nums = sorted(int(m.group(1)) for m in (re.fullmatch(r"box_stepper slot(\d+)", o) for o in self.objects()) if m)
+        return ["slot%d" % n for n in nums if n < 16]
+
     def provider(self):
         objs = self.objects()
         p = self.settings().get("provider") or self.cfg.get("provider") or "auto"
-        if (p == "afc" and not self.afc_lanes()) or (p == "u1" and "filament_detect" not in objs) or p not in ("u1", "afc", "extruders"):
+        if (p == "afc" and not self.afc_lanes()) or (p == "u1" and "filament_detect" not in objs) or (p == "qidibox" and not self.qidi_slots()) or p not in ("u1", "afc", "qidibox", "extruders"):
             p = "auto"
         if p != "auto":
             return p
         if "filament_detect" in objs:
             return "u1"
-        return "afc" if self.afc_lanes() else "extruders"
+        return "afc" if self.afc_lanes() else "qidibox" if self.qidi_slots() else "extruders"
+
+    def slot_count(self):
+        """How many filament slots the tool buttons cover: Box slots on a QIDI Box, otherwise one per tool."""
+        return len(self.qidi_slots()) if self.provider() == "qidibox" else self.tool_count()
 
     def tool_count(self):
         n = self.cfg.get("tools")
@@ -683,7 +699,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if mid not in self.pack_ids("printer"):
             mid = None
         picked = (st.get("graphics") or {}).get("printer") or (c.get("graphics") or {}).get("printer")
-        for kind, dflt in (("printer", mid or "generic"), ("toolchanger", {"u1": "u1", "afc": "afc"}.get(prov, "reel"))):
+        for kind, dflt in (("printer", mid or "generic"), ("toolchanger", {"u1": "u1", "afc": "afc", "qidibox": "afc"}.get(prov, "reel"))):
             want = (st.get("graphics") or {}).get(kind) or (c.get("graphics") or {}).get(kind) or dflt
             gsel[kind] = want if want in self.pack_ids(kind) else dflt
         # "toolchanger" is the spool/slot style of the lane cards; "unit" is the separate BoxTurtle unit picture (afc | none)
@@ -709,9 +725,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "model": {"id": mid, "label": "Snapmaker U1" if mid == "u1" else MODEL_LABEL.get(mid), "why": mwhy, "auto": picked not in self.pack_ids("printer")},
             "packs": {k: BUILTIN_PACKS[k] + self.custom_packs(k) for k in BUILTIN_PACKS},
             "provider": prov, "toolCount": self.tool_count(), "printerHost": host,
-            "lanes": self.afc_lanes() if prov == "afc" else [],
+            "lanes": self.afc_lanes() if prov == "afc" else self.qidi_slots() if prov == "qidibox" else [],
             "laneEdit": {k: v[0] in self.commands() for k, v in self.LANE_EDIT.items()} if prov == "afc" else {},
-            "filamentSystems": {"selected": st.get("provider") or "auto", "available": {"u1": "filament_detect" in self.objects(), "afc": bool(self.afc_lanes())}},
+            "filamentSystems": {"selected": st.get("provider") or "auto", "available": {"u1": "filament_detect" in self.objects(), "afc": bool(self.afc_lanes()), "qidibox": bool(self.qidi_slots())}},
             "actions": [a for a in ACTIONS if a in eff], "macros": eff,
             "light": {"object": light.get("object")} if light and light.get("on") and light.get("off") else None,
             "screen": {"interactive": "http://%s%s" % (host, scr.get("interactive", "/screen/"))} if scr and scr.get("snapshot") else None,
@@ -787,7 +803,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if afc:
             if lane not in self.afc_lanes():
                 return None
-        elif not 0 <= tool < self.tool_count():
+        elif not 0 <= tool < self.slot_count():
             return None
         eff = self.effective_macros().get(action)
         if not eff:
@@ -1134,8 +1150,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 st.pop("name", None)
         if "provider" in req:
             pv = req.get("provider")
-            if pv not in ("auto", "extruders", "afc", "u1"):
+            if pv not in ("auto", "extruders", "afc", "u1", "qidibox"):
                 return self.jreply(400, {"error": "unknown filament system"})
+            if pv == "qidibox" and not self.qidi_slots():
+                return self.jreply(400, {"error": "no QIDI Box found on this printer"})
             if pv == "afc" and not self.afc_lanes():
                 return self.jreply(400, {"error": "no AFC (BoxTurtle) found on this printer"})
             if pv == "u1" and "filament_detect" not in self.objects():
