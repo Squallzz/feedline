@@ -179,7 +179,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.pid, self.printer, self.cfg = p["id"], p["host"], c
                 break
 
-    # ---- macros: detected from Klipper, customisable (only commands Klipper really has, never free-form G-code) ----
+    # ---- macros: detected from Klipper, customizable (only commands Klipper really has, never free-form G-code) ----
     def commands(self):
         got = self.cached("cmds", 60, lambda: {k.upper() for k in self.mget("/printer/gcode/help")["result"]})
         return got or set()
@@ -579,7 +579,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     busy = threading.Lock()
 
-    # AFC lane data (what the lane card shows): material, colour, weight. Fixed AFC commands with validated values only.
+    # AFC lane data (what the lane card shows): material, color, weight. Fixed AFC commands with validated values only.
     LANE_EDIT = {"material": ("SET_MATERIAL", "MATERIAL"), "color": ("SET_COLOR", "COLOR"), "weight": ("SET_WEIGHT", "WEIGHT")}
 
     def lane_script(self, req):
@@ -589,7 +589,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if lane not in self.afc_lanes() or not re.fullmatch(r"[\w.\-]{1,40}", str(lane)):
             raise ValueError("unknown lane")
         cmds, lines = self.commands(), []
-        for key in ("material", "color", "weight"):      # material first: AFC validates the colour against the lane's material
+        for key in ("material", "color", "weight"):      # material first: AFC validates the color against the lane's material
             if req.get(key) is None:
                 continue
             name, param = self.LANE_EDIT[key]
@@ -603,7 +603,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             elif key == "color":
                 v = str(v).strip().lstrip("#")
                 if not re.fullmatch(r"[0-9a-fA-F]{6}", v):
-                    raise ValueError("colour must be 6 hex digits")
+                    raise ValueError("color must be 6 hex digits")
                 v = v.upper()
             else:
                 try:

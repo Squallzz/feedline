@@ -479,7 +479,7 @@ function openSpool(i) {
   if (sp) {
     const total = sp.initial_weight || f.weight || 0, rem = sp.remaining_weight, pct = total && rem != null ? Math.round(rem / total * 100) : null;
     title = (f.vendor ? f.vendor.name + " " : "") + f.name;
-    add("Material", escH(f.material)); add("Colour", '<i class="sw" style="background:#' + escH((f.color_hex || "808080").slice(0, 6)) + '"></i>#' + escH((f.color_hex || "").slice(0, 6).toUpperCase()));
+    add("Material", escH(f.material)); add("Color", '<i class="sw" style="background:#' + escH((f.color_hex || "808080").slice(0, 6)) + '"></i>#' + escH((f.color_hex || "").slice(0, 6).toUpperCase()));
     add("Remaining", rem != null ? g(rem) + (pct != null ? " (" + pct + "%)" : "") : ""); add("Used", g(sp.used_weight)); add("Initial weight", g(total));
     add("Remaining length", typeof sp.remaining_length === "number" ? (sp.remaining_length / 1000).toFixed(1) + " m" : "");
     add("Empty spool weight", g(sp.spool_weight != null ? sp.spool_weight : f.spool_weight));
@@ -494,14 +494,14 @@ function openSpool(i) {
   } else {
     title = d.loaded ? "Not in Spoolman" : "No filament in T" + i;
     add("Tag type", escH(inf.MAIN_TYPE)); add("Sub type", escH(inf.SUB_TYPE)); add("Manufacturer", escH(inf.MANUFACTURER || inf.VENDOR));
-    add("Colour", d.loaded ? '<i class="sw" style="background:' + escH(d.col) + '"></i>' + escH(d.col) : ""); add("Weight", inf.WEIGHT ? inf.WEIGHT + " g" : ""); add("Tag UID", escH(d.uid));
+    add("Color", d.loaded ? '<i class="sw" style="background:' + escH(d.col) + '"></i>' + escH(d.col) : ""); add("Weight", inf.WEIGHT ? inf.WEIGHT + " g" : ""); add("Tag UID", escH(d.uid));
     body = (rows.length ? "<table>" + rows.join("") + "</table>" : "<p>No filament detected.</p>") + (d.loaded ? "<p>This tag has no matching spool in Spoolman yet.</p>" : "");
   }
   if (d.lane) { title = d.lane + " · " + (d.loaded ? title : "Empty"); body = laneEditForm(d) + body; }
   document.getElementById("spmodal-body").innerHTML = (d.lane ? "<h2>" : '<h2>T' + i + " &middot; ") + escH(title) + "</h2>" + body;
   document.getElementById("spmodal").hidden = false;
 }
-// AFC: change a lane's material / colour / weight; the server turns it into SET_MATERIAL / SET_COLOR / SET_WEIGHT
+// AFC: change a lane's material / color / weight; the server turns it into SET_MATERIAL / SET_COLOR / SET_WEIGHT
 const MATERIALS = ["PLA", "PLA+", "PETG", "ABS", "ASA", "TPU", "PA", "PA-CF", "PC", "PETG-CF", "PVA", "HIPS"];
 function laneEditForm(d) {
   const le = (CFG && CFG.laneEdit) || {}, can = CONTROLS && (le.material || le.color || le.weight), dis = can ? "" : " disabled";
@@ -510,7 +510,7 @@ function laneEditForm(d) {
   return '<div class="laneedit" data-lane="' + escH(d.lane) + '"><h3>Edit lane</h3>' +
     '<label>Material<input id="le-mat" list="le-mats" maxlength="24" spellcheck="false" value="' + escH(d.mat || "") + '"' + (le.material ? dis : " disabled") + '></label>' +
     '<datalist id="le-mats">' + MATERIALS.map(m => '<option value="' + m + '">').join("") + '</datalist>' +
-    '<label>Colour<input id="le-col" type="color" value="' + hex + '"' + (le.color ? dis : " disabled") + '></label>' +
+    '<label>Color<input id="le-col" type="color" value="' + hex + '"' + (le.color ? dis : " disabled") + '></label>' +
     '<label>Weight (g)<input id="le-w" type="number" min="0" max="20000" step="1" value="' + w + '"' + (le.weight ? dis : " disabled") + '></label>' +
     '<div class="row"><button id="le-save" class="go"' + dis + '>Save</button><span id="le-msg" class="sub"></span></div>' +
     '<div class="sub">' + (can ? "Sends SET_MATERIAL, SET_COLOR and SET_WEIGHT for this lane to AFC. It does not change Spoolman." :
@@ -1123,7 +1123,7 @@ function drawConnectors() {
   if (!g) return;
   const sc = document.getElementById("scene"), r = sc.getBoundingClientRect(), cards = document.querySelectorAll("#grid .tool");
   let h = "";
-  if (AFCS && TOOLPT.length) {           // BoxTurtle: dotted line from the lane that feeds the toolhead down to the head, in that filament's colour
+  if (AFCS && TOOLPT.length) {           // BoxTurtle: dotted line from the lane that feeds the toolhead down to the head, in that filament's color
     // AFC: one filament path, the active lane feeds the toolhead. Other systems (e.g. the U1's four slots): every loaded slot feeds its own head.
     const afcSys = CFG.provider === "afc";
     AFCS.forEach((s, ai) => {
@@ -1139,7 +1139,7 @@ function drawConnectors() {
   cards.forEach((c, i) => {
     const t = TA[i]; if (!t) return;
     const cr = c.getBoundingClientRect();
-    const sl = SLOTSNOW[i];       // every feed line takes the colour of the filament in that slot
+    const sl = SLOTSNOW[i];       // every feed line takes the color of the filament in that slot
     const ln = '<line x1="' + ((cr.left + cr.width / 2 - r.left) * 1000 / r.width).toFixed(1) + '" y1="0" x2="' + outX(t.x).toFixed(1) + '" y2="' + (POFF + (t.y - TOP) * PSCALE).toFixed(1) + '" ';
     if (sl && sl.loaded) {
       const col = btLift(sl.col);
@@ -1236,7 +1236,7 @@ function sceneInitU1(st) {
     '<circle cx="406" cy="318" r="12" fill="#1b1b22" stroke="#3b3b48" stroke-width="1.2"/>' +
     '<path id="slbulb" d="M406 310.5a5.2 5.2 0 0 1 3.2 9.3v2.2h-6.4v-2.2a5.2 5.2 0 0 1 3.2-9.3z" fill="#6b6b7a"/>' +
     '<rect x="403.4" y="322.6" width="5.2" height="1.6" rx=".8" fill="#9a9aa8"/></g>');
-  // logo + live touchscreen (the four dots show the loaded filament colours)
+  // logo + live touchscreen (the four dots show the loaded filament colors)
   s.push('<text x="116" y="232" font-size="10" letter-spacing=".4" font-weight="600" fill="#4a4a58">snapmaker</text>');
   for (let i = 0; i < 4; i++) s.push('<circle id="sc' + i + '" cx="' + (121 + i * 12) + '" cy="248" r="4" fill="#2A2750"/>');
   if (!CFG.screen) s.push('<rect x="302" y="206" width="102" height="62" rx="5" fill="#0d0d14" stroke="#2b2b36" stroke-width="1.5"/>');
@@ -1246,7 +1246,7 @@ function sceneInitU1(st) {
   if (CFG.screen) screenLoop();
   // connectors from each card down to its tool label (drawn in svg space, over the scaled drawing)
   let lines = "";
-  for (let i = 0; i < 4; i++) {         // two lines per card: a dark shadow and the feed line itself (coloured with the filament by sceneFeed)
+  for (let i = 0; i < 4; i++) {         // two lines per card: a dark shadow and the feed line itself (colored with the filament by sceneFeed)
     const pos = '" x1="' + cardPx(i).toFixed(1) + '" y1="0" x2="' + outX(headX(i)).toFixed(1) + '" y2="' + (POFF + (84 - TOP) * PSCALE).toFixed(1) + '" stroke-linecap="round" ';
     lines += '<line id="sfeedb' + i + pos + 'stroke="#000" stroke-opacity="0"/><line id="sfeed' + i + pos + 'stroke="#7A63F2" stroke-opacity=".45" stroke-dasharray="3 5"/>';
   }
@@ -1333,7 +1333,7 @@ function sceneUpdate(st, cols, loaded) {
       $("sthrect").setAttribute("y", (thumbGeo.bot - h).toFixed(1)); $("sthrect").setAttribute("height", (h + 4).toFixed(1));
     }
   }
-  const yb = 380;   // static build plate (only its colour reflects the bed temperature)
+  const yb = 380;   // static build plate (only its color reflects the bed temperature)
   $("bedtop").setAttribute("points", "168," + yb + " 352," + yb + " 376," + (yb + 40) + " 144," + (yb + 40));
   $("bedside").setAttribute("y", yb + 40);
   const hb = st.heater_bed || {}, bt = hb.temperature || 25, btg = hb.target || 0, bh = clamp((bt - 25) / 60, 0, 1);
@@ -1365,7 +1365,7 @@ function sceneUpdate(st, cols, loaded) {
   drawConnectors();
   sceneFeed();
 }
-// Drawn U1: the dotted line from each spool card to its toolhead takes the colour of the filament in that slot (brighter on the active tool)
+// Drawn U1: the dotted line from each spool card to its toolhead takes the color of the filament in that slot (brighter on the active tool)
 function sceneFeed() {
   for (let i = 0; i < 4; i++) {
     const l = document.getElementById("sfeed" + i), b = document.getElementById("sfeedb" + i); if (!l || !b) continue;
@@ -1483,7 +1483,7 @@ function sanitizeSlotSvg(text) {
   root.removeAttribute("width"); root.removeAttribute("height");
   return {tpl: new XMLSerializer().serializeToString(root), css: scoped};
 }
-// Template hooks (all optional):  data-fill="filament" / data-stroke="filament"  colour from the loaded filament
+// Template hooks (all optional):  data-fill="filament" / data-stroke="filament"  color from the loaded filament
 //   data-heat  fill follows the nozzle temperature    data-level="scale|height|width"  scaled by the filament left
 //   data-text="temp|target|tool|material|name|remaining|fan"    data-show="loaded|empty|active|idle|heating"
 function customSlot(s) {
@@ -1594,7 +1594,7 @@ let TOOLPT = [];                                                          // too
 let AFCS = null;                                                         // lane slots of the last render (for the scene)
 const btg = u => ({ox: BT.OX, oy: BT.OY + u * BT.GAP});
 const btP = (g, a, b, h) => [g.ox + a * BT.W + b * BT.dx, g.oy + b * BT.dy - h];
-const btLift = col => {                                                    // very dark filament (black) is lifted to dark grey so the spool stays visible
+const btLift = col => {                                                    // very dark filament (black) is lifted to dark gray so the spool stays visible
   const n = parseInt(String(col).replace("#", ""), 16) || 0, r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255, lum = .3 * r + .59 * g + .11 * b;
   if (lum >= 70) return col;
   const t = (70 - lum) / 70 * .85, m = (v, to) => Math.round(v + (to - v) * t);
@@ -1783,7 +1783,7 @@ function render(st) {
       slotGraphic(s) +
       '<div class="mat">' + escH(s.title) + '</div>' +
       '<div class="brand">' + escH(s.brand) + '</div>' +
-      '<div class="stats"><div><b>' + (s.loaded && s.col ? s.col.slice(1) : "-") + '</b>colour</div>' +
+      '<div class="stats"><div><b>' + (s.loaded && s.col ? s.col.slice(1) : "-") + '</b>color</div>' +
       '<div><b>' + s.remTxt + '</b>' + s.spool + '</div>' +
       (CFG.spoolman ? '<div><b>' + (s.sp ? "#" + s.sp.id : "-") + '</b>Spoolman</div>' : "") + '</div>' + actions(i, s.loaded, isActive, ex, s) + '</div>';
   }
@@ -2050,7 +2050,7 @@ bootstrap();
     if (sp) {
       const total = sp.initial_weight || f.weight || 0, rem = sp.remaining_weight, pct = total && rem != null ? Math.round(rem / total * 100) : null;
       title = (f.vendor ? f.vendor.name + " " : "") + f.name;
-      add("Material", esc(f.material)); add("Colour", sw(f.color_hex) + "#" + esc((f.color_hex || "").slice(0, 6).toUpperCase()));
+      add("Material", esc(f.material)); add("Color", sw(f.color_hex) + "#" + esc((f.color_hex || "").slice(0, 6).toUpperCase()));
       add("Remaining", rem != null ? g(rem) + (pct != null ? " (" + pct + "%)" : "") : ""); add("Used", g(sp.used_weight)); add("Initial weight", g(total));
       add("Remaining length", typeof sp.remaining_length === "number" ? (sp.remaining_length / 1000).toFixed(1) + " m" : "");
       add("Diameter", f.diameter ? f.diameter + " mm" : ""); add("Density", f.density ? f.density + " g/cm³" : "");
@@ -2218,7 +2218,7 @@ bootstrap();
     $("ftree").innerHTML = out(root, "") || '<div class="fmsg">No files.</div>';
   }
   async function loadFiles() { fs_.list = await get("/config/list").then(r => r.result); renderTree(); }
-  // ---- syntax highlighting: a coloured copy of the text sits behind the transparent textarea ----
+  // ---- syntax highlighting: a colored copy of the text sits behind the transparent textarea ----
   const hesc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const wrap = (c, s) => '<span class="' + c + '">' + hesc(s) + "</span>";
   const TOK = /(\{%.*?%\}|\{\{.*?\}\}|\{#.*?#\})|((?:^|\s)[#;].*$)|("(?:[^"\\]|\\.)*")|((?<![\w.])-?\d+(?:\.\d+)?(?![\w.]))/g;
@@ -2430,7 +2430,7 @@ bootstrap();
       '<div class="vcard"><h3>Upload a toolchanger / filament graphic</h3>' +
       '<div class="srow"><label>Name</label><input id="tcname" maxlength="60" placeholder="My spool"><label>Id</label><input id="tcid" maxlength="40" placeholder="my-spool"><input id="tcfile" type="file" accept="image/svg+xml"></div>' +
       '<div id="tcprev" class="gprev tprev" hidden></div><button id="tcsave" hidden>Save slot graphic</button>' +
-      '<div class="sub">One SVG per tool slot. Optional hooks on any element: <code>data-fill="filament"</code> / <code>data-stroke="filament"</code> (filament colour), <code>data-heat="1"</code> (nozzle temperature colour), ' +
+      '<div class="sub">One SVG per tool slot. Optional hooks on any element: <code>data-fill="filament"</code> / <code>data-stroke="filament"</code> (filament color), <code>data-heat="1"</code> (nozzle temperature color), ' +
       '<code>data-level="scale|height|width"</code> (grows with filament left), <code>data-text="temp|target|tool|material|name|remaining|fan"</code>, <code>data-show="loaded|empty|active|idle|heating"</code>. Scripts, external links and global CSS are stripped.</div>' +
       '<h4>Your slot graphics</h4>' + customs("toolchanger") + '</div>';
     $("setpp").onchange = $("settp").onchange = $("setun").onchange = previews;
@@ -2592,7 +2592,7 @@ bootstrap();
 })();
 </script>
 <script>
-// ---- Macros tab: tool-button macros (detected, customisable) and every user-facing macro with a Run button ----
+// ---- Macros tab: tool-button macros (detected, customizable) and every user-facing macro with a Run button ----
 (() => {
   const $ = id => document.getElementById(id), root = $("v-macros");
   const post = async body => {
