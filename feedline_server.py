@@ -725,7 +725,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "model": {"id": mid, "label": "Snapmaker U1" if mid == "u1" else MODEL_LABEL.get(mid), "why": mwhy, "auto": picked not in self.pack_ids("printer")},
             "packs": {k: BUILTIN_PACKS[k] + self.custom_packs(k) for k in BUILTIN_PACKS},
             "provider": prov, "toolCount": self.tool_count(), "printerHost": host,
-            "lanes": self.afc_lanes() if prov == "afc" else self.qidi_slots() if prov == "qidibox" else [],
+            # QIDI Box: its slots, then "slot16", the printer's name for the external spool that bypasses the Box
+            "lanes": self.afc_lanes() if prov == "afc" else self.qidi_slots() + ["slot16"] if prov == "qidibox" else [],
             "laneEdit": {k: v[0] in self.commands() for k, v in self.LANE_EDIT.items()} if prov == "afc" else {},
             "filamentSystems": {"selected": st.get("provider") or "auto", "available": {"u1": "filament_detect" in self.objects(), "afc": bool(self.afc_lanes()), "qidibox": bool(self.qidi_slots())}},
             "actions": [a for a in ACTIONS if a in eff], "macros": eff,
