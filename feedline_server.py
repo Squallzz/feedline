@@ -145,6 +145,18 @@ def guess_model(cfg, objs, info):
     return None, "the printer's configuration could not be read"
 
 
+def thumb_path(filename, thumbs):
+    """Path under /server/files/gcodes/ of a job's largest slicer thumbnail, or None. Only relative PNG paths are used
+    (some firmware also lists one with an absolute path on the printer's disk)."""
+    ok = [t for t in thumbs or [] if isinstance(t, dict) and isinstance(t.get("relative_path"), str) and t["relative_path"].endswith(".png")
+          and not t["relative_path"].startswith(("/", "\\")) and ".." not in t["relative_path"].replace("\\", "/").split("/")]
+    if not ok:
+        return None
+    best = max(ok, key=lambda t: t.get("width") or 0)
+    folder = filename.rsplit("/", 1)[0] + "/" if "/" in filename else ""
+    return "/server/files/gcodes/" + "/".join(urllib.parse.quote(seg, safe="") for seg in (folder + best["relative_path"]).split("/"))
+
+
 BUILTIN_PACKS = {
     "printer": [{"id": "u1", "label": "Snapmaker U1 (drawn, live)"}] + [{"id": i, "label": l + " (drawn, live)"} for i, l in MODELS] + [{"id": "generic", "label": "Generic printer (image)"}],
     "toolchanger": [{"id": "u1", "label": "Spool wheel"}, {"id": "reel", "label": "Simple reel"}, {"id": "afc", "label": "3D spool"}, {"id": "none", "label": "No graphic"}],
@@ -277,6 +289,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def select_printer(self):
         want = self.headers.get("X-Printer") or ""
+        if not want:                                          # ?p=<id>: for pictures, downloads and the page itself, which cannot send the header
+            want = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("p", [""])[0]
         if not want:
             m = re.search(r"(?:^|;\s*)printer=([^;]*)", self.headers.get("Cookie", ""))
             want = urllib.parse.unquote(m.group(1)) if m else ""
@@ -454,7 +468,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return os.path.join(self.state, "settings.json" if self.pid == "main" else "settings-%s.json" % self.pid)
 
     def printer_list(self):
-        main = {"id": "main", "name": Handler.cfg.get("name") or load_json(os.path.join(self.state, "settings.json"), {}).get("name") or Handler.printer, "host": Handler.printer, "main": True}
+        known = (Handler._cache.get(("main", "pinfo")) or (0, None))[1] or {}      # Klipper's own host name, once the main printer has been asked
+        main = {"id": "main", "name": Handler.cfg.get("name") or known.get("hostname") or Handler.printer, "host": Handler.printer, "main": True}
         st = load_json(os.path.join(self.state, "settings.json"), {})
         if st.get("name"):
             main["name"] = st["name"]
@@ -465,6 +480,61 @@ class Handler(http.server.BaseHTTPRequestHandler):
         for p in out:
             p["active"] = p["id"] == self.pid
         return out
+
+    _ovmeta = {}                    # printer id -> (file name, its slicer metadata): asked once per job
+
+    def overview(self):
+        """One row of status per printer for the Printers page. All printers are asked side by side with a short timeout,
+        and one that just failed to answer is not asked again for a few seconds, so a printer that is off does not hold
+        up the page. Read-only: nothing here sends a command."""
+        rows = self.printer_list()
+        cfgs = {"main": Handler.cfg}
+        for p in self.extra_printers():
+            cfgs[p["id"]] = dict(DEFAULT_CFG, printer=p["host"], name=p.get("name"), provider=p.get("provider") or "auto")
+
+        def ask(row):
+            h = object.__new__(Handler)                       # the same helpers, pointed at that printer
+            h.pid, h.printer, h.cfg, h.headers = row["id"], row["host"], cfgs.get(row["id"], Handler.cfg), self.headers
+            known = (Handler._cache.get((h.pid, "model")) or (0, None))[1]
+            row.update(online=False, model=None)
+            try:
+                if Handler._down.get(h.pid, 0) <= time.time():
+                    st = h.mget("/printer/objects/query?print_stats&virtual_sdcard&extruder&heater_bed&webhooks", 4)["result"]["status"]
+                    known = h.model()
+                else:
+                    st = None
+            except Exception as e:  # noqa: BLE001
+                st = None
+                if isinstance(e, OSError) and not isinstance(e, urllib.error.HTTPError):
+                    Handler._down[h.pid] = time.time() + self.DOWN_FOR
+            if known and known[0]:
+                row["model"] = {"id": known[0], "label": "Snapmaker U1" if known[0] == "u1" else MODEL_LABEL.get(known[0])}
+            if st is None:
+                return
+            ps, vs, info = st.get("print_stats") or {}, st.get("virtual_sdcard") or {}, (st.get("print_stats") or {}).get("info") or {}
+            pair = lambda o: [o.get("temperature"), o.get("target")] if isinstance(o, dict) and "temperature" in o else None
+            fn = str(ps.get("filename") or "")
+            row.update(online=True, state=str(ps.get("state") or "unknown"), klippy=str((st.get("webhooks") or {}).get("state") or ""), file=fn,
+                       progress=vs.get("progress"), elapsed=ps.get("print_duration"), nozzle=pair(st.get("extruder")), bed=pair(st.get("heater_bed")),
+                       layer=[info.get("current_layer"), info.get("total_layer")] if info.get("total_layer") else None, estimate=None, thumb=None, camera=None)
+            try:
+                if fn:
+                    had = Handler._ovmeta.get(h.pid)
+                    if not had or had[0] != fn:
+                        had = Handler._ovmeta[h.pid] = (fn, h.mget("/server/files/metadata?filename=" + urllib.parse.quote(fn), 4)["result"])
+                    row.update(estimate=had[1].get("estimated_time"), thumb=thumb_path(fn, had[1].get("thumbnails")))
+                cam, ui = h.webcam(), h.settings().get("camera")
+                if cam.get("snapshot"):
+                    row["camera"] = self.clean_view(ui) if isinstance(ui, dict) else cam["view"]
+            except Exception:  # noqa: BLE001
+                pass                                          # the extras are optional: the row still shows the state
+
+        threads = [threading.Thread(target=ask, args=(r,), daemon=True) for r in rows]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(9)
+        return {"printers": rows}
 
     def add_printer(self, req):
         name = str(req.get("name") or "").strip()[:60]
@@ -740,7 +810,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             "spoolmanServer": self.spoolman_base(), "spoolmanFromUi": bool(self.spoolman) and self.spoolman != Handler.spoolman_cfg,
         }
 
-    busy = threading.Lock()
+    _locks, _locks_guard = {}, threading.Lock()
+
+    @property
+    def busy(self):
+        """One command at a time per printer (a long filament load on one printer does not hold up the others)."""
+        with Handler._locks_guard:
+            return Handler._locks.setdefault(self.pid, threading.Lock())
 
     # AFC lane data (what the lane card shows): material, color, weight. Fixed AFC commands with validated values only.
     LANE_EDIT = {"material": ("SET_MATERIAL", "MATERIAL"), "color": ("SET_COLOR", "COLOR"), "weight": ("SET_WEIGHT", "WEIGHT")}
@@ -1080,13 +1156,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
             old, mod = self.fetch_config(p)
             if base and mod and base != mod:
                 return self.reply(409, "application/json", json.dumps({"error": "the file changed on the printer since you opened it - reload it first"}).encode())
-            os.makedirs(self.backups, exist_ok=True)              # keep the previous version before anything is overwritten
-            bk = os.path.join(self.backups, "%s.%s.bak" % (p.replace("/", "__"), time.strftime("%Y%m%d-%H%M%S")))
+            bdir = self.backups if self.pid == "main" else os.path.join(self.backups, self.pid)      # each printer keeps its own backups
+            os.makedirs(bdir, exist_ok=True)                      # keep the previous version before anything is overwritten
+            bk = os.path.join(bdir, "%s.%s.bak" % (p.replace("/", "__"), time.strftime("%Y%m%d-%H%M%S")))
             with open(bk, "wb") as fh:
                 fh.write(old)
             prefix = p.replace("/", "__") + "."
-            for stale in sorted(f for f in os.listdir(self.backups) if f.startswith(prefix) and f.endswith(".bak"))[:-20]:
-                os.remove(os.path.join(self.backups, stale))      # keep the newest 20 backups per file
+            for stale in sorted(f for f in os.listdir(bdir) if f.startswith(prefix) and f.endswith(".bak"))[:-20]:
+                os.remove(os.path.join(bdir, stale))              # keep the newest 20 backups per file
             d, name = os.path.split(p)
             boundary = "----feedline%d" % int(time.time() * 1000)
             parts = []
@@ -1436,6 +1513,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                      "tools": self.tool_count()})
         if route == "/api/screen/probe":
             return self.jreply(200, self.screen_probe())
+        if route == "/api/overview":
+            return self.jreply(200, self.overview())
         if route == "/api/printers":
             return self.jreply(200, {"printers": self.printer_list()})
         if route == "/config/list":

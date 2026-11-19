@@ -233,6 +233,21 @@
   .stat .k{font-size:12px;color:var(--muted)} .stat .n{font-size:26px;font-weight:600;margin-top:4px} .stat .s{font-size:12px;color:var(--sub);margin-top:2px}
   .vcard{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:14px 16px;margin-bottom:16px}
   .vcard h3{margin:0 0 10px;font-size:14px;font-weight:600;color:var(--muted)}
+  /* Printers overview: one card per printer */
+  #ovgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+  .ovcard{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:12px;cursor:pointer;display:flex;flex-direction:column;gap:10px;text-align:left;color:var(--text);font:inherit}
+  .ovcard:hover,.ovcard:focus-visible{border-color:#9580FF;outline:none} .ovcard.here{box-shadow:inset 0 0 0 1px #7A63F2}
+  .ovcard.off{opacity:.6}
+  .ovhd{display:flex;align-items:center;gap:8px} .ovhd b{font-size:15px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ovst{padding:2px 10px;border-radius:999px;font-size:11.5px;border:1px solid var(--edge);color:var(--muted);white-space:nowrap}
+  .ovst.printing{color:var(--good);border-color:#2c6b48} .ovst.paused{color:var(--warn);border-color:#7a5f2c} .ovst.error,.ovst.shutdown{color:var(--bad);border-color:#7a2c40}
+  .ovpic{position:relative;aspect-ratio:16/9;background:#07060f;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+  .ovpic .ovcam{width:100%;height:100%;object-fit:cover;display:block} .ovpic > svg{height:100%;width:auto;max-width:100%}
+  .ovpic .ovthumb{position:absolute;right:8px;bottom:8px;width:64px;height:64px;object-fit:contain;background:rgba(10,8,24,.78);border:1px solid var(--edge);border-radius:8px}
+  .ovfile{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+  .ovbar{height:7px;background:#0a0818;border-radius:4px;overflow:hidden} .ovbar i{display:block;height:100%;background:#7A63F2;border-radius:4px}
+  .ovrow{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--muted)} .ovrow b{color:var(--text);font-weight:600}
+  .ovsub{font-size:11.5px;color:var(--sub)} .ovnote{font-size:12px;color:var(--sub);margin-top:14px} .ovbody{display:flex;flex-direction:column;gap:7px}
   .jobtbl{width:100%;border-collapse:collapse}
   .jobtbl th{font-size:12px;font-weight:500;color:var(--sub);text-align:left;padding:6px 10px;border-bottom:1px solid #231f4a}
   .jobtbl td{padding:8px 10px;border-bottom:1px solid #1a1740;vertical-align:middle}
@@ -295,6 +310,15 @@
   #v-settings .prow{display:flex;gap:12px;align-items:center;padding:7px 0;border-top:1px solid var(--edge);font-size:13px} #v-settings .prow span{color:var(--muted);flex:1}
   #v-settings .gcols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin-bottom:12px} @media(max-width:700px){#v-settings .gcols{grid-template-columns:1fr}}
   #v-settings .gprev{margin-top:10px;min-height:120px;background:#0a0818;border-radius:10px;padding:8px;display:flex;gap:10px;align-items:center;justify-content:center}
+  /* Graphics card: three equal columns, each a label above a full-width list above a preview of the same height */
+  #v-settings .gcols > div{min-width:0;display:flex;flex-direction:column}
+  #v-settings .gcols label{display:block;margin-bottom:6px}
+  #v-settings .gcols select{margin-left:0;width:100%;min-width:0}
+  #v-settings .gcols .gprev{height:230px;min-height:0;box-sizing:border-box;overflow:hidden}
+  #v-settings .gcols .gprev > svg,#v-settings .gcols .gprev > img{max-height:100%;max-width:100%}
+  #v-settings .gnote{margin:0 0 12px}
+  #v-settings .gopt{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding-top:12px;margin-top:12px;border-top:1px solid var(--edge)}
+  #v-settings .gopt .sub{margin-top:0;flex:1 1 260px} #v-settings .gopt .rad{margin-right:0;white-space:nowrap}
   #v-settings .gprev img{max-width:100%;max-height:240px} #v-settings .tprev>svg{width:46%;height:auto;max-height:200px}
   #pkov text{pointer-events:none}
   .badge:empty{display:none}.badge.bad{background:#4a1d28;color:#ff9aa8}
@@ -314,6 +338,7 @@
 <nav id="nav" aria-label="Sections">
   <div class="brand" title="Feedline"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7A63F2" stroke-width="2.6" stroke-linecap="round"><circle cx="5" cy="5" r="2.2" fill="#7A63F2" stroke="none"/><path d="M6.8 7l10 10" stroke-dasharray="0.1 3.4"/><circle cx="19" cy="19" r="2.2" fill="#E8B04F" stroke="none"/></svg><b>Feedline</b></div>
   <button data-view="home" class="on" title="Home"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>Home</button>
+  <button data-view="printers" id="navprinters" hidden title="All printers at a glance"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></svg>Printers</button>
   <button data-view="jobs" title="Previous jobs"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>Jobs</button>
   <button data-view="history" title="Print statistics"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>History</button>
   <button data-view="tune" title="Bed mesh"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5-9 5z"/><path d="M3 14l9 5 9-5"/></svg>Tune</button>
@@ -417,6 +442,8 @@
 </section>
 <section id="v-settings" class="view" hidden></section>
 <section id="v-macros" class="view" hidden></section>
+<section id="v-printers" class="view" hidden><h2>Printers <span id="ovstat" class="badge"></span></h2><div id="ovgrid"></div>
+  <div class="ovnote">Click a printer to open it. This page only shows status; controls are on each printer's own page.</div></section>
 <section id="v-tune" class="view" hidden>
   <h2>Tune - bed mesh</h2>
   <div class="sgrid" id="meshstats"></div>
@@ -1040,7 +1067,7 @@ function screenLoop() {
     const im = new Image();
     im.onload = () => { el.setAttribute("href", im.src); screenBusy = false; };
     im.onerror = () => { screenBusy = false; };
-    im.src = "/screen/snapshot?ts=" + Date.now();
+    im.src = withP("/screen/snapshot?ts=" + Date.now());
   };
   tick();
   screenTimer = setInterval(tick, 1000);
@@ -1603,7 +1630,7 @@ async function loadMeta(fn) {
     if (metaFile !== fn) return;
     meta = m;
     const tp = thumbPath(fn, m.thumbnails, true);
-    if (tp) thumbUrl = MR + tp;
+    if (tp) thumbUrl = HOSTED ? withP(tp) : MR + tp;
   } catch (e) { /* no metadata: the card just shows what the live data gives */ }
 }
 const fmtDur = s => {
@@ -2249,14 +2276,17 @@ function camNext() {
   const im = new Image();
   im.onload = () => { camimg.src = im.src; camShape(im); camstat.textContent = "live"; setTimeout(camNext, 800); };
   im.onerror = () => { camstat.textContent = "unavailable"; setTimeout(camNext, 4000); };
-  im.src = (HOSTED ? "/cam/snapshot" : MR_HTTP + "/webcam/snapshot.jpg") + "?t=" + Date.now();
+  im.src = HOSTED ? withP("/cam/snapshot?t=" + Date.now()) : MR_HTTP + "/webcam/snapshot.jpg?t=" + Date.now();
 }
 let MR_HTTP = HOSTED ? "" : "http://" + PRINTER;
 // ---- Configuration + several printers ----
 // The page talks to one printer at a time; the server picks it from the X-Printer header (or the "printer" cookie for
 // images and iframes). Switching printers reloads the page.
 const cookieGet = k => (document.cookie.match(new RegExp("(?:^|; )" + k + "=([^;]*)")) || [])[1] || "";
-const PID = decodeURIComponent(cookieGet("printer"));
+// Which printer this tab shows: ?p=<id> in the address (so two tabs, or two cards on a Home Assistant dashboard, can show
+// different printers), else the one picked last in this browser, else the main one. It is fixed for the life of the page.
+const PID = q.get("p") || decodeURIComponent(cookieGet("printer")) || "main";
+const withP = u => u + (u.includes("?") ? "&" : "?") + "p=" + encodeURIComponent(PID);      // for pictures and downloads, which cannot send the header
 if (HOSTED) {
   const rawFetch = window.fetch.bind(window);
   window.fetch = (u, o) => {
@@ -2264,15 +2294,19 @@ if (HOSTED) {
     return rawFetch(u, o);
   };
 }
-function selectPrinter(id) {
+function selectPrinter(id, home) {                           // home: open that printer's Home page instead of staying on the current section
   document.cookie = "printer=" + encodeURIComponent(id) + "; path=/; max-age=31536000; samesite=lax";
-  location.reload();
+  const u = new URL(location.href);
+  if (home) u.hash = "";
+  u.searchParams.set("p", id || "main");
+  if (u.toString() === location.href) location.reload(); else location.href = u.toString();
 }
 let PRINTERS = [];
 async function loadPrinters() {
   try { PRINTERS = (await jget("/api/printers")).printers || []; } catch (e) { PRINTERS = []; }
   const sel = document.getElementById("psel");
   sel.hidden = PRINTERS.length < 2;
+  document.getElementById("navprinters").hidden = PRINTERS.length < 2;      // the overview is only worth a page with two or more printers
   sel.innerHTML = PRINTERS.map(p => '<option value="' + escH(p.id) + '"' + (p.active ? " selected" : "") + ">" + escH(p.name) + "</option>").join("");
 }
 document.getElementById("psel").addEventListener("change", e => selectPrinter(e.target.value));
@@ -2307,7 +2341,7 @@ async function bootstrap() {
   if (HOSTED) for (let k = 0; k < 3 && !c; k++) {
     try { c = await jget("/api/config"); c.fromServer = true; } catch (e) { await new Promise(r => setTimeout(r, 1500)); }
   }
-  if (HOSTED) loadPrinters();
+  if (HOSTED) { loadPrinters(); document.querySelectorAll('a[href^="/logs/export"]').forEach(a => a.setAttribute("href", withP(a.getAttribute("href")))); }
   await applyConfig(c || Object.assign({}, FALLBACK_CFG));
   if (window.routeHash && /^#(settings|macros)$/.test(location.hash)) window.routeHash();
   try { const f = sessionStorage.getItem("flash"); if (f) { sessionStorage.removeItem("flash"); notice.className = "pill on"; notice.textContent = f; setTimeout(() => { notice.textContent = ""; notice.className = ""; }, 12000); } } catch (e) {}
@@ -2334,7 +2368,7 @@ bootstrap();
   const spoolIds = j => { const a = (j.auxiliary_data || []).find(x => x.provider === "spoolman" && x.name === "spool_ids"); return [...new Set(((a && a.value) || []).filter(v => v != null))]; };
   function thumbOf(j) {
     const tp = j.exists ? thumbPath(j.filename, (j.metadata || {}).thumbnails, false) : "";
-    return tp ? MRB + tp : "";
+    return tp ? (typeof HOSTED !== "undefined" && HOSTED ? withP(tp) : MRB + tp) : "";
   }
   function jobsHtml() {
     const rows = jobs.filter(j => filter === "all" || j.status === filter);
@@ -2622,17 +2656,60 @@ bootstrap();
   $("frevert").onclick = () => { $("edta").value = fs_.base; gutter(); edState(); };
   $("freload").onclick = () => { if (fs_.cur && (!edDirty() || confirm("Discard unsaved changes and reload from the printer?"))) openFile(fs_.cur, true); };
   window.addEventListener("beforeunload", e => { if (edDirty()) { e.preventDefault(); e.returnValue = ""; } });
+  // ---------- Printers: every printer at a glance (status only; a click opens that printer) ----------
+  let ovSig = "";
+  const ovTemp = (label, t) => t && typeof t[0] === "number" ? "<span>" + label + " <b>" + Math.round(t[0]) + "°</b>" + (t[1] > 0 ? " / " + Math.round(t[1]) + "°" : "") + "</span>" : "<span></span>";
+  function ovBody(p) {
+    if (!p.online) return '<div class="ovfile">Not reachable</div><div class="ovsub">' + esc((p.model && p.model.label ? p.model.label + " · " : "") + p.host) + "</div>";
+    const act = p.state === "printing" || p.state === "paused", pr = typeof p.progress === "number" ? Math.max(0, Math.min(1, p.progress)) : 0;
+    let left = null;
+    if (act) { const a = p.estimate && p.elapsed != null ? Math.max(0, p.estimate - p.elapsed) : null, b = pr > .02 && p.elapsed ? p.elapsed / pr - p.elapsed : null; left = a != null && b != null ? (a + b) / 2 : a != null ? a : b; }
+    const eta = left != null ? new Date(Date.now() + left * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}) : "";
+    return '<div class="ovfile" title="' + esc(p.file) + '">' + (act ? esc(p.file.split("/").pop()) : p.klippy && p.klippy !== "ready" ? "Klipper is " + esc(p.klippy) : "Idle") + "</div>" +
+      (act ? '<div class="ovbar"><i style="width:' + (pr * 100).toFixed(1) + '%"></i></div><div class="ovrow"><span><b>' + Math.round(pr * 100) + "%</b>" + (p.layer ? " · layer " + (+p.layer[0] || 0) + "/" + (+p.layer[1] || 0) : "") + "</span><span>" +
+        (left != null ? dur(left) + " left · " + esc(eta) : "") + "</span></div>" : "") +
+      '<div class="ovrow">' + ovTemp("Nozzle", p.nozzle) + ovTemp("Bed", p.bed) + "</div>" +
+      '<div class="ovsub">' + esc((p.model && p.model.label ? p.model.label + " · " : "") + p.host) + (p.active ? " · shown in this tab" : "") + "</div>";
+  }
+  const ovTurn = v => !v ? "" : (v.flipH ? " scaleX(-1)" : "") + (v.flipV ? " scaleY(-1)" : "") + (v.rotation ? " rotate(" + (+v.rotation || 0) + "deg)" + (v.rotation % 180 ? " scale(.5625)" : "") : "");
+  async function loadOverview() {
+    let list;
+    try { list = (await get("/api/overview")).printers || []; $("ovstat").textContent = ""; } catch (e) { $("ovstat").textContent = "offline"; throw e; }
+    const grid = $("ovgrid"), sig = list.map(p => p.id + ":" + (p.online && p.camera ? "c" : (p.model && p.model.id) || "-")).join("|");
+    if (sig !== ovSig) {                                       // build the cards once; after that only their contents change (no flicker)
+      ovSig = sig;
+      grid.innerHTML = list.map((p, n) => {
+        const mp = !(p.online && p.camera) && p.model && typeof modelPack === "function" ? modelPack(p.model.id, "ov" + n) : null;
+        return '<div class="ovcard" role="button" tabindex="0" data-id="' + esc(p.id) + '"><div class="ovhd"><b>' + esc(p.name) + '</b><span class="ovst"></span></div>' +
+          '<div class="ovpic">' + (p.online && p.camera ? '<img class="ovcam" alt="Camera of ' + esc(p.name) + '">' : mp ? '<svg viewBox="0 0 600 520" role="img" aria-label="' + esc(p.model.label || "Printer") + '">' + mp.body + "</svg>" : "") +
+          '<img class="ovthumb" alt="" hidden></div><div class="ovbody"></div></div>';
+      }).join("");
+    }
+    list.forEach(p => {
+      const c = [...grid.querySelectorAll(".ovcard")].find(e => e.dataset.id === p.id); if (!c) return;
+      const state = !p.online ? "offline" : p.klippy && p.klippy !== "ready" ? p.klippy : p.state;
+      c.classList.toggle("off", !p.online); c.classList.toggle("here", !!p.active);
+      const st = c.querySelector(".ovst"); st.textContent = state; st.className = "ovst " + String(state).replace(/[^a-z]/gi, "");
+      c.querySelector(".ovbody").innerHTML = ovBody(p);
+      const cam = c.querySelector(".ovcam"), th = c.querySelector(".ovthumb"), q2 = "p=" + encodeURIComponent(p.id);
+      if (cam && !document.hidden) { const im = new Image(); im.onload = () => { cam.src = im.src; cam.style.transform = ovTurn(p.camera).trim(); }; im.src = "/cam/snapshot?" + q2 + "&t=" + Date.now(); }
+      const want = p.online && p.thumb && (p.state === "printing" || p.state === "paused") ? p.thumb + "?" + q2 : "";
+      th.hidden = !want; if (want && th.getAttribute("src") !== want) th.src = want;
+    });
+  }
+  $("ovgrid").addEventListener("click", e => { const c = e.target.closest(".ovcard"); if (c) selectPrinter(c.dataset.id, true); });
+  $("ovgrid").addEventListener("keydown", e => { const c = e.target.closest(".ovcard"); if (c && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); selectPrinter(c.dataset.id, true); } });
   // ---------- routing ----------
-  const loaders = {files: loadFiles, console: loadConsole, jobs: loadJobs, history: () => Promise.all([loadHistory(), loadJobs()]), tune: loadMesh, settings: () => (window.settingsLoad ? window.settingsLoad() : Promise.resolve()), macros: () => (window.macrosLoad ? window.macrosLoad() : Promise.resolve())};
+  const loaders = {printers: loadOverview, files: loadFiles, console: loadConsole, jobs: loadJobs, history: () => Promise.all([loadHistory(), loadJobs()]), tune: loadMesh, settings: () => (window.settingsLoad ? window.settingsLoad() : Promise.resolve()), macros: () => (window.macrosLoad ? window.macrosLoad() : Promise.resolve())};
   function setView(v) {
-    if (!["home", "jobs", "history", "tune", "console", "files", "settings", "macros"].includes(v) || (v === "settings" && $("navsettings").hidden) || (v === "macros" && $("navmacros").hidden)) v = "home";
+    if (!["home", "printers", "jobs", "history", "tune", "console", "files", "settings", "macros"].includes(v) || (v === "settings" && $("navsettings").hidden) || (v === "macros" && $("navmacros").hidden)) v = "home";
     view = v;
     $("layout").style.display = v === "home" ? "" : "none"; $("foot").hidden = v !== "home";
-    for (const k of ["jobs", "history", "tune", "console", "files", "settings", "macros"]) $("v-" + k).hidden = v !== k;
+    for (const k of ["printers", "jobs", "history", "tune", "console", "files", "settings", "macros"]) $("v-" + k).hidden = v !== k;
     document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.view === v));
     try { history.replaceState(null, "", v === "home" ? location.pathname + location.search : "#" + v); } catch (e) { /* ignore */ }
     clearInterval(timer); timer = null;
-    if (loaders[v]) { const run = () => loaders[v]().catch(e => console.warn("view", v, e)); run(); if (v !== "settings" && v !== "macros") timer = setInterval(run, v === "console" ? 2000 : v === "tune" ? 15000 : 20000); }
+    if (loaders[v]) { const run = () => loaders[v]().catch(e => console.warn("view", v, e)); run(); if (v !== "settings" && v !== "macros") timer = setInterval(run, v === "console" ? 2000 : v === "printers" ? 4000 : v === "tune" ? 15000 : 20000); }
     window.scrollTo(0, 0);
   }
   $("nav").addEventListener("click", e => { const b = e.target.closest("button[data-view]"); if (b) setView(b.dataset.view); });
@@ -2741,13 +2818,13 @@ bootstrap();
       '<div class="sub">' + (CFG.spoolmanServer ? "Connected to " + escH(CFG.spoolmanServer) + (CFG.spoolmanFromUi ? " (set here)" : " (from config.json)") : "No Spoolman configured.") +
       ' Enter where this dashboard\'s server reaches Spoolman, for example when Spoolman runs on another machine. It is checked before it is saved and applies to every printer. The link in spool details uses this address unless <code>spoolman_url</code> is set in config.json.</div></div>' +
       '<div class="vcard"><h3>Graphics</h3><div class="gcols">' +
-      '<div><label>Printer graphic</label><select id="setpp">' + (md.id ? '<option value=""' + (md.auto ? " selected" : "") + ">Automatic: " + escH(md.label || md.id) + "</option>" : "") + opts("printer", md.id && md.auto ? null : g.printer) + '</select><div id="setppv" class="gprev"></div>' +
-      '<div class="sub">' + (md.id ? "Detected: " + escH(md.label || md.id) + " (" + escH(md.why || "") + "). Automatic follows the printer; pick another if it guessed wrong." : "The model could not be detected (" + escH(md.why || "no answer") + "); pick a graphic.") + '</div>' +
-      '<label class="rad" style="margin-top:8px"><input type="checkbox" id="setmotion"' + (CFG.motion !== false ? " checked" : "") + (CONTROLS ? "" : " disabled") + '> Moving toolhead and bed</label>' +
-      '<div class="sub">On a drawn printer the toolhead and the bed follow the printer\'s real position. Turn it off for a still picture; the fans keep spinning either way.</div></div>' +
+      '<div><label>Printer graphic</label><select id="setpp">' + (md.id ? '<option value=""' + (md.auto ? " selected" : "") + ">Automatic: " + escH(md.label || md.id) + "</option>" : "") + opts("printer", md.id && md.auto ? null : g.printer) + '</select><div id="setppv" class="gprev"></div></div>' +
       '<div><label>Toolchanger graphic</label><select id="setun">' + [["u1", "Snapmaker U1 toolchanger"], ["afc", "BoxTurtle unit (3D)"], ["none", "None"]].map(([v, l]) => '<option value="' + v + '"' + (v === (g.unit || "none") ? " selected" : "") + ">" + l + "</option>").join("") + '</select><div id="setunv" class="gprev tprev"></div></div>' +
       '<div><label>Spool graphic</label><select id="settp">' + opts("toolchanger", g.toolchanger) + '</select><div id="settpv" class="gprev tprev"></div></div></div>' +
-      '<button id="setgbtn">Apply graphics</button> <span class="sub">All three are independent: any printer picture, any toolchanger graphic and any spool style. The spool graphic is the filament roll on each tool / lane card.</span></div>' +
+      '<div class="sub gnote">' + (md.id ? "Detected: " + escH(md.label || md.id) + " (" + escH(md.why || "") + "). Automatic follows the printer; pick another if it guessed wrong." : "The model could not be detected (" + escH(md.why || "no answer") + "); pick a graphic.") + '</div>' +
+      '<div class="gopt"><label class="rad"><input type="checkbox" id="setmotion"' + (CFG.motion !== false ? " checked" : "") + (CONTROLS ? "" : " disabled") + '> Moving toolhead and bed</label>' +
+      '<span class="sub">On a drawn printer the toolhead and the bed follow the printer\'s real position. Turn it off for a still picture; the fans keep spinning either way.</span></div>' +
+      '<div class="gopt"><button id="setgbtn">Apply graphics</button><span class="sub">The three choices are independent: any printer picture with any toolchanger graphic and any spool style. The spool graphic is the filament roll on each tool / lane card.</span></div></div>' +
       '<div class="vcard"><h3>Upload a printer graphic</h3>' +
       '<div class="srow"><label>Name</label><input id="pkname" maxlength="60" placeholder="My printer"><label>Id</label><input id="pkid" maxlength="40" placeholder="my-printer"><input id="pkfile" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"></div>' +
       '<div id="pked" hidden><div class="srow" id="pktools"></div><div id="pkstage"><img id="pkimg" alt=""><svg id="pkov"></svg></div><div class="srow"><button id="pksave">Save printer graphic</button><button id="pkcancel">Cancel</button></div>' +

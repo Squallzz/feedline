@@ -147,7 +147,7 @@ Notes:
       }
 
   On a home network without a public domain, create a local DNS name (for example `feedline`) pointing at the proxy and sign its certificate with a local CA that your devices trust. If the name has dots and is not `.local`, `.lan` or similar, add it to `allowed_hosts`. If the proxy runs on the same machine, start Feedline with `--bind 127.0.0.1`. The live camera and touchscreen window are loaded by your browser straight from the printer over http, so an https page may block them (mixed content); this is not yet verified.
-- With several printers, the selected printer is remembered in the browser; some browsers do not keep that inside a frame, so a framed Feedline may fall back to the first printer.
+- With several printers, give each card its printer in the address: `url: http://192.168.1.60:8081/?p=<id>` (see Settings > Printers). Without `?p=` a framed Feedline shows the printer picked last in that browser, which some browsers do not remember inside a frame.
 - The setting can also be preset with `allow_embed` in `config.json`; the toggle in Settings overrides it.
 
 ## Install (Linux, about two minutes)
@@ -203,7 +203,16 @@ See `config.example.json`. Only `printer` is required. Anything the browser coul
 - **Name** shown at the top.
 - **Printers**: add more printers (name + IP/hostname). The server checks that Moonraker answers, rejects loopback/link-local
   addresses, and stores them in `printers.json`. Added printers use the generic setup (no custom macros). A header drop-down
-  switches printers (cookie `printer`). The first printer comes from `config.json` and cannot be removed in the UI.
+  switches printers. The first printer comes from `config.json` and cannot be removed in the UI.
+  Each printer has its own address: `http://<feedline>:8081/?p=<id>` (`?p=main` for the first one; the id is shown next to each
+  printer in the list and appears in the address bar after switching). A tab keeps the printer it was opened with, so two tabs,
+  or two cards on a Home Assistant dashboard, can show different printers at the same time. Without `?p=` the page opens the
+  printer picked last in that browser (cookie `printer`). Commands are queued per printer, and config-file backups are kept
+  per printer.
+- **Printers page**: with two or more printers a **Printers** entry appears in the left bar. It shows one card per printer:
+  state, the running file with progress, layer, time left and finish time, nozzle and bed temperatures, the camera picture
+  (or the printer's drawing when it has no camera) and the job's thumbnail. It refreshes every few seconds, shows a printer
+  that does not answer as offline without holding up the others, and has no controls: click a card to open that printer.
 - **Printer options**: tick **Remote touchscreen**, and choose which LED the **Light button** switches (Automatic finds one by name; or pick another / hide it). **Camera picture** turns the camera the right way up: rotation in quarter turns, mirror left-right, flip top-bottom. It starts from the printer's own webcam settings in Moonraker (the ones Mainsail and Fluidd use) and applies to live video and snapshots; a change here is kept for this dashboard only. Per printer.
 - **Moving toolhead and bed** (under Graphics): on by default; untick it for a still printer drawing. The fans keep spinning either way. `"motion": false` in `config.json` presets it.
 - **Graphics**: three independent choices, per printer: the printer picture, the toolchanger graphic (the 3D BoxTurtle unit, or none) and the spool graphic (the filament roll on each tool/lane card: spool wheel, simple reel, 3D spool, none, or your own SVG). With AFC, a dotted line in the loaded filament's color runs from the active lane to the toolhead.
