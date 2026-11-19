@@ -1,0 +1,24 @@
+[Unit]
+Description=Feedline helper: add unknown Snapmaker U1 RFID tags to Spoolman
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# printer and Spoolman come from "printer" and "spoolman" in /opt/feedline/config.json
+ExecStart=/usr/bin/python3 /opt/feedline/tools/spoolman_autoadd.py --config /opt/feedline/config.json
+Restart=always
+RestartSec=10
+DynamicUser=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

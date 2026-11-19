@@ -1,5 +1,5 @@
 #!/bin/sh
-# Feedline installer (Linux with systemd). Run from the folder holding these files:  sudo ./install.sh [PRINTER_HOST]
+# Feedline installer (Linux with systemd). Run from the folder holding these files:  sudo ./install.sh [PRINTER_HOST] [--with-autoadd]
 # Needs only python3 (3.8+). Safe to re-run: an existing config.json is never overwritten.
 set -eu
 
@@ -9,6 +9,10 @@ python3 -c 'import sys; sys.exit(sys.version_info < (3, 8))' || { echo "python 3
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
 DEST=/opt/feedline
+PRINTER=""; AUTOADD=0
+for arg in "$@"; do
+  case "$arg" in --with-autoadd) AUTOADD=1 ;; *) PRINTER="$arg" ;; esac
+done
 
 install -d -m 755 "$DEST" "$DEST/graphics"
 install -m 644 "$SRC/feedline.html" "$DEST/index.html"
@@ -16,7 +20,6 @@ install -m 644 "$SRC/feedline_server.py" "$DEST/feedline_server.py"
 [ -d "$SRC/graphics" ] && cp -r "$SRC/graphics/." "$DEST/graphics/"
 
 if [ ! -f "$DEST/config.json" ]; then
-  PRINTER="${1:-}"
   [ -n "$PRINTER" ] || { printf "Moonraker host or IP of your printer: "; read -r PRINTER; }
   python3 - "$SRC/config.example.json" "$DEST/config.json" "$PRINTER" <<'PY'
 import json, sys
@@ -36,5 +39,17 @@ systemctl enable --now feedline
 sleep 1
 systemctl --no-pager --lines=3 status feedline || true
 echo
+if [ "$AUTOADD" -eq 1 ]; then
+  install -d -m 755 "$DEST/tools"
+  install -m 644 "$SRC/tools/spoolman_autoadd.py" "$DEST/tools/spoolman_autoadd.py"
+  install -m 644 "$SRC/tools/feedline-autoadd.service" /etc/systemd/system/feedline-autoadd.service
+  systemctl daemon-reload
+  if python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("spoolman") else 1)' "$DEST/config.json"; then
+    systemctl enable --now feedline-autoadd
+    echo "Spoolman auto-add helper is running (journalctl -u feedline-autoadd -f)."
+  else
+    echo "Auto-add helper installed but NOT started: set \"spoolman\" (e.g. \"192.168.1.20:7912\") in $DEST/config.json, then: systemctl enable --now feedline-autoadd"
+  fi
+fi
 echo "Feedline is running on port 8081.  Edit $DEST/config.json and run: systemctl restart feedline"
 echo "Without a service manager:  python3 $DEST/feedline_server.py --root $DEST --state /var/lib/feedline"

@@ -58,13 +58,28 @@ Feedline reads your [Spoolman](https://github.com/Donkie/Spoolman) spools and sh
 
 **Set it up**
 1. In Spoolman add a **text** extra field for spools with the key `card_uids` (Spoolman > Settings > Extra Fields > Spool).
-2. For each spool, put its tag UID in that field (several tags can be separated by commas). The UID is shown in the spool popup on the dashboard (also for tags Spoolman does not know yet).
-3. In Feedline open **Settings > Spoolman** and enter the address your *Feedline server* reaches Spoolman at, for example `http://192.168.1.20:7912`. It is checked against Spoolman before it is saved and applies to every printer. The link in the popup uses the same address unless `spoolman_url` in `config.json` says otherwise (useful when browsers reach Spoolman under a different name).
+2. In Feedline open **Settings > Spoolman** and enter the address your *Feedline server* reaches Spoolman at, for example `http://192.168.1.20:7912`. It is checked against Spoolman before it is saved and applies to every printer. The link in the popup uses the same address unless `spoolman_url` in `config.json` says otherwise (useful when browsers reach Spoolman under a different name).
+3. Get your spools into Spoolman with their tag UIDs in `card_uids`: either let the **auto-add helper** below do it, or enter them by hand (several tags can be separated by commas; the UID is shown in the spool popup, also for tags Spoolman does not know yet).
 
 ![Settings > Spoolman](docs/spoolman-settings.png)
 
+### Auto-add helper (optional)
+
+`tools/spoolman_autoadd.py` watches the U1's loaded tags. When it sees a tag that no Spoolman spool has in `card_uids`, it creates the vendor, filament and spool from the tag's data (type, brand, colour, weight, temperatures), stores the UID, and runs `SET_SPOOL_ID` so the printer links that tag to the new spool (held back while a print is running). It never edits or deletes existing spools. Python standard library only.
+
+Install it together with Feedline (needs `"spoolman"` set in `config.json`, e.g. `"192.168.1.20:7912"`):
+
+    sudo ./install.sh --with-autoadd
+
+or run it yourself on any machine that can reach the printer (port 7125) and Spoolman:
+
+    python3 tools/spoolman_autoadd.py --printer 192.168.1.50 --spoolman http://192.168.1.20:7912
+    python3 tools/spoolman_autoadd.py --config /opt/feedline/config.json --dry-run --once     # only report, change nothing
+
+The service uses the `printer` and `spoolman` from `config.json` (an address set in Settings is not used by it). It was tested against a simulated printer and Spoolman (creates vendor, filament and spool, binds the channel, adds nothing twice) and with a read-only `--dry-run` against a real U1 and Spoolman. The Spoolman side is plain REST calls (`/api/v1/vendor`, `/filament`, `/spool`).
+
 Notes:
-- The Feedline dashboard itself only **reads** Spoolman. It does not create spools or change weights. Adding spools for new tags is done separately (in Spoolman, or by a helper that watches the printer's tags and creates the spool; that helper is not part of this repo yet).
+- The dashboard itself only **reads** Spoolman. Creating spools for new tags is the job of the optional auto-add helper above; nothing here changes existing spools or weights.
 - Colour, material and weight come from Spoolman when the tag is matched, and from the tag otherwise.
 - This tag matching is for Snapmaker U1 printers (filament system "Snapmaker U1"). Other printers show Moonraker's active Spoolman spool on the active tool, or a fixed spool per tool set with `tool_spools` in `config.json`.
 - Spoolman has no login either, so keep both on a trusted network.
