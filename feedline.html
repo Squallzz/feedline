@@ -339,6 +339,7 @@
     <span><button id="cammode" class="badge" title="Switch between live video and 1 fps snapshots">Use snapshots</button>
     <span id="camstat" class="badge">loading</span></span></div>
   <iframe id="camframe" title="Printer camera (live)" allow="autoplay; fullscreen"></iframe>
+  <img id="camlive" alt="Printer camera (live)" hidden>
   <img id="camimg" alt="Printer camera" hidden>
   <section id="move" hidden>
     <div class="mv">
@@ -1930,25 +1931,34 @@ async function tick() {
 }
 // Camera: one JPEG frame at a time (the printer offers WebRTC only, no MJPEG), about once a second.
 const camimg = document.getElementById("camimg"), camstat = document.getElementById("camstat");
-// Live mode embeds the printer's own WebRTC player page (/webcam/webrtc); snapshot mode is the fallback.
+// Live mode: a WebRTC camera is the printer's own player page (/webcam/webrtc) in a frame. An MJPEG camera is a plain
+// picture stream, so it is shown in an <img>, which scales it to the box (in a frame the browser shows it at full size
+// and only the top-left corner is visible). Snapshot mode is the fallback.
 let CAM_PAGE = "";
-const camframe = document.getElementById("camframe"), cambtn = document.getElementById("cammode");
+const camframe = document.getElementById("camframe"), camlive = document.getElementById("camlive"), cambtn = document.getElementById("cammode");
 let camMode = "live";
 try { camMode = localStorage.getItem("camMode") || "live"; } catch (e) {}
 function setCam(m) {
   camMode = m;
   try { localStorage.setItem("camMode", m); } catch (e) {}
-  const live = m === "live";
-  camframe.hidden = !live; camimg.hidden = live;
-  camframe.src = live ? CAM_PAGE : "about:blank";   // blank frame closes the WebRTC session
+  const live = m === "live", mjpeg = !!(CFG && CFG.camera && CFG.camera.mode === "mjpeg");
+  camframe.hidden = !live || mjpeg; camlive.hidden = !live || !mjpeg; camimg.hidden = live;
+  const fsrc = live && !mjpeg ? CAM_PAGE : "about:blank";       // blank frame closes the WebRTC session
+  if (camframe.getAttribute("src") !== fsrc) camframe.src = fsrc;
+  if (live && mjpeg) { if (camlive.getAttribute("src") !== CAM_PAGE) camlive.src = CAM_PAGE; }
+  else camlive.removeAttribute("src");                           // no src: the browser stops reading the stream
   cambtn.textContent = live ? "Use snapshots" : "Use live video";
-  camstat.textContent = live ? "live (WebRTC)" : "loading";
+  camstat.textContent = live ? (mjpeg ? "connecting" : "live (WebRTC)") : "loading";
 }
+// keep the picture's own shape (4:3, 16:9, ...) so it fills the box without bars
+const camShape = im => { if (im.naturalWidth && im.naturalHeight) camlive.style.aspectRatio = camimg.style.aspectRatio = im.naturalWidth + " / " + im.naturalHeight; };
+camlive.addEventListener("load", () => { camShape(camlive); if (camMode === "live") camstat.textContent = "live (MJPEG)"; });
+camlive.addEventListener("error", () => { if (camMode === "live" && camlive.getAttribute("src")) camstat.textContent = "unavailable"; });
 cambtn.onclick = () => setCam(camMode === "live" ? "snap" : "live");
 function camNext() {
   if (document.hidden || camMode !== "snap") return setTimeout(camNext, 1000);
   const im = new Image();
-  im.onload = () => { camimg.src = im.src; camstat.textContent = "live"; setTimeout(camNext, 800); };
+  im.onload = () => { camimg.src = im.src; camShape(im); camstat.textContent = "live"; setTimeout(camNext, 800); };
   im.onerror = () => { camstat.textContent = "unavailable"; setTimeout(camNext, 4000); };
   im.src = (HOSTED ? "/cam/snapshot" : MR_HTTP + "/webcam/snapshot.jpg") + "?t=" + Date.now();
 }
