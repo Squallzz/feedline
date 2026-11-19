@@ -1039,6 +1039,172 @@ const fanSvg = (id, cx, cy, r) => '<circle cx="' + cx + '" cy="' + cy + '" r="' 
     '<g id="' + id + '">' + [0, 72, 144, 216, 288].map(a => '<path d="M' + cx + ' ' + cy + ' q' + (r * .55) + ' ' + (-r * .15) + ' ' + (r * .8) + ' ' + (-r * .75) + ' q' + (-r * .6) + ' ' + (r * .1) + ' ' + (-r * .8) + ' ' + (r * .75) + 'z" fill="#8f8bd8" opacity=".9" transform="rotate(' + a + ' ' + cx + ' ' + cy + ')"/>').join("") + '</g>' +
     '<circle cx="' + cx + '" cy="' + cy + '" r="' + (r * .24) + '" fill="#2d2a5a" stroke="#6a66b0" stroke-width=".8"/>';
 // ---- Printer graphic from a picture (built-in "generic" or an uploaded pack): overlays placed at the pack's anchors ----
+// ---- Drawn printer models: one simplified front view per printer shape, colored per model; the toolhead and the bed
+// (or the gantry) follow the printer's real position. The server picks the model (guess_model); Settings can override it.
+//   f     family: "box" enclosed cube, bed moves in Z   "gantry" cube with a flying gantry, bed fixed
+//                 "sling" open frame, bed moves in Y, gantry in Z   "delta" three towers
+//   b     body colors [top, bottom]   acc accent color   sc size   frame: built from extrusions   open: no panels
+//   scr   where the screen is: "tr" top right, "base" in the base, "none"
+const MODELS = {
+  "qidi-plus4": {f: "box", b: ["#454851", "#27292e"], acc: "#3d8bfd", scr: "tr"},
+  "qidi-xmax3": {f: "box", b: ["#34363c", "#1c1d21"], acc: "#3d8bfd", scr: "tr", top: 74},
+  "qidi-xplus3": {f: "box", b: ["#34363c", "#1c1d21"], acc: "#3d8bfd", scr: "tr", sc: .93},
+  "qidi-q1pro": {f: "box", b: ["#50535c", "#2c2e34"], acc: "#3d8bfd", scr: "tr", sc: .86},
+  "qidi-q2": {f: "box", b: ["#5a5d66", "#33353b"], acc: "#3d8bfd", scr: "tr", sc: .9},
+  "qidi-xsmart3": {f: "box", b: ["#34363c", "#1c1d21"], acc: "#3d8bfd", scr: "tr", sc: .74},
+  "creality-k1": {f: "box", b: ["#5b5f69", "#30333a"], acc: "#19b5c9", scr: "tr", sc: .84, top: 58},
+  "creality-k1max": {f: "box", b: ["#5b5f69", "#30333a"], acc: "#19b5c9", scr: "tr", top: 58},
+  "creality-k2plus": {f: "box", b: ["#3a3d44", "#1f2125"], acc: "#19b5c9", scr: "tr", top: 80},
+  "creality-ender3": {f: "sling", b: ["#2b2d33", "#17181c"], acc: "#19b5c9", scr: "base"},
+  "voron-24": {f: "gantry", frame: true, b: ["#1d1d22", "#101013"], acc: "#e03a3a", scr: "base"},
+  "voron-trident": {f: "box", frame: true, b: ["#1d1d22", "#101013"], acc: "#e03a3a", scr: "base"},
+  "voron-v0": {f: "box", frame: true, b: ["#1d1d22", "#101013"], acc: "#e03a3a", scr: "none", sc: .66},
+  "voron-switchwire": {f: "sling", b: ["#1d1d22", "#101013"], acc: "#e03a3a", scr: "base", sc: .92},
+  "ratrig-vcore": {f: "box", frame: true, open: true, b: ["#2a2c31", "#16171a"], acc: "#35c46a", scr: "none"},
+  "sovol-sv08": {f: "gantry", frame: true, open: true, b: ["#232429", "#121316"], acc: "#6a7dff", scr: "base"},
+  "sovol-sv06": {f: "sling", b: ["#232429", "#121316"], acc: "#6a7dff", scr: "base"},
+  "elegoo-neptune4": {f: "sling", b: ["#33415a", "#1b2334"], acc: "#4f8dff", scr: "base"},
+  "anycubic-kobra-s1": {f: "box", b: ["#4b4f58", "#292b31"], acc: "#2aa1ff", scr: "tr", sc: .88},
+  "anycubic-kobra": {f: "sling", b: ["#40444c", "#22242a"], acc: "#2aa1ff", scr: "base"},
+  "flashforge-ad5m": {f: "box", b: ["#2c2e33", "#151619"], acc: "#e2453a", scr: "tr", sc: .82, top: 56},
+  "prusa-mk": {f: "sling", b: ["#222327", "#111214"], acc: "#fa6831", scr: "base", sc: .94},
+  "flsun-delta": {f: "delta", b: ["#2f3238", "#17181c"], acc: "#00a0e9", scr: "base"},
+  "corexy-box": {f: "box", b: ["#f1f1f5", "#d3d3dc"], acc: "#7A63F2", scr: "tr"},
+  "corexy-frame": {f: "box", frame: true, open: true, b: ["#2a2c31", "#16171a"], acc: "#7A63F2", scr: "none"},
+  "bedslinger": {f: "sling", b: ["#e9e9ee", "#c9c9d3"], acc: "#7A63F2", scr: "base"},
+  "delta": {f: "delta", b: ["#e9e9ee", "#c9c9d3"], acc: "#7A63F2", scr: "base"}
+};
+// Build one model: {body (SVG markup on a 600 x 520 canvas), width, height, anchors, motion}. `sfx` is added to every id
+// (a second copy, e.g. the Settings preview, must not share ids with the live scene). `noHead` leaves the toolhead out
+// (printers with several tools show one marker per tool instead, as on a picture).
+function modelPack(id, sfx, noHead) {
+  const s = MODELS[id]; if (!s) return null;
+  sfx = sfx || "";
+  const I = n => n + sfx, sc = s.sc || 1, b = s.b, acc = s.acc, light = parseInt(b[0].slice(1, 3), 16) > 128;
+  const trim = shade(b[1], light ? .78 : 1.6), dark = "#0a0818", plate = "#3b3a4a";
+  const o = ['<defs><linearGradient id="' + I("mb") + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + b[0] + '"/><stop offset="1" stop-color="' + b[1] + '"/></linearGradient>' +
+    '<linearGradient id="' + I("mr") + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b9b9c6"/><stop offset="1" stop-color="#5c5c6c"/></linearGradient></defs>'];
+  const R = (x, y, w, h, fill, more) => '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="' + fill + '"' + (more ? " " + more : "") + "/>";
+  const fillB = "url(#" + I("mb") + ")", fillR = "url(#" + I("mr") + ")", edge = 'stroke="' + trim + '" stroke-width="1.5"';
+  const screen = (x, y, w, h) => { A.screen = {x, y, w, h}; return R(x, y, w, h, "#0d0d14", 'rx="4" stroke="#2b2b36" stroke-width="2"'); };
+  const head = (x, y) => '<g transform="translate(' + x + " " + y + ')"><g id="' + I("mvhead") + '">' + (noHead ? "" :
+    R(-21, -50, 42, 34, light ? "#33353c" : shade(b[0], 1.35), 'rx="5" stroke="#0b0b10" stroke-width="1.2"') + R(-21, -50, 42, 9, acc, 'rx="4"') +
+    '<circle cx="0" cy="-30" r="9" fill="#0d0d14" opacity=".55"/>' + R(-8, -16, 16, 9, "#8d8d99", 'rx="1.5"') +
+    '<polygon id="' + I("snz0") + '" points="-5,-7 5,-7 1.5,0 -1.5,0" fill="#c9a66b"/>') + "</g></g>";
+  const bedG = (y, x0, x1, more) => '<g id="' + I("mvbed") + '">' + (more || "") +
+    '<polygon points="' + (x0 + 25) + "," + y + " " + (x1 - 25) + "," + y + " " + x1 + "," + (y + 26) + " " + x0 + "," + (y + 26) + '" fill="' + plate + '" stroke="#6a66b0" stroke-width="1.5"/>' +
+    R(x0, y + 26, x1 - x0, 8, "#1b1838", 'rx="2" stroke="#352F6B"') + "</g>";
+  const A = {}, M = {type: s.f === "box" ? "bedz" : s.f === "delta" ? "delta" : "gantryz"};
+  o.push('<ellipse cx="300" cy="494" rx="' + (s.f === "delta" ? 200 : 235) + '" ry="10" fill="#000" opacity=".4"/>');
+  let nozY, toolX = 300;
+  if (s.f === "box" || s.f === "gantry") {
+    const fr = !!s.frame, tb = fr ? 24 : (s.top || 66), bb = fr ? 52 : 42, sd = fr ? 24 : 34;
+    const wx = 70 + sd, ww = 460 - 2 * sd, wy = 40 + tb + (fr ? 0 : 6), wyb = 480 - bb - (fr ? 0 : 4), wh = wyb - wy;
+    if (!s.open) {                                            // the chamber: back wall, side walls, floor
+      o.push(R(wx, wy, ww, wh, dark, 'rx="6"') + R(wx + 12, wy + 12, ww - 24, wh - 44, fr ? "#1c1a30" : "#2a2748") +
+        '<polygon points="' + wx + "," + wy + " " + (wx + 12) + "," + (wy + 12) + " " + (wx + 12) + "," + (wyb - 32) + " " + wx + "," + wyb + '" fill="#1f1c3a"/>' +
+        '<polygon points="' + (wx + ww) + "," + wy + " " + (wx + ww - 12) + "," + (wy + 12) + " " + (wx + ww - 12) + "," + (wyb - 32) + " " + (wx + ww) + "," + wyb + '" fill="#1f1c3a"/>' +
+        '<polygon points="' + wx + "," + wyb + " " + (wx + ww) + "," + wyb + " " + (wx + ww - 12) + "," + (wyb - 32) + " " + (wx + 12) + "," + (wyb - 32) + '" fill="#15122b"/>');
+      A.chamber = {x: wx + 12, y: wy + 12, w: ww - 24, h: wh - 24};
+      // fans on the back wall, out of the way of what moves: low when the bed starts at the top, high when the gantry starts at the bottom
+      A.chamberTemp = {x: wx + ww - 74, y: wy + wh * .5}; A.partFan = {x: wx + 38, y: s.f === "box" ? wyb - 74 : wy + 74}; A.chamberFan = {x: wx + ww - 38, y: s.f === "box" ? wyb - 52 : wy + 52};
+    } else {                                                  // open frame: the rear posts show through
+      o.push(R(wx + 26, wy + 4, 12, wh - 4, b[1], 'opacity=".55"') + R(wx + ww - 38, wy + 4, 12, wh - 4, b[1], 'opacity=".55"') + R(wx + 26, wy + 4, ww - 52, 10, b[1], 'opacity=".55"'));
+    }
+    const bedz = s.f === "box", railY = bedz ? wy + 30 : wyb - 40 + 13 - 48;
+    nozY = railY + 48;
+    const bedY = nozY - 13;                                   // at Z = 0 the nozzle stands on the middle of the plate
+    M.z = bedz ? wyb - 44 - bedY : railY - (wy + 26); M.x = ww - 20 - 64;
+    if (bedz) o.push(R(wx + 44, wy + 16, 5, wh - 30, fillR, 'opacity=".7"') + R(wx + ww - 49, wy + 16, 5, wh - 30, fillR, 'opacity=".7"'));     // Z lead screws
+    const gantry = '<g id="' + I("mvgan") + '">' + R(wx + 10, railY - 3, ww - 20, 7, fillR, 'rx="3"') + R(wx + 4, railY - 9, 18, 19, trim, 'rx="3"') + R(wx + ww - 22, railY - 9, 18, 19, trim, 'rx="3"') + head(300, nozY) + "</g>";
+    const bed = bedG(bedY, 140, 460, bedz ? R(170, bedY + 30, 260, 9, "#15122b", 'rx="2"') : "");
+    o.push(bedz ? gantry + bed : bed + gantry);               // the bed passes in front of a fixed gantry; a flying gantry passes in front of the bed
+    A.bed = {x: 150, y: bedY, w: 300, h: 28};
+    if (fr) {                                                 // extrusion frame with a skirt
+      o.push(R(70, 40, sd, 440 - bb, fillB, edge) + R(530 - sd, 40, sd, 440 - bb, fillB, edge) + R(70, 40, 460, tb, fillB, edge) + R(70, 480 - bb, 460, bb, fillB, 'rx="4" ' + edge));
+      for (const [cx, cy] of [[70, 40], [530 - sd, 40]]) o.push(R(cx, cy, sd, tb, acc, 'opacity=".9"'));
+      for (let k2 = 0; k2 < 7; k2++) o.push('<polygon points="' + [0, 60, 120, 180, 240, 300].map(a => (128 + k2 * 30 + 9 * Math.cos(a * Math.PI / 180)).toFixed(1) + "," + (480 - bb / 2 + 9 * Math.sin(a * Math.PI / 180)).toFixed(1)).join(" ") + '" fill="' + acc + '" opacity=".55"/>');
+      if (s.scr === "base") o.push(screen(372, 480 - bb + 10, 92, bb - 20));
+      if (!s.open) o.push('<polygon points="' + (wx + 8) + "," + (wy + 4) + " " + (wx + 74) + "," + (wy + 4) + " " + (wx + 40) + "," + (wyb - 4) + " " + (wx + 8) + "," + (wyb - 4) + '" fill="#fff" opacity=".05"/>');
+      A.light = {x: 530 - sd / 2, y: wy + 40};
+    } else {                                                  // panel body around the window, with a door
+      o.push('<path fill-rule="evenodd" d="M86 40 H514 Q530 40 530 56 V464 Q530 480 514 480 H86 Q70 480 70 464 V56 Q70 40 86 40 Z M' + wx + " " + wy + " V" + wyb + " H" + (wx + ww) + " V" + wy + ' Z" fill="' + fillB + '" ' + edge + "/>" +
+        R(wx, wy, ww, wh, "none", 'rx="6" stroke="' + (light ? "#1b1b22" : "#08080b") + '" stroke-width="5"') + R(70, 40 + tb - 3, 460, 3, acc, 'opacity=".85"') +
+        '<polygon points="' + (wx + 8) + "," + (wy + 4) + " " + (wx + 74) + "," + (wy + 4) + " " + (wx + 40) + "," + (wyb - 4) + " " + (wx + 8) + "," + (wyb - 4) + '" fill="#fff" opacity=".05"/>' +
+        R(wx + ww + 10, wy + wh * .42, 8, 66, light ? "#1b1b22" : "#08080b", 'rx="3"') + R(96, 480, 46, 7, "#101014", 'rx="2"') + R(458, 480, 46, 7, "#101014", 'rx="2"'));
+      if (s.scr === "tr") o.push(screen(404, 40 + (tb - Math.min(48, tb - 14)) / 2, 96, Math.min(48, tb - 14)));
+      A.light = {x: 513, y: wy + 26};
+    }
+  } else if (s.f === "sling") {
+    const bedY = 392, railY = bedY + 13 - 48;
+    nozY = railY + 48; M.z = railY - 104; M.x = 250; M.y = 12;
+    o.push(R(118, 62, 24, 372, fillB, edge) + R(458, 62, 24, 372, fillB, edge) + R(106, 52, 388, 24, fillB, 'rx="4" ' + edge) + R(106, 52, 30, 24, acc, 'rx="4"') + R(464, 52, 30, 24, acc, 'rx="4"') +
+      R(148, 76, 5, 352, fillR, 'opacity=".7"') + R(447, 76, 5, 352, fillR, 'opacity=".7"'));
+    o.push(R(84, 430, 432, 50, fillB, 'rx="8" ' + edge) + R(84, 430, 432, 4, acc, 'opacity=".85"') + R(100, 480, 46, 7, "#101014", 'rx="2"') + R(454, 480, 46, 7, "#101014", 'rx="2"'));
+    if (s.scr === "base") o.push(screen(396, 440, 92, 30));
+    o.push(bedG(bedY, 140, 460, R(190, bedY + 30, 220, 10, "#15122b", 'rx="2"')));
+    o.push('<g id="' + I("mvgan") + '">' + R(104, railY - 8, 392, 16, fillB, 'rx="3" ' + edge) + R(108, railY - 16, 44, 32, acc, 'rx="4"') + R(448, railY - 16, 44, 32, acc, 'rx="4"') + R(160, railY - 2, 280, 4, fillR) + head(300, nozY) + "</g>");
+    A.bed = {x: 150, y: bedY, w: 300, h: 28}; A.light = {x: 300, y: 64};
+  } else {                                                    // delta: the three arms are redrawn every frame (motionApply)
+    const bedY = 404;
+    nozY = bedY + 13; M.z = 170; M.x = 120;
+    M.towers = [[150, 0], [300, 140], [450, 0]]; M.arm = 215; M.ay = nozY - 30;      // [x, extra reach of the rear tower]
+    o.push(R(290, 56, 20, 380, b[1], 'opacity=".8"') + R(140, 56, 20, 380, fillB, edge) + R(440, 56, 20, 380, fillB, edge) + R(118, 36, 364, 28, fillB, 'rx="8" ' + edge) + R(118, 60, 364, 4, acc, 'opacity=".85"'));
+    o.push(R(112, 432, 376, 48, fillB, 'rx="10" ' + edge) + R(112, 432, 376, 4, acc, 'opacity=".85"'));
+    if (s.scr === "base") o.push(screen(254, 442, 92, 30));
+    o.push('<g id="' + I("mvbed") + '"><ellipse cx="300" cy="' + (bedY + 13) + '" rx="132" ry="17" fill="' + plate + '" stroke="#6a66b0" stroke-width="1.5"/></g>');
+    M.towers.forEach((t, i) => o.push('<line id="' + I("mva" + i) + '" x1="' + t[0] + '" y1="200" x2="300" y2="' + M.ay + '" stroke="' + (i === 1 ? "#5c5c6c" : "#b9b9c6") + '" stroke-width="4" stroke-linecap="round"/>' +
+      '<rect id="' + I("mvc" + i) + '" x="' + (t[0] - 15) + '" y="188" width="30" height="24" rx="4" fill="' + acc + '"' + (i === 1 ? ' opacity=".7"' : "") + "/>"));
+    o.push('<g id="' + I("mvgan") + '">' + head(300, nozY) + "</g>");
+    A.bed = {x: 170, y: bedY, w: 260, h: 26}; A.light = {x: 300, y: 50};
+  }
+  if (!noHead) { A.tools = [{x: toolX, y: nozY - 33}]; M.head = true; }
+  // smaller machines are drawn smaller, standing on the same floor
+  const T = (x, y) => [300 + (x - 300) * sc, 490 + (y - 490) * sc];
+  for (const k in A) {
+    const p = k === "tools" ? A.tools[0] : A[k], [x, y] = T(p.x, p.y);
+    p.x = x; p.y = y; if (p.w) { p.w *= sc; p.h *= sc; }
+  }
+  for (const k of ["x", "y", "z", "arm"]) if (M[k]) M[k] *= sc;
+  M.sc = sc;
+  return {body: '<g transform="translate(300 490) scale(' + sc + ') translate(-300 -490)">' + o.join("") + "</g>", width: 600, height: 520, anchors: A, motion: M};
+}
+// Where the toolhead and bed are, as fractions of their travel; the scene eases towards the target every frame.
+const MO = {x: .5, y: .5, z: 0, tx: .5, ty: .5, tz: 0, done: false, last: 0};
+function motionTarget(st, grownPx) {
+  const m = PK.motion; if (!m) return;
+  const th = st.toolhead || {}, lo = th.axis_minimum || [], hi = th.axis_maximum || [], homed = th.homed_axes || "";
+  const p = (st.motion_report || {}).live_position || th.position || [];
+  const fr = (i, d) => hi[i] > lo[i] && typeof p[i] === "number" && homed.includes("xyz"[i]) ? clamp((p[i] - lo[i]) / (hi[i] - lo[i]), 0, 1) : d;
+  MO.tx = fr(0, .5); MO.ty = fr(1, .5);
+  // while a print with a preview is shown the nozzle rides on top of the growing part; otherwise it is the real Z height
+  MO.tz = grownPx != null ? clamp(grownPx / (m.z * m.k), 0, 1) : fr(2, .12);
+}
+function motionApply(dt) {
+  const m = PK.motion; if (!m || !sceneReady) return;
+  let moved = !MO.done;
+  for (const a of "xyz") { const d = MO["t" + a] - MO[a]; if (Math.abs(d) > .0004) { MO[a] += d * Math.min(1, dt * 3); moved = true; } }
+  if (!moved) return;
+  MO.done = true;
+  const dx = (MO.x - .5) * m.x, dz = MO.z * m.z, k = m.k, bedz = m.type === "bedz";
+  const set = (id, x, y) => { S(id).setAttribute("transform", "translate(" + x.toFixed(2) + " " + y.toFixed(2) + ")"); S(id + "o").setAttribute("transform", "translate(" + (x * k).toFixed(2) + " " + (y * k).toFixed(2) + ")"); };
+  set("mvhead", dx / m.sc, 0); S("mvheado").setAttribute("transform", "translate(" + (dx * k).toFixed(2) + " 0)");
+  set("mvgan", 0, bedz ? 0 : -dz / m.sc); S("mvgano").setAttribute("transform", "translate(0 " + (bedz ? 0 : -dz * k).toFixed(2) + ")");
+  const by = bedz ? dz : m.y ? (MO.y - .5) * m.y : 0;
+  set("mvbed", 0, by / m.sc); S("mvbedo").setAttribute("transform", "translate(0 " + (by * k).toFixed(2) + ")");
+  if (m.towers) m.towers.forEach((t, i) => {                 // delta arms: each carriage sits where its arm reaches the effector
+    const ex = 300 + dx / m.sc, ey = m.ay - dz / m.sc, d = Math.abs(t[0] - ex) + t[1], cy = ey - Math.sqrt(Math.max(0, (m.arm / m.sc) ** 2 - d * d));
+    const ln = S("mva" + i); ln.setAttribute("x1", t[0]); ln.setAttribute("y1", cy.toFixed(1)); ln.setAttribute("x2", ex.toFixed(1)); ln.setAttribute("y2", ey.toFixed(1));
+    S("mvc" + i).setAttribute("y", (cy - 12).toFixed(1));
+  });
+  if (m.at) {                                                 // the lines from the cards follow the head
+    const x = m.at.x + dx * k, y = m.at.y - (bedz ? 0 : dz * k);
+    if (m.ta) { m.ta.x = x; m.ta.y = y - 28; }
+    if (m.tp) { m.tp.x = x; m.tp.y = y - 10; }
+    const now = performance.now();
+    if (now - MO.last > 90) { MO.last = now; drawConnectors(); }
+  }
+}
 function previewSvg() {
   const {cx, base, maxH, maxW} = PV;
   return '<g id="sthg" style="display:none" pointer-events="none"><clipPath id="sthclip"><rect id="sthrect" x="' + (cx - 400) + '" y="' + (base - maxH - 10) + '" width="800" height="' + (maxH + 10) + '"/></clipPath>' +
@@ -1055,12 +1221,16 @@ function sceneInitImage(st) {
   const o = [];
   if (afc) o.push('<g id="btg"></g>');
   o.push('<ellipse cx="260" cy="' + (Y0 + H * k + 8) + '" rx="' + (W * k * .42) + '" ry="8" fill="#000" opacity=".35"/>');
-  o.push('<image href="' + escH(PK.url) + '" x="' + X0.toFixed(1) + '" y="' + Y0 + '" width="' + (W * k).toFixed(1) + '" height="' + (H * k).toFixed(1) + '" preserveAspectRatio="none"/>');
+  const mo = PK.motion || null;                               // a drawn model: its toolhead and bed move
+  if (PK.body) o.push('<g transform="translate(' + X0.toFixed(1) + " " + Y0 + ") scale(" + k.toFixed(4) + ')">' + PK.body + "</g>");
+  else o.push('<image href="' + escH(PK.url) + '" x="' + X0.toFixed(1) + '" y="' + Y0 + '" width="' + (W * k).toFixed(1) + '" height="' + (H * k).toFixed(1) + '" preserveAspectRatio="none"/>');
+  if (mo) { mo.k = k; MO.done = false; }
   const bed = a.bed, ch = a.chamber;
   if (ch) o.push('<rect id="cavglow" x="' + X(ch.x) + '" y="' + Y(ch.y) + '" width="' + (ch.w * k).toFixed(1) + '" height="' + (ch.h * k).toFixed(1) + '" fill="#ff8a3a" opacity="0" pointer-events="none"/>');
   if (ch && CFG.light) o.push('<rect id="chdark" x="' + X(ch.x) + '" y="' + Y(ch.y) + '" width="' + (ch.w * k).toFixed(1) + '" height="' + (ch.h * k).toFixed(1) + '" fill="#000" opacity="0" pointer-events="none"/>');
   if (bed) {
     const bx = X(bed.x), by = Y(bed.y), bw = bed.w * k, bh = bed.h * k;
+    o.push('<g id="mvbedo">');                                 // everything that lies on the plate moves with it
     o.push('<ellipse id="bedglow" cx="' + (bx + bw / 2).toFixed(1) + '" cy="' + (by + bh / 2).toFixed(1) + '" rx="' + (bw / 2).toFixed(1) + '" ry="' + Math.max(6, bh).toFixed(1) + '" fill="#ff7a2a" opacity="0" pointer-events="none"/>');
     const wave = (x, y, w, d) => '<path class="wv" style="animation-delay:' + d + 's" d="M' + x + ' ' + y + ' q' + (w / 8) + ' -6 ' + (w / 4) + ' 0 t' + (w / 4) + ' 0 t' + (w / 4) + ' 0 t' + (w / 4) + ' 0"/>';
     o.push('<g id="bedwaves" style="display:none" pointer-events="none">' + wave((bx + bw * .1).toFixed(1), by, (bw * .8).toFixed(1), 0) + wave((bx + bw * .14).toFixed(1), by, (bw * .72).toFixed(1), .7) + wave((bx + bw * .18).toFixed(1), by, (bw * .64).toFixed(1), 1.4) + '</g>');
@@ -1068,6 +1238,7 @@ function sceneInitImage(st) {
     Object.assign(PV, {cx: +(bx + bw / 2).toFixed(1), base: +(by + bh * .45).toFixed(1), maxH: ch ? ch.h * k * .55 : 80, maxW: bw * .5});
     o.push(previewSvg());
     o.push('<text id="sbedt" x="' + (bx + bw / 2).toFixed(1) + '" y="' + (by + bh * .8).toFixed(1) + '" text-anchor="middle" font-size="' + clamp(bw / 17, 7, 12) + '" font-weight="700" fill="#fff" stroke="#000" stroke-opacity=".5" stroke-width=".4" paint-order="stroke">BED --</text>');
+    o.push("</g>");
   }
   if (a.chamberTemp && CH.sensor) o.push('<text id="scavt" x="' + X(a.chamberTemp.x) + '" y="' + Y(a.chamberTemp.y) + '" text-anchor="middle" font-size="' + clamp(W * k * .04, 9, 17) + '" font-weight="700" fill="#fff" stroke="#000" stroke-opacity=".5" stroke-width=".4" paint-order="stroke">--</text>');
   if (a.partFan && PK.partFan) {
@@ -1089,13 +1260,16 @@ function sceneInitImage(st) {
     const p = tl[i] || {x: W * (NT === 1 ? .5 : .28 + .44 * i / (NT - 1)), y: H * .27};
     const x = X(p.x), y = Y(p.y);
     TA[i] = {x, y: y - 28}; TOOLPT[i] = {x, y: y - 10};
+    const ride = mo && mo.head && i === 0;                     // this marker sits on the moving toolhead: its labels go above the head
+    if (ride) { Object.assign(mo, {at: {x, y}, ta: TA[i], tp: TOOLPT[i]}); o.push('<g id="mvgano"><g id="mvheado">'); }
     if (UNITSEL === "u1") o.push('<g transform="translate(' + x + ',' + y + ')" pointer-events="none">' + u1Head(i) + "</g>");
     o.push('<circle id="sgl' + i + '" cx="' + x + '" cy="' + y + '" r="15" fill="#ff8a3a" opacity="0" pointer-events="none"/>' +
-      '<circle id="sdk' + i + '" cx="' + x + '" cy="' + y + '" r="9" fill="#101016" stroke="#352F6B" stroke-width="1"/>' +
-      '<circle id="stip' + i + '" cx="' + x + '" cy="' + y + '" r="5.5" fill="#2A2750"/>' +
+      '<circle id="sdk' + i + '" cx="' + x + '" cy="' + y + '" r="' + (ride ? 7 : 9) + '" fill="#101016" stroke="#352F6B" stroke-width="1"/>' +
+      '<circle id="stip' + i + '" cx="' + x + '" cy="' + y + '" r="' + (ride ? 4.2 : 5.5) + '" fill="#2A2750"/>' +
       '<text id="slb' + i + '" x="' + x + '" y="' + (y - 14) + '" text-anchor="middle" font-size="11" font-weight="600" fill="#6B66A5">' + (NT > 1 ? "T" + i : "") + '</text>' +
-      '<text id="sfh' + i + '" x="' + x + '" y="' + (y + 21) + '" text-anchor="middle" font-size="8" font-weight="700" fill="#8a8a96" stroke="#000" stroke-opacity=".45" stroke-width=".3" paint-order="stroke">' + (i < N ? "--" : "") + '</text>' +
-      '<text id="sfp' + i + '" x="' + x + '" y="' + (y + 30) + '" text-anchor="middle" font-size="6.5" font-weight="700" fill="#8a8a96" stroke="#000" stroke-opacity=".45" stroke-width=".3" paint-order="stroke"></text>');
+      '<text id="sfh' + i + '" x="' + x + '" y="' + (ride ? y - 17 : y + 21) + '" text-anchor="middle" font-size="8" font-weight="700" fill="#8a8a96" stroke="#000" stroke-opacity=".45" stroke-width=".3" paint-order="stroke">' + (i < N ? "--" : "") + '</text>' +
+      '<text id="sfp' + i + '" x="' + x + '" y="' + (ride ? y - 26 : y + 30) + '" text-anchor="middle" font-size="6.5" font-weight="700" fill="#8a8a96" stroke="#000" stroke-opacity=".45" stroke-width=".3" paint-order="stroke"></text>');
+    if (ride) o.push("</g></g>");
   }
   if (a.light && CFG.light) {
     const x = X(a.light.x), y = Y(a.light.y);
@@ -1326,13 +1500,16 @@ function sceneUpdate(st, cols, loaded) {
   {   // part preview on the plate
     const ps = st.print_stats || {}, vs = st.virtual_sdcard || {}, act = ps.state === "printing" || ps.state === "paused";
     const g = $("sthg"), show = act && !!thumbUrl;
+    let grown = null;
     g.style.display = show ? "" : "none";
     if (show) {
       if ($("sth").getAttribute("href") !== thumbUrl) { $("sth").setAttribute("href", thumbUrl); $("sth0").setAttribute("href", thumbUrl); thumbFit(thumbUrl); }
       const tl = ps.info && ps.info.total_layer, p = tl && ps.info.current_layer != null ? ps.info.current_layer / tl : (vs.progress || 0);
       const hh = thumbGeo.bot - thumbGeo.top, h = hh * clamp(p, 0, 1);       // the part grows from the plate upwards
       $("sthrect").setAttribute("y", (thumbGeo.bot - h).toFixed(1)); $("sthrect").setAttribute("height", (h + 4).toFixed(1));
+      if (g !== DUMMY) grown = h;
     }
+    motionTarget(st, grown);                                  // drawn models: the toolhead and bed follow the printer
   }
   const yb = 380;   // static build plate (only its color reflects the bed temperature)
   $("bedtop").setAttribute("points", "168," + yb + " 352," + yb + " 376," + (yb + 40) + " 144," + (yb + 40));
@@ -1547,6 +1724,8 @@ async function applyGraphics() {
   if (pp.custom) {
     const a = pp.anchors || {};
     PK = {id: pp.id, kind: "image", url: "/packs/printer/" + encodeURIComponent(pp.id) + "/" + encodeURIComponent(pp.file), width: pp.width, height: pp.height, anchors: a};
+  } else if (MODELS[pp.id]) {
+    PK = Object.assign({id: pp.id, kind: "image"}, modelPack(pp.id, "", N > 1));
   } else if (BUILTIN_IMAGES[pp.id]) {
     PK = Object.assign({id: pp.id, kind: "image"}, BUILTIN_IMAGES[pp.id]);
   } else PK = {id: "u1", kind: "u1"};
@@ -1844,6 +2023,7 @@ function spinFrame(t) {
   for (let i = 0; i < N; i++) if (spinSpeed[i] > 0) { spinAngle[i] = (spinAngle[i] + spinSpeed[i] * dt) % 360; moved = true; }
   for (const k in FANPOS) if (fanSpd[k] > 0) { fanAng[k] = (fanAng[k] + fanSpd[k] * dt) % 360; moved = true; }
   if (moved) spinApply();
+  motionApply(dt);
   requestAnimationFrame(spinFrame);
 }
 requestAnimationFrame(spinFrame);
@@ -2417,8 +2597,10 @@ bootstrap();
   async function previews() {
     const ps = $("setpp"), ts = $("settp");
     if (!ps || !ts) return;
-    const pp = (CFG.packs.printer || []).find(p => p.id === ps.value);
-    $("setppv").innerHTML = pp && packUrl(pp) ? '<img src="' + escH(packUrl(pp)) + '" alt="">' : ps.value === "u1" ? u1PrinterPreview() : "<i>no preview</i>";
+    const pid = ps.value || (CFG.model && CFG.model.id) || "generic";      // "" = automatic: the detected model
+    const pp = (CFG.packs.printer || []).find(p => p.id === pid), mp = modelPack(pid, "pv");
+    $("setppv").innerHTML = mp ? '<svg viewBox="0 0 600 520" style="width:100%;max-height:220px" role="img" aria-label="Printer preview">' + mp.body + "</svg>" :
+      pp && packUrl(pp) ? '<img src="' + escH(packUrl(pp)) + '" alt="">' : pid === "u1" ? u1PrinterPreview() : "<i>no preview</i>";
     $("settpv").innerHTML = await slotPreview(ts.value);
     const uv = $("setun").value;
     $("setunv").innerHTML = uv === "afc" ? unitPreview() : uv === "u1" ? '<svg viewBox="-110 -62 220 70" style="width:80%;max-height:140px" role="img" aria-label="U1 toolheads">' + [0, 1, 2, 3].map(i => '<g transform="translate(' + (-82 + i * 55) + ',0)">' + u1Head("p" + i) + "</g>").join("") + "</svg>" : "<i>no toolchanger graphic</i>";
@@ -2430,7 +2612,7 @@ bootstrap();
       .map(([id, label, ok]) => '<option value="' + id + '"' + (id === fs.selected ? " selected" : "") + (ok ? "" : " disabled") + ">" + escH(label) + "</option>").join("");
   };
   function render() {
-    const g = CFG.graphics, pk = CFG.packs;
+    const g = CFG.graphics, pk = CFG.packs, md = CFG.model || {};
     const opts = (kind, sel) => (pk[kind] || []).map(p => '<option value="' + escH(p.id) + '"' + (p.id === sel ? " selected" : "") + ">" + escH(p.label || p.id) + (p.custom ? " (custom)" : "") + "</option>").join("");
     const plist = PRINTERS.map(p => '<div class="prow"><b>' + escH(p.active ? CFG.name : p.name) + '</b><span>' + escH(p.host) + (p.active ? " &middot; shown now" : "") + '</span>' +
       (p.active ? "" : '<button data-sw="' + escH(p.id) + '">Switch</button>') + (p.main ? '<span class="sub">set in config.json</span>' : '<button class="danger" data-rm="' + escH(p.id) + '">Remove</button>') + '</div>').join("");
@@ -2450,7 +2632,8 @@ bootstrap();
       '<div class="sub">' + (CFG.spoolmanServer ? "Connected to " + escH(CFG.spoolmanServer) + (CFG.spoolmanFromUi ? " (set here)" : " (from config.json)") : "No Spoolman configured.") +
       ' Enter where this dashboard\'s server reaches Spoolman, for example when Spoolman runs on another machine. It is checked before it is saved and applies to every printer. The link in spool details uses this address unless <code>spoolman_url</code> is set in config.json.</div></div>' +
       '<div class="vcard"><h3>Graphics</h3><div class="gcols">' +
-      '<div><label>Printer graphic</label><select id="setpp">' + opts("printer", g.printer) + '</select><div id="setppv" class="gprev"></div></div>' +
+      '<div><label>Printer graphic</label><select id="setpp">' + (md.id ? '<option value=""' + (md.auto ? " selected" : "") + ">Automatic: " + escH(md.label || md.id) + "</option>" : "") + opts("printer", md.id && md.auto ? null : g.printer) + '</select><div id="setppv" class="gprev"></div>' +
+      '<div class="sub">' + (md.id ? "Detected: " + escH(md.label || md.id) + " (" + escH(md.why || "") + "). Automatic follows the printer; pick another if it guessed wrong." : "The model could not be detected (" + escH(md.why || "no answer") + "); pick a graphic.") + '</div></div>' +
       '<div><label>Toolchanger graphic</label><select id="setun">' + [["u1", "Snapmaker U1 toolchanger"], ["afc", "BoxTurtle unit (3D)"], ["none", "None"]].map(([v, l]) => '<option value="' + v + '"' + (v === (g.unit || "none") ? " selected" : "") + ">" + l + "</option>").join("") + '</select><div id="setunv" class="gprev tprev"></div></div>' +
       '<div><label>Spool graphic</label><select id="settp">' + opts("toolchanger", g.toolchanger) + '</select><div id="settpv" class="gprev tprev"></div></div></div>' +
       '<button id="setgbtn">Apply graphics</button> <span class="sub">All three are independent: any printer picture, any toolchanger graphic and any spool style. The spool graphic is the filament roll on each tool / lane card.</span></div>' +

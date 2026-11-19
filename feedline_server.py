@@ -67,8 +67,85 @@ DEFAULT_CFG = {
     "allow_config_edit": True,       # false = the Files tab is read-only (config files can then not be changed from the browser)
 }
 HOST_SUFFIXES = (".local", ".lan", ".home.arpa", ".internal", ".localdomain", ".ts.net")
+# Drawn printer models (the page draws them; see MODELS in index.html). Original, simplified drawings in each model's
+# shape and colors; the toolhead and bed follow the printer's real position. Only models that run Klipper + Moonraker.
+MODELS = [
+    ("qidi-plus4", "QIDI Plus4"), ("qidi-xmax3", "QIDI X-Max 3"), ("qidi-xplus3", "QIDI X-Plus 3"), ("qidi-q1pro", "QIDI Q1 Pro"),
+    ("qidi-q2", "QIDI Q2"), ("qidi-xsmart3", "QIDI X-Smart 3"),
+    ("creality-k1", "Creality K1 / K1C"), ("creality-k1max", "Creality K1 Max"), ("creality-k2plus", "Creality K2 Plus"),
+    ("creality-ender3", "Creality Ender-3 (bed slinger)"),
+    ("voron-24", "Voron 2.4"), ("voron-trident", "Voron Trident"), ("voron-v0", "Voron 0"), ("voron-switchwire", "Voron Switchwire"),
+    ("ratrig-vcore", "RatRig V-Core"), ("sovol-sv08", "Sovol SV08"), ("sovol-sv06", "Sovol SV06 / SV07"),
+    ("elegoo-neptune4", "Elegoo Neptune 4"), ("anycubic-kobra-s1", "Anycubic Kobra S1"), ("anycubic-kobra", "Anycubic Kobra 2 / 3"),
+    ("flashforge-ad5m", "Flashforge Adventurer 5M"), ("prusa-mk", "Prusa MK3 / MK4 (Klipper)"), ("flsun-delta", "FLSUN delta (V400 / T1 / S1)"),
+    ("corexy-box", "Enclosed CoreXY (any brand)"), ("corexy-frame", "Open-frame CoreXY (any brand)"),
+    ("bedslinger", "Bed slinger (any brand)"), ("delta", "Delta (any brand)"),
+]
+MODEL_LABEL = dict(MODELS)
+
+
+def guess_model(cfg, objs, info):
+    """Which drawn model fits this printer: (id, reason), from what Klipper itself reports. Klipper has no "model" field,
+    so this goes by the kinematics, the build volume, a few vendor-specific config sections and paths, and the host name.
+    The brand hints are best effort (the user can always pick another graphic in Settings); the family is reliable."""
+    def num(sec, key):
+        try:
+            return float((cfg.get(sec) or {}).get(key))
+        except (TypeError, ValueError):
+            return 0.0
+    kin = str((cfg.get("printer") or {}).get("kinematics") or "").lower()
+    x = num("stepper_x", "position_max")
+    secs = {k.split(" ")[0].lower() for k in cfg}
+    text = " ".join(str(info.get(k) or "") for k in ("hostname", "klipper_path", "config_file")).lower()
+    names = " ".join(objs).lower()
+    hint = lambda *words: any(w in text for w in words)
+    size = "%.0f mm bed" % x if x else "unknown bed size"
+    if "filament_detect" in objs:
+        return "u1", "Snapmaker RFID filament detection"
+    if "delta" in kin:
+        return ("flsun-delta", "delta kinematics, FLSUN paths") if hint("flsun") else ("delta", "delta kinematics")
+    if "corexy" in kin:
+        if hint("qidi") or ("/home/mks/" in text and (secs & {"chamber_fan", "box_stepper", "multi_color_controller", "hall_filament_width_sensor"} or "heater_generic chamber" in names)):
+            mid = "qidi-xsmart3" if x < 200 else "qidi-q1pro" if x < 258 else "qidi-q2" if x < 276 else "qidi-xplus3" if x < 292 else "qidi-plus4" if x < 316 else "qidi-xmax3"
+            return mid, "CoreXY on a QIDI (MKS) board, " + size
+        if hint("/usr/share/klipper", "/usr/data/", "creality") or secs & {"prtouch_v2", "prtouch_v3"}:
+            return ("creality-k1" if x < 260 else "creality-k1max" if x < 330 else "creality-k2plus"), "CoreXY with Creality firmware, " + size
+        if hint("sovol"):
+            return ("sovol-sv08", "CoreXY with Sovol paths") if "quad_gantry_level" in secs else ("corexy-box", "CoreXY with Sovol paths")
+        if hint("ratos", "ratrig", "vcore", "v-core") or "ratos" in names:
+            return "ratrig-vcore", "CoreXY running RatOS"
+        if hint("flashforge", "adventurer", "ad5m"):
+            return "flashforge-ad5m", "CoreXY with Flashforge paths"
+        if hint("/userdata/", "rinkhals", "anycubic", "kobra"):
+            return "anycubic-kobra-s1", "CoreXY with Anycubic paths"
+        if "quad_gantry_level" in secs:
+            return "voron-24", "CoreXY with a flying gantry (quad_gantry_level), " + size
+        if 0 < x <= 130:
+            return "voron-v0", "small CoreXY, " + size
+        if "stepper_z2" in cfg and "z_tilt" in secs:
+            return "voron-trident", "CoreXY with three Z motors (z_tilt), " + size
+        if re.search(r"chamber|enclosure", names):
+            return "corexy-box", "CoreXY with a chamber sensor or heater"
+        return "corexy-frame", "CoreXY"
+    if "corexz" in kin:
+        return ("creality-ender3", "CoreXZ with Creality firmware") if hint("/usr/share/klipper", "/usr/data/", "creality", "ender") else ("voron-switchwire", "CoreXZ")
+    if kin:                                                    # cartesian and friends: the bed moves in Y
+        if hint("neptune", "elegoo") or "/home/mks/" in text:
+            return "elegoo-neptune4", "bed slinger on an Elegoo (MKS) board"
+        if hint("/usr/share/klipper", "/usr/data/", "creality", "ender", "sonic"):
+            return "creality-ender3", "bed slinger with Creality firmware"
+        if hint("sovol"):
+            return "sovol-sv06", "bed slinger with Sovol paths"
+        if hint("/userdata/", "rinkhals", "anycubic", "kobra"):
+            return "anycubic-kobra", "bed slinger with Anycubic paths"
+        if hint("prusa", "mk3", "mk4"):
+            return "prusa-mk", "bed slinger named like a Prusa"
+        return "bedslinger", kin + " kinematics"
+    return None, "the printer's configuration could not be read"
+
+
 BUILTIN_PACKS = {
-    "printer": [{"id": "u1", "label": "Snapmaker U1 (drawn, live)"}, {"id": "generic", "label": "Generic printer (image)"}],
+    "printer": [{"id": "u1", "label": "Snapmaker U1 (drawn, live)"}] + [{"id": i, "label": l + " (drawn, live)"} for i, l in MODELS] + [{"id": "generic", "label": "Generic printer (image)"}],
     "toolchanger": [{"id": "u1", "label": "Spool wheel"}, {"id": "reel", "label": "Simple reel"}, {"id": "afc", "label": "3D spool"}, {"id": "none", "label": "No graphic"}],
 }
 THUMB_SEG = r"[\w .()\[\]+@,&'!~=\-]+"      # one folder / file name in a thumbnail path: the characters slicers put in file names, never / \ ? # %
@@ -178,9 +255,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             val = fn()
         except Exception as e:  # noqa: BLE001
-            val = hit[1] if hit else None
             if isinstance(e, OSError) and not isinstance(e, urllib.error.HTTPError):      # no connection / timeout; an HTTP error is an answer
                 Handler._down[self.pid] = time.time() + self.DOWN_FOR
+            if not hit:
+                return None                                   # nothing known yet: ask again next time, not after the full ttl
+            val = hit[1]
         Handler._cache[key] = (time.time(), val)
         return val
 
@@ -213,9 +292,24 @@ class Handler(http.server.BaseHTTPRequestHandler):
         got = self.cached("cmds", 60, lambda: {k.upper() for k in self.mget("/printer/gcode/help")["result"]})
         return got or set()
 
+    def klipper_settings(self):
+        """Klipper's parsed configuration (every section), or {} while the printer cannot be asked."""
+        return self.cached("kcfg", 300, lambda: self.mget("/printer/objects/query?configfile=settings", 20)["result"]["status"]["configfile"]["settings"]) or {}
+
+    def model(self):
+        """(id, reason) of the drawn printer model that fits this printer; (None, reason) when it cannot be told."""
+        def find():
+            cfg = self.klipper_settings()
+            if not cfg:
+                raise ValueError("no configuration")          # not stored as an answer: asked again next time
+            return guess_model(cfg, self.objects(), self.mget("/printer/info")["result"])
+        return self.cached("model", 300, find) or (None, "the printer did not answer")
+
     def macro_info(self):
         def load():
-            cfg = self.mget("/printer/objects/query?configfile=settings", 20)["result"]["status"]["configfile"]["settings"]
+            cfg = self.klipper_settings()
+            if not cfg:
+                raise ValueError("no configuration")
             out = {}
             for sec, v in cfg.items():
                 if not sec.startswith("gcode_macro "):
@@ -572,7 +666,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         st, c, host = self.settings(), self.cfg, self.printer
         prov = self.provider()
         gsel = {}
-        for kind, dflt in (("printer", "u1" if prov == "u1" else "generic"), ("toolchanger", {"u1": "u1", "afc": "afc"}.get(prov, "reel"))):
+        mid, mwhy = ("u1", "Snapmaker RFID filament detection") if prov == "u1" else self.model()
+        if mid not in self.pack_ids("printer"):
+            mid = None
+        picked = (st.get("graphics") or {}).get("printer") or (c.get("graphics") or {}).get("printer")
+        for kind, dflt in (("printer", mid or "generic"), ("toolchanger", {"u1": "u1", "afc": "afc"}.get(prov, "reel"))):
             want = (st.get("graphics") or {}).get(kind) or (c.get("graphics") or {}).get(kind) or dflt
             gsel[kind] = want if want in self.pack_ids(kind) else dflt
         # "toolchanger" is the spool/slot style of the lane cards; "unit" is the separate BoxTurtle unit picture (afc | none)
@@ -593,6 +691,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         "light": {"mode": "none" if ui_light is False else ("pick" if isinstance(ui_light, dict) and self.light_for(ui_light.get("object")) else "auto"),
                                   "choices": [o for _, o, _, _ in self.light_choices()], "active": light.get("object")}},
             "name": name, "defaultName": c.get("name"), "graphics": gsel,
+            # the printer graphic follows the detected model unless one was picked in Settings or config.json
+            "model": {"id": mid, "label": "Snapmaker U1" if mid == "u1" else MODEL_LABEL.get(mid), "why": mwhy, "auto": picked not in self.pack_ids("printer")},
             "packs": {k: BUILTIN_PACKS[k] + self.custom_packs(k) for k in BUILTIN_PACKS},
             "provider": prov, "toolCount": self.tool_count(), "printerHost": host,
             "lanes": self.afc_lanes() if prov == "afc" else [],
