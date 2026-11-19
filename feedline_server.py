@@ -1,27 +1,32 @@
 #!/usr/bin/env python3
-"""Feedline: serve the printer dashboard and proxy the two READ-ONLY calls it needs, so a browser only
-ever talks to this one host (no CORS, no extra firewall rules):
+"""Feedline: serve the printer dashboard and stand between the browser and the printers, so a browser only ever
+talks to this one host (no CORS, no extra firewall rules) and can only do what is listed here.
 
-  GET /                          -> index.html
-  GET /api/config, /api/printers -> what the page needs to know (name, graphics, features) / the configured printers
-  GET /printer/objects/query?... -> printer Moonraker (object queries only)
-  GET /api/v1/spool              -> local Spoolman
-  GET /webcam/snapshot.jpg       -> printer camera (single JPEG frame)
-  GET /screen/snapshot           -> printer touchscreen (single PNG frame, view only)
+Pages and data (GET)
+  /                              the page (index.html); /graphics/..., /packs/... its pictures
+  /api/config                    what the page needs to know about the selected printer (name, model, graphics, features)
+  /api/printers, /api/overview   the configured printers; one status row for each of them
+  /api/macros                    the printer's macros and the tool-button macros
+  /api/screen/probe              does the printer serve a remote touchscreen?
+  /printer/objects/query|list, /server/gcode_store, /server/files/metadata, /server/history/..., /server/spoolman/status
+                                 forwarded to the printer's Moonraker unchanged (read-only)
+  /server/files/gcodes/.../.thumbs/x.png   slicer thumbnails
+  /cam/snapshot, /screen/snapshot          one camera / touchscreen frame
+  /api/v1/spool                  Spoolman's spool list
+  /config/list, /config/read     the printer's config folder; /logs/export its log files
 
-  GET /server/gcode_store        -> recent console history (read-only)
-  GET /server/files/metadata     -> slicer metadata of the current file (estimated time, filament totals)
-  POST /control {"action","tool"} -> load/unload/pickup/park for T0-T3: refused while a print runs or is paused
-  POST /control {"action":"fan","fan","speed"} -> part fan / fan_generic speed 0-1 (any time; hotend fans excluded)
-  POST /control {"action"}        -> pause (only while printing), resume (only while paused),
-                                    cancel (only while printing or paused)
+Commands (POST /control with the X-Feedline-Control header and a JSON body {"action": ...}; see ROUTES and do_POST)
+  pause, resume, cancel, estop                        print controls, each only in the print states where it makes sense
+  load, unload, park, pickup, run_macro               tool buttons and macros: idle only, one at a time per printer
+  home, jog, goto, motors_off, set_lane               idle only
+  temp, fan, light, tune                              any time; every value is range-checked
+  save_config                                         edit a config file (backed up here first; can be switched off)
+  save_settings, save_pack, delete_pack, add_printer, remove_printer, set_embed, set_spoolman      this dashboard's own settings
 
-  POST /control {"action":"jog","axis","dist"} / {"action":"home","axes"} / {"action":"motors_off"} -> idle only
+Which printer a request is for: the X-Printer header, else ?p=<id>, else the "printer" cookie, else the main one.
 
-  GET /config/list, GET /config/read?path=  -> browse / read files in the printer's config folder
-  POST /control {"action":"save_config","path","content","modified"} -> save a text config file (backed up here first)
-
-Nothing else is forwarded: no free-form G-code and no other Moonraker endpoints.
+Nothing else is forwarded: no free-form G-code and no other Moonraker endpoints. Commands are built here from fixed
+templates and checked values (see run_gcode); text from a browser never reaches the printer as G-code.
 """
 import argparse
 import http.server
@@ -286,6 +291,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def mget(self, path, timeout=8):
         with urllib.request.urlopen("http://%s:7125%s" % (self.printer, path), timeout=timeout) as r:
             return json.load(r)
+
+    def run_gcode(self, script, timeout=15):
+        """Send one G-code script (one or more lines) to the printer and wait until Moonraker says it has finished.
+        Callers build `script` from fixed commands and checked values only; this never sees text typed in a browser."""
+        logging.info("running %s", script.replace("\n", " ; "))
+        url = "http://%s:7125/printer/gcode/script?script=%s" % (self.printer, urllib.parse.quote(script))
+        with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=timeout) as r:
+            r.read()
 
     # ---- several printers: "main" comes from config.json; the others are added in the UI and kept in printers.json ----
     pid = "main"
@@ -886,15 +899,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def lane_control(self, req):
         script = self.lane_script(req)
         if not self.busy.acquire(blocking=False):
-            return self.reply(409, "application/json", b'{"error":"another command is still running"}')
+            return self.jreply(409, {"error": "another command is still running"})
         try:
-            url = "http://%s:7125/printer/gcode/script?script=%s" % (self.printer, urllib.parse.quote(script))
-            logging.info("running %s", script.replace("\n", " ; "))
-            with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=30) as r:
-                r.read()
-            self.reply(200, "application/json", json.dumps({"ok": True, "cmd": script.replace("\n", " ; ")}).encode())
+            self.run_gcode(script, 30)
+            self.jreply(200, {"ok": True, "cmd": script.replace("\n", " ; ")})
         except Exception as e:  # noqa: BLE001
-            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+            self.jreply(502, {"error": str(e)})
         finally:
             self.busy.release()
 
@@ -933,15 +943,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             state = self.print_state() if allowed else None
             if allowed and state not in allowed:
-                return self.reply(409, "application/json",
-                                  json.dumps({"error": "refused: cannot %s while printer is %s" % (action, state)}).encode())
+                return self.jreply(409, {"error": "refused: cannot %s while printer is %s" % (action, state)})
             url = "http://%s:7125/printer/%s" % (self.printer, endpoint if endpoint == "emergency_stop" else "print/" + endpoint)
             logging.info("print control: %s", action)
             with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=60) as r:
                 r.read()
-            self.reply(200, "application/json", json.dumps({"ok": True, "cmd": action}).encode())
+            self.jreply(200, {"ok": True, "cmd": action})
         except Exception as e:  # noqa: BLE001
-            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+            self.jreply(502, {"error": str(e)})
 
     # ---- print tuning: baby-stepping, speed and flow factors, pressure advance. Meant for use during a print, so there is
     # no print-state check; every value is range-checked and turned into one fixed command.
@@ -986,10 +995,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             return self.jreply(502, {"error": str(e)})
         try:
-            url = "http://%s:7125/printer/gcode/script?script=%s" % (self.printer, urllib.parse.quote(cmd))
-            logging.info("running %s", cmd)
-            with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=15) as r:
-                r.read()
+            self.run_gcode(cmd, 15)
             self.jreply(200, {"ok": True, "cmd": cmd})
         except Exception as e:  # noqa: BLE001
             self.jreply(502, {"error": str(e)})
@@ -1003,20 +1009,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             speed = -1
         if not 0 <= speed <= 1 or not re.fullmatch(r"[A-Za-z0-9_]+", name):
-            return self.reply(400, "application/json", b'{"error":"bad request"}')
+            return self.jreply(400, {"error": "bad request"})
         try:
             with urllib.request.urlopen("http://%s:7125/printer/objects/list" % self.printer, timeout=8) as r:
                 objs = json.load(r)["result"]["objects"]
             if name != "fan" and ("fan_generic " + name) not in objs:
-                return self.reply(400, "application/json", b'{"error":"not a controllable fan"}')
+                return self.jreply(400, {"error": "not a controllable fan"})
             cmd = ("M106 S%d" % round(speed * 255)) if name == "fan" else "SET_FAN_SPEED FAN=%s SPEED=%.2f" % (name, speed)
-            url = "http://%s:7125/printer/gcode/script?script=%s" % (self.printer, urllib.parse.quote(cmd))
-            logging.info("running %s", cmd)
-            with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=15) as r:
-                r.read()
-            self.reply(200, "application/json", json.dumps({"ok": True, "cmd": cmd}).encode())
+            self.run_gcode(cmd, 15)
+            self.jreply(200, {"ok": True, "cmd": cmd})
         except Exception as e:  # noqa: BLE001
-            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+            self.jreply(502, {"error": str(e)})
 
     # Fluidd-style movement. Only while the printer is idle; jogs are sent as ABSOLUTE moves computed from the current
     # position (and clamped to the axis limits), so a failed move can never leave the printer stuck in relative mode.
@@ -1043,32 +1046,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             script = None
         if not script:
-            return self.reply(400, "application/json", b'{"error":"bad request"}')
+            return self.jreply(400, {"error": "bad request"})
         if not self.busy.acquire(blocking=False):
-            return self.reply(409, "application/json", b'{"error":"another command is still running"}')
+            return self.jreply(409, {"error": "another command is still running"})
         try:
             base = "http://%s:7125/printer/objects/query?print_stats&toolhead&gcode_move" % self.printer
             with urllib.request.urlopen(base, timeout=8) as r:
                 st = json.load(r)["result"]["status"]
             if st["print_stats"]["state"] in ("printing", "paused"):
-                return self.reply(409, "application/json",
-                                  json.dumps({"error": "refused: printer is %s" % st["print_stats"]["state"]}).encode())
+                return self.jreply(409, {"error": "refused: printer is %s" % st["print_stats"]["state"]})
             if isinstance(script, tuple):
                 kind, axis, dist = script
                 i = "XYZ".index(axis)
                 if axis.lower() not in st["toolhead"].get("homed_axes", ""):
-                    return self.reply(409, "application/json", json.dumps({"error": "home %s first" % axis}).encode())
+                    return self.jreply(409, {"error": "home %s first" % axis})
                 lo, hi = st["toolhead"]["axis_minimum"][i], st["toolhead"]["axis_maximum"][i]
                 want = dist if kind == "goto" else st["gcode_move"]["gcode_position"][i] + dist
                 target = min(hi, max(lo, want))
                 script = "G90\nG1 %s%.3f F%d" % (axis, target, self.JOG_FEED[axis])
-            url = "http://%s:7125/printer/gcode/script?script=%s" % (self.printer, urllib.parse.quote(script))
-            logging.info("running %s", script.replace("\n", " ; "))
-            with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=300) as r:
-                r.read()
-            self.reply(200, "application/json", json.dumps({"ok": True, "cmd": script}).encode())
+            self.run_gcode(script, 300)
+            self.jreply(200, {"ok": True, "cmd": script})
         except Exception as e:  # noqa: BLE001
-            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+            self.jreply(502, {"error": str(e)})
         finally:
             self.busy.release()
 
@@ -1092,16 +1091,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             target = -1
         cap = self.temp_limit(heater)
         if cap is None or not 0 <= target <= cap:
-            return self.reply(400, "application/json", b'{"error":"bad request"}')
+            return self.jreply(400, {"error": "bad request"})
         cmd = "SET_HEATER_TEMPERATURE HEATER=%s TARGET=%d" % (heater.split(" ", 1)[-1] if heater.startswith("heater_generic ") else heater, round(target))
         try:
-            url = "http://%s:7125/printer/gcode/script?script=%s" % (self.printer, urllib.parse.quote(cmd))
-            logging.info("running %s", cmd)
-            with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=15) as r:
-                r.read()
-            self.reply(200, "application/json", json.dumps({"ok": True, "cmd": cmd}).encode())
+            self.run_gcode(cmd, 15)
+            self.jreply(200, {"ok": True, "cmd": cmd})
         except Exception as e:  # noqa: BLE001
-            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+            self.jreply(502, {"error": str(e)})
 
     LED_TYPES = ("led", "neopixel", "dotstar", "pca9632", "pca9533")
     LIGHT_HINT = re.compile(r"light|lamp|led|illum|chamber|cavity|enclosure|case", re.I)
@@ -1170,16 +1166,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
         on = req.get("on")
         light = self.light_cfg()
         if not isinstance(on, bool) or not light.get("on") or not light.get("off"):
-            return self.reply(400, "application/json", b'{"error":"no light configured"}')
+            return self.jreply(400, {"error": "no light configured"})
         cmd = light["on"] if on else light["off"]
         try:
-            url = "http://%s:7125/printer/gcode/script?script=%s" % (self.printer, urllib.parse.quote(cmd))
-            logging.info("running %s", cmd)
-            with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=15) as r:
-                r.read()
-            self.reply(200, "application/json", json.dumps({"ok": True, "cmd": cmd}).encode())
+            self.run_gcode(cmd, 15)
+            self.jreply(200, {"ok": True, "cmd": cmd})
         except Exception as e:  # noqa: BLE001
-            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+            self.jreply(502, {"error": str(e)})
 
     # ---- config file browser / editor (Moonraker "config" root) ----
     EDIT_EXT = (".cfg", ".conf", ".ini", ".txt", ".md", ".yaml", ".yml")      # everything else is view-only
@@ -1206,33 +1199,35 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def config_read(self, query):
         p = self.safe_path(urllib.parse.parse_qs(query).get("path", [""])[0])
         if not p:
-            return self.reply(400, "application/json", b'{"error":"bad path"}')
+            return self.jreply(400, {"error": "bad path"})
         try:
             raw, mod = self.fetch_config(p)
             if len(raw) > self.MAX_EDIT * 2:
-                return self.reply(413, "application/json", b'{"error":"file too large to open"}')
+                return self.jreply(413, {"error": "file too large to open"})
             try:
                 text = raw.decode("utf-8")
             except UnicodeDecodeError:
-                return self.reply(415, "application/json", b'{"error":"not a UTF-8 text file"}')
+                return self.jreply(415, {"error": "not a UTF-8 text file"})
             self.reply(200, "application/json", json.dumps({"path": p, "content": text, "modified": mod,
                                                             "editable": self.editable(p) and len(raw) <= self.MAX_EDIT}).encode())
         except Exception as e:  # noqa: BLE001
-            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+            self.jreply(502, {"error": str(e)})
 
     def config_save(self, req):
+        if not Handler.cfg.get("allow_config_edit", True):
+            return self.jreply(403, {"error": "config editing is disabled (allow_config_edit)"})
         p, content, base = self.safe_path(req.get("path")), req.get("content"), str(req.get("modified") or "")
         if not p or not isinstance(content, str) or not self.editable(p):
-            return self.reply(400, "application/json", b'{"error":"bad request or file is view-only"}')
+            return self.jreply(400, {"error": "bad request or file is view-only"})
         data = content.encode("utf-8")
         if len(data) > self.MAX_EDIT or b"\x00" in data:
-            return self.reply(400, "application/json", b'{"error":"file too large or not text"}')
+            return self.jreply(400, {"error": "file too large or not text"})
         if not self.busy.acquire(blocking=False):
-            return self.reply(409, "application/json", b'{"error":"another command is still running"}')
+            return self.jreply(409, {"error": "another command is still running"})
         try:
             old, mod = self.fetch_config(p)
             if base and mod and base != mod:
-                return self.reply(409, "application/json", json.dumps({"error": "the file changed on the printer since you opened it - reload it first"}).encode())
+                return self.jreply(409, {"error": "the file changed on the printer since you opened it - reload it first"})
             bdir = self.backups if self.pid == "main" else os.path.join(self.backups, self.pid)      # each printer keeps its own backups
             os.makedirs(bdir, exist_ok=True)                      # keep the previous version before anything is overwritten
             bk = os.path.join(bdir, "%s.%s.bak" % (p.replace("/", "__"), time.strftime("%Y%m%d-%H%M%S")))
@@ -1256,10 +1251,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 r.read()
             check, newmod = self.fetch_config(p)
             if check != data:
-                return self.reply(502, "application/json", json.dumps({"error": "saved but the printer's copy does not match; backup: " + os.path.basename(bk)}).encode())
-            self.reply(200, "application/json", json.dumps({"ok": True, "modified": newmod, "backup": os.path.basename(bk)}).encode())
+                return self.jreply(502, {"error": "saved but the printer's copy does not match; backup: " + os.path.basename(bk)})
+            self.jreply(200, {"ok": True, "modified": newmod, "backup": os.path.basename(bk)})
         except Exception as e:  # noqa: BLE001
-            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+            self.jreply(502, {"error": str(e)})
         finally:
             self.busy.release()
 
@@ -1512,52 +1507,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.reply(200, "image/svg+xml" if m.group(1).endswith(".svg") else "image/png", body,
                    {"Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'", "Cache-Control": "no-cache"})
 
+    # POST /control: the method that handles each "action". Print controls, tool buttons and macros are handled in do_POST
+    # itself, because they share the one-command-at-a-time lock and the "not while printing" rule.
+    ROUTES = {"tune": "tune_control", "fan": "fan_control", "temp": "temp_control", "light": "light_control",
+              "home": "move_control", "jog": "move_control", "goto": "move_control", "motors_off": "move_control",
+              "set_lane": "lane_control", "save_config": "config_save",
+              "save_settings": "save_settings", "save_pack": "save_pack", "delete_pack": "delete_pack",
+              "add_printer": "add_printer", "remove_printer": "remove_printer", "set_embed": "set_embed", "set_spoolman": "set_spoolman"}
+
     def do_POST(self):
         if self.blocked():
             return
         if self.path.split("?")[0] != "/control":
             return self.reply(404, "text/plain", b"not found")
         if self.headers.get("X-Feedline-Control") != "1":      # blocks cross-site form posts
-            return self.reply(403, "application/json", b'{"error":"missing control header"}')
+            return self.jreply(403, {"error": "missing control header"})
         self.select_printer()
         try:
             n = int(self.headers.get("Content-Length", "0"))
             if n < 0 or n > 6 * 1024 * 1024:
                 return self.jreply(413, {"error": "request too large"})
             req = json.loads(self.rfile.read(n) or b"{}")
-            if req.get("action") in self.PRINT_ACTIONS:
-                return self.print_control(req["action"])
-            if req.get("action") == "tune":
-                return self.tune_control(req)
-            if req.get("action") == "fan":
-                return self.fan_control(req)
-            if req.get("action") == "temp":
-                return self.temp_control(req)
-            if req.get("action") == "save_config":
-                if not Handler.cfg.get("allow_config_edit", True):
-                    return self.jreply(403, {"error": "config editing is disabled (allow_config_edit)"})
-                return self.config_save(req)
-            if req.get("action") == "add_printer":
-                return self.add_printer(req)
-            if req.get("action") == "remove_printer":
-                return self.remove_printer(req)
-            if req.get("action") == "save_settings":
-                return self.save_settings(req)
-            if req.get("action") == "save_pack":
-                return self.save_pack(req)
-            if req.get("action") == "delete_pack":
-                return self.delete_pack(req)
-            if req.get("action") == "light":
-                return self.light_control(req)
-            if req.get("action") == "set_embed":
-                return self.set_embed(req)
-            if req.get("action") == "set_spoolman":
-                return self.set_spoolman(req)
-            if req.get("action") == "set_lane":
-                return self.lane_control(req)
-            if req.get("action") in ("home", "jog", "goto", "motors_off"):
-                return self.move_control(req)
-            if req.get("action") == "run_macro":
+            action = req.get("action")
+            if action in self.PRINT_ACTIONS:
+                return self.print_control(action)
+            if action in self.ROUTES:
+                return getattr(self, self.ROUTES[action])(req)
+            if action == "run_macro":
                 cmd = self.macro_command(req)
             else:
                 cmd = self.command_for(req.get("action"), req.get("tool"), req.get("lane"))
@@ -1566,7 +1542,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception:  # noqa: BLE001
             cmd = None
         if not cmd:
-            return self.reply(400, "application/json", b'{"error":"bad request"}')
+            return self.jreply(400, {"error": "bad request"})
         cmds = [cmd]
         if req.get("action") == "load" and self.provider() == "afc":
             # Load on a BoxTurtle lane swaps: if another lane is already loaded to the toolhead, unload it first
@@ -1579,22 +1555,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except Exception:  # noqa: BLE001
                 pass
         if not self.busy.acquire(blocking=False):
-            return self.reply(409, "application/json", b'{"error":"another command is still running"}')
+            return self.jreply(409, {"error": "another command is still running"})
         try:
             state_url = "http://%s:7125/printer/objects/query?print_stats" % self.printer
             with urllib.request.urlopen(state_url, timeout=8) as r:
                 state = json.load(r)["result"]["status"]["print_stats"]["state"]
             if state in ("printing", "paused"):
-                return self.reply(409, "application/json",
-                                  json.dumps({"error": "refused: printer is %s" % state}).encode())
+                return self.jreply(409, {"error": "refused: printer is %s" % state})
             for c in cmds:                                   # one after the other; Moonraker answers when each has finished
-                url = "http://%s:7125/printer/gcode/script?script=%s" % (self.printer, urllib.parse.quote(c))
-                logging.info("running %s", c)
-                with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=900) as r:
-                    r.read()
-            self.reply(200, "application/json", json.dumps({"ok": True, "cmd": " then ".join(cmds)}).encode())
+                self.run_gcode(c, 900)
+            self.jreply(200, {"ok": True, "cmd": " then ".join(cmds)})
         except Exception as e:  # noqa: BLE001
-            self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
+            self.jreply(502, {"error": str(e)})
         finally:
             self.busy.release()
 

@@ -248,6 +248,12 @@ Unlike moves and tool changes these are allowed while printing; that is what the
 
 Lists every user-facing macro (names not starting with `_`) with its description and parameters (read from the printer's config) and a Run button (idle only, confirmation first). The tool-button macros (load/unload/park/pickup) are auto-detected from the printer's macros and commands; in the same tab each can be changed, disabled or reset to auto-detect. Custom values are limited to `NAME KEY=value` for commands the printer reports (restart/shutdown/save-config style commands are refused), never free-form G-code. Precedence: custom (UI) > config.json > auto-detected.
 
+## Tests
+
+    python -m unittest discover -s tests -v
+
+`tests/test_server.py` covers the server's decisions that need no printer: model detection, filament-system detection, the command each tool button builds, print-tuning limits, heater caps, macro parameters, and the path and address checks. Standard library only; printer answers are faked and nothing opens a network connection. The page has no automated tests.
+
 ## Not covered
 
 Happy Hare multi-material units have no provider yet (the interface is `slotsU1` / `slotsAFC` / `slotsExtruders` in the page).

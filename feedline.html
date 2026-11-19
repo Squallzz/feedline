@@ -508,7 +508,7 @@
 const q = new URLSearchParams(location.search);
 let SPOOLMAN = q.get("spoolman") || "";          // browser-reachable Spoolman host:port (for the "Open in Spoolman" link)
 // Served from the printer itself: use same-origin Moonraker (nginx proxies /printer and /server).
-// Opened from a file or another host: pass ?printer=IP (defaults to 10.0.3.110).
+// Opened from a file or another host: pass ?printer=IP (defaults to the host the page was loaded from).
 let PRINTER = q.get("printer") || location.hostname;     // replaced by the configured Moonraker host when hosted
 let SAME = location.protocol !== "file:" && location.hostname === PRINTER;
 // Hosted (printer or the Spoolman VM): same-origin calls; the host proxies them. Opened as a file: direct.
@@ -547,6 +547,14 @@ const shade = (h, f) => {            // f<1 darker, f>1 lighter
 };
 
 const spoolInfo = [];     // per tool: matched Spoolman spool + printer tag info, for the details modal
+// Every command goes through here: POST /control with the header the server insists on (it blocks cross-site form posts).
+// Resolves to the server's reply; throws an Error carrying the server's message (or the HTTP status) when it is refused.
+async function postControl(body) {
+  const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify(body)});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+  return j;
+}
 const cap = s => { s = String(s == null ? "" : s); return s.charAt(0).toUpperCase() + s.slice(1); };      // status chips and badges start with a capital
 const escH = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 function openSpool(i) {
@@ -618,9 +626,7 @@ document.getElementById("spmodal").addEventListener("click", async ev => {
   if (!confirm("Send to " + CFG.name + ":\n\n" + ["material", "color", "weight"].filter(k => k in body).map(k => k + " = " + body[k]).join("\n") + "\n\nfor " + box.dataset.lane + "?")) return;
   b.disabled = true; msg.textContent = "Sending...";
   try {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify(body)});
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.status);
+    const j = await postControl(body);
     msg.textContent = "Saved"; tick();
   } catch (e) { msg.textContent = String(e.message || e); } finally { b.disabled = false; }
 });
@@ -692,6 +698,11 @@ const CONFIRM = {
   pickup: t => "Pick up T" + t + "?\nThe printer will park the current tool and move T" + t + " into place."
 };
 const notice = document.getElementById("notice");
+// show a failure in the header for a few seconds
+function flashError(text, ms) {
+  notice.className = "pill off"; notice.textContent = text;
+  setTimeout(() => { notice.textContent = ""; notice.className = ""; }, ms);
+}
 async function control(action, tool, lane) {
   const who = lane || "T" + tool, lbl = lane ? AFC_LABEL[action] : LABEL[action];
   const cur = lane && action === "load" ? (SLOTSNOW.find(s => s.isActive && s.lane !== lane) || {}).lane : null;
@@ -699,10 +710,7 @@ async function control(action, tool, lane) {
   running = true;
   notice.className = "pill"; notice.textContent = lbl + " " + who + " - running...";
   try {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"},
-                                       body: JSON.stringify({action: action, tool: tool, lane: lane})});
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.status);
+    const j = await postControl({action: action, tool: tool, lane: lane});
     notice.className = "pill on"; notice.textContent = lbl + " " + who + " done";
   } catch (e) {
     notice.className = "pill off"; notice.textContent = lbl + " " + who + " failed: " + e.message;
@@ -753,11 +761,9 @@ async function tgtApply(v) {
     if (v === "" || !(n >= 0 && n <= 100)) { tgtIn.focus(); return; }
     tgtPop.hidden = true; fanHoldUntil = Date.now() + 3000;
     try {
-      const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify({action: "fan", fan: tgtFan, speed: n / 100})});
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+      await postControl({action: "fan", fan: tgtFan, speed: n / 100});
     } catch (e) {
-      notice.className = "pill off"; notice.textContent = tgtTitle + " failed: " + e.message;
-      setTimeout(() => { notice.textContent = ""; notice.className = ""; }, 8000);
+      flashError(tgtTitle + " failed: " + e.message, 8000);
     }
     fanHoldUntil = 0; tick();
     return;
@@ -771,11 +777,9 @@ async function tgtApply(v) {
   if ((printState === "printing" || printState === "paused") && !confirm("A print is running. Change the " + tgtTitle + " target to " + (n ? n + "°C" : "off") + "?")) return;
   tgtPop.hidden = true;
   try {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify({action: "temp", heater: tgtHeater, target: n})});
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+    await postControl({action: "temp", heater: tgtHeater, target: n});
   } catch (e) {
-    notice.className = "pill off"; notice.textContent = tgtTitle + " target failed: " + e.message;
-    setTimeout(() => { notice.textContent = ""; notice.className = ""; }, 8000);
+    flashError(tgtTitle + " target failed: " + e.message, 8000);
   }
   tick();
 }
@@ -802,12 +806,10 @@ async function lightToggle() {
   lightOn = want; lightHold = Date.now() + 4000;
   lightApply();
   try {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify({action: "light", on: want})});
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+    await postControl({action: "light", on: want});
   } catch (e) {
     lightOn = !want; lightHold = 0;
-    notice.className = "pill off"; notice.textContent = "Light failed: " + e.message;
-    setTimeout(() => { notice.textContent = ""; notice.className = ""; }, 8000);
+    flashError("Light failed: " + e.message, 8000);
   }
   tick();
 }
@@ -836,9 +838,7 @@ async function mvSend(body, what) {
   running = true; renderMove(window.__st);
   notice.className = "pill"; notice.textContent = what + " ...";
   try {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify(body)});
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.status);
+    const j = await postControl(body);
     notice.textContent = "";
     notice.className = "";
   } catch (e) {
@@ -962,12 +962,13 @@ const fgrid = document.getElementById("fgrid");
 function fanKey(n) { return n === "fan" ? "fan" : n.replace(/^fan_generic /, ""); }
 // AFC status pills: toolhead (extruder) filament sensors, the hub, and the Turtleneck buffer(s). Field names follow the AFC Klipper add-on;
 // whatever a printer does not report is simply not shown.
+// One chip of a status row: "Label: Value", lit when `on`, dimmed when there is nothing to report
+const pill = (label, text, on, dim) => '<span class="pill' + (on ? " on" : "") + (dim ? " dim" : "") + '"><i></i>' + escH(label) + ": " + escH(cap(text)) + "</span>";
 function renderAfcBar(st) {
   const bar = document.getElementById("afcbar");
   if (CFG.provider === "qidibox" || CFG.provider === "toolchanger") return;      // the same row shows the QIDI Box / toolchanger status instead
   if (CFG.provider !== "afc") { bar.hidden = true; return; }
   const pills = [], one = pre => afcParts.filter(n => n.startsWith(pre + " ")).length < 2;
-  const pill = (label, text, on, dim) => '<span class="pill' + (on ? " on" : "") + (dim ? " dim" : "") + '"><i></i>' + escH(label) + ": " + escH(cap(text)) + "</span>";
   const sub = (n, pre, what) => one(pre) ? what : what + " (" + n.split(" ").slice(1).join(" ") + ")";
   const bool = (...vs) => vs.find(v => typeof v === "boolean");
   for (const n of afcParts) {
@@ -1022,10 +1023,7 @@ fgrid.addEventListener("change", async ev => {      // send on release / key pre
   if (!el.matches("input[type=range]") || !CONTROLS) return;
   fanHoldUntil = Date.now() + 3000;
   try {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"},
-                                       body: JSON.stringify({action: "fan", fan: el.dataset.fan, speed: el.value / 100})});
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.status);
+    const j = await postControl({action: "fan", fan: el.dataset.fan, speed: el.value / 100});
   } catch (e) {
     notice.className = "pill off"; notice.textContent = "Fan failed: " + e.message;
     fanHoldUntil = 0;
@@ -1054,10 +1052,7 @@ async function printControl(action) {
   pbusy = true; renderPrintCtl(printState);
   notice.className = "pill"; notice.textContent = PLABEL[action] + " - sending...";
   try {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"},
-                                       body: JSON.stringify({action: action})});
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.status);
+    const j = await postControl({action: action});
     notice.className = "pill on"; notice.textContent = PLABEL[action] + " sent";
   } catch (e) {
     notice.className = "pill off"; notice.textContent = PLABEL[action] + " failed: " + e.message;
@@ -1075,7 +1070,7 @@ document.getElementById("ebtn").addEventListener("click", () => { if (CONTROLS) 
 // ---- Live console: Moonraker's recent console history, polled (read-only) ----
 const conlog = document.getElementById("conlog"), constat = document.getElementById("constat");
 let conSig = "", conFirst = true;
-const escHtml = s => String(s).replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c]));
+const escHtml = escH;
 async function conPoll() {
   if (!document.hidden) {
     try {
@@ -1733,11 +1728,9 @@ async function tuneSend(what, value, label) {
   if (ptBusy) return;
   ptBusy = true; ptHold = Date.now() + 4000;
   try {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify({action: "tune", what, value})});
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+    await postControl({action: "tune", what, value});
   } catch (e) {
-    notice.className = "pill off"; notice.textContent = label + " failed: " + e.message;
-    setTimeout(() => { notice.textContent = ""; notice.className = ""; }, 8000);
+    flashError(label + " failed: " + e.message, 8000);
   }
   ptBusy = false; ptHold = 0; tick();
 }
@@ -2200,7 +2193,6 @@ function slotsQidi(st) {
 function renderTcBar(st) {
   if (CFG.provider !== "toolchanger") return;
   const bar = document.getElementById("afcbar"), T = st.toolchanger || {}, pills = [];
-  const pill = (label, text, on, dim) => '<span class="pill' + (on ? " on" : "") + (dim ? " dim" : "") + '"><i></i>' + escH(label) + ": " + escH(cap(text)) + "</span>";
   const tn = n => typeof n === "number" && n >= 0 ? "T" + n : "none";
   if (T.status === "error") pills.push('<span class="pill off"><i></i>Toolchanger: Error</span>');
   else if (T.status) pills.push(pill("Toolchanger", T.status, T.status === "ready", T.status === "uninitialized"));
@@ -2212,7 +2204,6 @@ function renderTcBar(st) {
 function renderBoxBar(st) {
   if (CFG.provider !== "qidibox") return;
   const bar = document.getElementById("afcbar"), M = st.multi_color_controller || {}, pills = [];
-  const pill = (label, text, on, dim) => '<span class="pill' + (on ? " on" : "") + (dim ? " dim" : "") + '"><i></i>' + escH(label) + ": " + escH(cap(text)) + "</span>";
   const hw = M.hardware || {}, ex = M.extruder || {}, op = M.operation || {}, last = (M.slots || {}).last_loaded;
   if (M.hardware) pills.push(pill("QIDI Box", hw.connected ? (hw.box_count > 1 ? hw.box_count + " connected" : "connected") : "not connected", !!hw.connected, !hw.connected));
   const act = (SLOTSNOW || []).find(s => s.isActive);
@@ -2543,7 +2534,7 @@ bootstrap();
 // ---- Left navigation: Home / Jobs / History / Tune ----
 (() => {
   const $ = id => document.getElementById(id), MRB = (typeof MR === "string") ? MR : "";
-  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+  const esc = escH;      // the one HTML escaper, defined with the Home code
   const dur = s => { s = Math.max(0, Math.round(s || 0)); const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return (d ? d + "d " : "") + (h || d ? h + "h " : "") + m + "m"; };
   const get = async p => { const r = await fetch(MRB + p, {cache: "no-store"}); if (!r.ok) throw new Error(p + " " + r.status); return r.json(); };
   let view = "home", filter = "all", jobs = [], timer = null;
@@ -2774,7 +2765,7 @@ bootstrap();
   }
   async function loadFiles() { fs_.list = await get("/config/list").then(r => r.result); renderTree(); }
   // ---- syntax highlighting: a colored copy of the text sits behind the transparent textarea ----
-  const hesc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const hesc = escH;
   const wrap = (c, s) => '<span class="' + c + '">' + hesc(s) + "</span>";
   const TOK = /(\{%.*?%\}|\{\{.*?\}\}|\{#.*?#\})|((?:^|\s)[#;].*$)|("(?:[^"\\]|\\.)*")|((?<![\w.])-?\d+(?:\.\d+)?(?![\w.]))/g;
   function tokenise(s) {          // numbers, strings, jinja and trailing comments inside a value / gcode line
@@ -2836,9 +2827,7 @@ bootstrap();
     if (!confirm("Save changes to " + fs_.cur + "?" + (printing ? "\n\nA print is running. The file is only read on restart, so the print is not affected." : "") + "\n\nThe previous version is backed up on the dashboard server first.")) return;
     $("fsave").disabled = true; setNote("Saving...");
     try {
-      const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify({action: "save_config", path: fs_.cur, content: $("edta").value, modified: fs_.mod})});
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+      const j = await postControl({action: "save_config", path: fs_.cur, content: $("edta").value, modified: fs_.mod});
       fs_.base = $("edta").value; fs_.mod = j.modified; edState(); setNote("Saved " + fs_.cur + ". Previous version kept as " + j.backup + ". Restart Klipper/Moonraker for it to take effect.");
       loadFiles().catch(() => {});
     } catch (e) { setNote("Save failed: " + e.message, true); edState(); }
@@ -2926,12 +2915,7 @@ bootstrap();
 // ---- Settings: printer name, printers, and the two graphics (chosen independently) ----
 (() => {
   const $ = id => document.getElementById(id), root = $("v-settings");
-  const post = async body => {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify(body)});
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.status);
-    return j;
-  };
+  const post = postControl;
   const msg = (t, bad) => { const m = $("setmsg"); if (m) { m.textContent = t; m.className = "badge" + (bad ? " bad" : ""); clearTimeout(msg.t); msg.t = setTimeout(() => { m.textContent = ""; }, 6000); } };
   const fakeSlot = (loaded, active) => ({i: loaded ? 90 : 91, ex: {temperature: loaded ? 215 : 28, target: active ? 215 : 0}, col: "#3b82f6", loaded, isActive: active, frac: .6, mat: "PLA", title: loaded ? "Blue PLA" : "Empty", remTxt: "600 g", fanLabel: "fan 80%", sp: null});
   const FIELDS = [["bed", "rect", "Bed (plate area)"], ["chamber", "rect", "Chamber / enclosure window"], ["screen", "rect", "Touchscreen"],
@@ -3266,12 +3250,7 @@ bootstrap();
 // ---- Macros tab: tool-button macros (detected, customizable) and every user-facing macro with a Run button ----
 (() => {
   const $ = id => document.getElementById(id), root = $("v-macros");
-  const post = async body => {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify(body)});
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.status);
-    return j;
-  };
+  const post = postControl;
   const ACT = [["load", "Load filament"], ["unload", "Unload filament"], ["park", "Park tool"], ["pickup", "Pick up tool"]];
   const SRC = {detected: "auto-detected", config: "config.json", custom: "custom"};
   let data = null, filter = "", cards = 0;
