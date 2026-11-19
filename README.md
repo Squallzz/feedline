@@ -3,15 +3,30 @@
 One HTML page (`feedline.html`, installed as `index.html`) plus a stdlib-only Python proxy (`feedline_server.py`).
 Works with any Klipper + Moonraker printer; ships with a drawn Snapmaker U1 view and a generic picture-based view.
 
+![Dashboard: camera, jog controls, tool cards with live filament, temperatures and fans](docs/dashboard.png)
+
+*Home: camera, motion controls, one card per tool with the Spoolman filament, temperatures and fans (clickable to set targets).*
+
+![AFC / BoxTurtle lanes with status pills and Load / Unload / Eject buttons](docs/afc.png)
+
+*With AFC / BoxTurtle: status pills (AFC state, loaded lane, hub, toolhead sensor, Turtleneck) and a card per lane. Shown against a simulated AFC printer.*
+
+![Graphics settings: printer, toolchanger and spool graphics chosen independently](docs/graphics.png)
+
+*Settings > Graphics: printer picture, toolchanger graphic and spool style are chosen independently.*
+
+![Macros tab with the tool-button macros and every macro on the printer](docs/macros.png)
+
+*Macros: edit what the Load / Unload / Park / Pickup buttons run, or run any user macro.*
 ## Install (Linux, about two minutes)
 
 Requirements: Python 3.8+ (nothing to `pip install`), and a Klipper printer whose Moonraker answers on port 7125 from this machine.
 
-    git clone <this repo> && cd feedline        # or copy the folder
+    git clone https://github.com/Squallzz/feedline.git && cd feedline
     sudo ./install.sh 192.168.1.50              # your printer's address
 
 The script copies the files to `/opt/feedline`, writes `config.json` with a random login password (printed once), installs the hardened
-`feedline.service` (dynamic user, read-only filesystem, state in `/var/lib/feedline`) and starts it. Open `http://<this machine>:8081/`.
+`feedline.service` (dynamic user, read-only filesystem, state in `/var/lib/feedline`) and starts it. Open `http://192.168.1.60:8081/ (your server's address)`.
 
 Manual install: copy `feedline.html` to `/opt/feedline/index.html`, `feedline_server.py` and `graphics/` next to it, copy `config.example.json`
 to `/opt/feedline/config.json` and set `printer` (and `auth`), then run the command below, or copy `feedline.service` to `/etc/systemd/system/`
@@ -21,7 +36,7 @@ Update: re-run `sudo ./install.sh` from a newer copy (config and settings are ke
 delete `/etc/systemd/system/feedline.service`, `/opt/feedline` and `/var/lib/feedline`.
 
 Troubleshooting: `journalctl -u feedline -e`. "unknown host name" (HTTP 421) means you opened the page by a DNS name the server does not know:
-add it to `allowed_hosts`. A blank printer page means Moonraker is unreachable from this machine (`curl http://PRINTER:7125/server/info`).
+add it to `allowed_hosts`. A blank printer page means Moonraker is unreachable from this machine (`curl http://192.168.1.50:7125/server/info`).
 
 ## Run
 
