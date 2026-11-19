@@ -127,6 +127,26 @@ Notes:
 - Leave the toggle off if you do not need it: while it is off, browsers refuse to show Feedline inside any other page. While it is on, any page can frame it, which matters because Feedline has no login (see [SECURITY.md](SECURITY.md)).
 - The address in the card is opened by the browser that shows Home Assistant, so it must be reachable from there (a name or IP, not `localhost`).
 - If you open Home Assistant over `https://`, browsers block a plain `http://` Feedline in the card (mixed content). Put Feedline behind an https reverse proxy in that case.
+- **Serving Feedline over https (reverse proxy).** Any reverse proxy works (Nginx Proxy Manager, NPMplus, Caddy, Traefik). Point a hostname that has a certificate your browsers trust at `http://<feedline-ip>:8081`, then use `url: https://<that hostname>/` in the card. Minimal Caddy example (automatic certificates on a public domain):
+
+      feedline.example.com {
+          reverse_proxy 192.168.1.60:8081
+      }
+
+  Minimal nginx server block (use your own certificate and key; pass the Host header through):
+
+      server {
+        listen 443 ssl;
+        server_name feedline;
+        ssl_certificate     /path/feedline.crt;
+        ssl_certificate_key /path/feedline.key;
+        location / {
+          proxy_pass http://192.168.1.60:8081;
+          proxy_set_header Host $host;
+        }
+      }
+
+  On a home network without a public domain, create a local DNS name (for example `feedline`) pointing at the proxy and sign its certificate with a local CA that your devices trust. If the name has dots and is not `.local`, `.lan` or similar, add it to `allowed_hosts`. If the proxy runs on the same machine, start Feedline with `--bind 127.0.0.1`. The live camera and touchscreen window are loaded by your browser straight from the printer over http, so an https page may block them (mixed content); this is not yet verified.
 - With several printers, the selected printer is remembered in the browser; some browsers do not keep that inside a frame, so a framed Feedline may fall back to the first printer.
 - The setting can also be preset with `allow_embed` in `config.json`; the toggle in Settings overrides it.
 
