@@ -28,6 +28,13 @@
   /* Front view of the printer; each card sits under its toolhead's real dock position (X = 35, 102.7, 170.2, 237.7 mm) */
   #colR{container-type:inline-size}
   [data-spin]{transform-box:fill-box;transform-origin:center}      /* spool parts that turn while filament is fed (spinApply) */
+  /* the in-page "are you sure?" dialog (ask()) */
+  #askmodal{position:fixed;inset:0;z-index:95;background:#000b;display:flex;align-items:center;justify-content:center;padding:16px}
+  #askmodal .dlg{background:#14122b;border:1px solid #352F6B;border-radius:14px;max-width:440px;width:100%;padding:18px 20px;color:#e8e6ff;box-shadow:0 12px 40px #000c}
+  #askmsg{white-space:pre-wrap;font-size:14px;line-height:1.45;margin:0 0 16px}
+  #askmodal .row{display:flex;justify-content:flex-end;gap:10px}
+  #askmodal button{background:#1D1A42;border:1px solid #352F6B;color:#e8e6ff;border-radius:8px;padding:7px 18px;cursor:pointer;font:inherit;font-size:13px;min-width:84px}
+  #askmodal button:hover{border-color:#9580FF} #askok{background:#7A63F2;border-color:#7A63F2;color:#fff;font-weight:600}
   .spool{cursor:pointer;outline:none} .spool:hover circle:first-child,.spool:focus-visible circle:first-child{stroke:#9580FF}
   #spmodal{position:fixed;inset:0;background:rgba(5,4,14,.72);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
   #spmodal .dlg{background:#14122b;border:1px solid #352F6B;border-radius:14px;max-width:440px;width:100%;max-height:90vh;overflow:auto;padding:18px 20px;position:relative;color:#e8e6ff}
@@ -99,7 +106,7 @@
   .stats .sw{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px;border:1px solid #fff4}
   #notice:not(:empty){padding:3px 12px;border-radius:999px;font-size:12px;background:#1D1A42;border:1px solid var(--edge);color:var(--muted)}
   #notice.on{color:var(--good);border-color:#2c6b48} #notice.off{color:var(--bad);border-color:#7a2c40}
-  .acts{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:9px}
+  .acts{display:grid;grid-template-columns:repeat(auto-fit,minmax(44px,1fr));gap:5px;margin-top:9px}      /* two, three or four buttons share one row when they fit */
   .acts button{background:#1D1A42;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:4px 0;font:inherit;font-size:11px;cursor:pointer}
   .acts button:hover:not(:disabled){border-color:var(--violet);background:#2a2560}
   .acts button:disabled{opacity:.35;cursor:not-allowed}
@@ -504,6 +511,7 @@
   </div>
 </section>
 
+<div id="askmodal" hidden role="alertdialog" aria-modal="true" aria-labelledby="askmsg"><div class="dlg"><p id="askmsg"></p><div class="row"><button id="askno" type="button">Cancel</button><button id="askok" type="button">OK</button></div></div></div>
 <script>
 const q = new URLSearchParams(location.search);
 let SPOOLMAN = q.get("spoolman") || "";          // browser-reachable Spoolman host:port (for the "Open in Spoolman" link)
@@ -547,6 +555,26 @@ const shade = (h, f) => {            // f<1 darker, f>1 lighter
 };
 
 const spoolInfo = [];     // per tool: matched Spoolman spool + printer tag info, for the details modal
+// Asking before a command. The browser's own confirm() is not used: embedded pages (a Home Assistant card, an in-app
+// browser pane) suppress it and it then answers "cancel" at once, so every button that asks first silently did nothing.
+// Resolves to true (go ahead) or false. Cancel has the focus, so a stray Enter never confirms; Escape cancels.
+function ask(message, okLabel) {
+  const m = document.getElementById("askmodal"), ok = document.getElementById("askok"), no = document.getElementById("askno");
+  if (!m.hidden) return Promise.resolve(false);              // one question at a time
+  document.getElementById("askmsg").textContent = message;
+  ok.textContent = okLabel || "OK";
+  return new Promise(resolve => {
+    const done = v => { m.hidden = true; ok.onclick = no.onclick = m.onclick = null; document.removeEventListener("keydown", key, true); resolve(v); };
+    const key = e => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(false); }
+      else if (e.key === "Tab") { e.preventDefault(); (document.activeElement === ok ? no : ok).focus(); }      // keep the focus inside the dialog
+    };
+    ok.onclick = () => done(true); no.onclick = () => done(false);
+    m.onclick = e => { if (e.target === m) done(false); };
+    document.addEventListener("keydown", key, true);
+    m.hidden = false; no.focus();
+  });
+}
 // Every command goes through here: POST /control with the header the server insists on (it blocks cross-site form posts).
 // Resolves to the server's reply; throws an Error carrying the server's message (or the HTTP status) when it is refused.
 async function postControl(body) {
@@ -623,7 +651,7 @@ document.getElementById("spmodal").addEventListener("click", async ev => {
   if (col.toLowerCase() !== (/^#[0-9a-f]{6}$/i.test(d.col || "") ? d.col.toLowerCase() : "#808080")) body.color = col;
   if (w !== "" && +w !== (typeof d.rem === "number" ? Math.round(d.rem) : null)) body.weight = +w;
   if (Object.keys(body).length === 2) { msg.textContent = "Nothing changed"; return; }
-  if (!confirm("Send to " + CFG.name + ":\n\n" + ["material", "color", "weight"].filter(k => k in body).map(k => k + " = " + body[k]).join("\n") + "\n\nfor " + box.dataset.lane + "?")) return;
+  if (!await ask("Send to " + CFG.name + ":\n\n" + ["material", "color", "weight"].filter(k => k in body).map(k => k + " = " + body[k]).join("\n") + "\n\nfor " + box.dataset.lane + "?")) return;
   b.disabled = true; msg.textContent = "Sending...";
   try {
     const j = await postControl(body);
@@ -681,14 +709,15 @@ function toolSvg(i, col, frac, temp, target, active, loaded, fanLabel) {
 let CONTROLS = HOSTED && !SAME;
 let printState = "", running = false;
 const LABEL = {load: "Load", unload: "Unload", park: "Park", pickup: "Pickup"};
+const QB_LABEL = {load: "Load", unload: "Unload", park: "Eject"};      // QIDI Box: Eject pulls a waiting filament out of its slot (Fluidd calls it Uninstall)
 function actions(i, loaded, isActive, ex, s) {
   const offered = ((CFG && CFG.actions) || []);
   if (!CONTROLS || !offered.length || (s && s.ext)) return "";      // the external spool is loaded by hand
   const locked = running || printState === "printing" || printState === "paused";
-  const afc = CFG.provider === "afc", qb = CFG.provider === "qidibox";      // QIDI Box: Load a waiting slot, Unload the one in the toolhead; the button's tool is the T number the slot is mapped to
-  const can = afc ? {load: loaded && !isActive, unload: loaded, park: isActive, pickup: loaded && !isActive} : qb ? {load: loaded && !isActive, unload: isActive} : {load: loaded, unload: loaded, park: isActive, pickup: !isActive};
+  const afc = CFG.provider === "afc", qb = CFG.provider === "qidibox";      // QIDI Box: Load a waiting slot, Unload the one in the toolhead; the button carries the slot number
+  const can = afc ? {load: loaded && !isActive, unload: loaded, park: isActive, pickup: loaded && !isActive} : qb ? {load: loaded && !isActive, unload: isActive, park: loaded && !isActive} : {load: loaded, unload: loaded, park: isActive, pickup: !isActive};
   return '<div class="acts">' + (afc ? ["park", "load", "unload"] : ["load", "unload", "park", "pickup"]).filter(a => offered.includes(a)).map(a =>
-    '<button data-act="' + a + '" data-tool="' + (qb ? s.tool : i) + '"' + (afc ? ' data-lane="' + escH(s.lane) + '"' : "") + (locked || !can[a] ? " disabled" : "") + '>' + (afc ? AFC_LABEL[a] : LABEL[a]) + '</button>').join("") +
+    '<button data-act="' + a + '" data-tool="' + (qb ? s.slot : i) + '"' + (afc ? ' data-lane="' + escH(s.lane) + '"' : "") + (s && s.label ? ' data-who="' + escH(s.label) + '"' : "") + (qb ? ' data-direct="1"' : "") + (locked || !can[a] ? " disabled" : "") + '>' + (afc ? AFC_LABEL[a] : qb ? QB_LABEL[a] : LABEL[a]) + '</button>').join("") +
     '</div>';
 }
 const CONFIRM = {
@@ -703,11 +732,16 @@ function flashError(text, ms) {
   notice.className = "pill off"; notice.textContent = text;
   setTimeout(() => { notice.textContent = ""; notice.className = ""; }, ms);
 }
-async function control(action, tool, lane) {
-  const who = lane || "T" + tool, lbl = lane ? AFC_LABEL[action] : LABEL[action];
+async function control(action, tool, lane, name, label, noAsk) {
+  const who = name || lane || "T" + tool, lbl = label || (lane ? AFC_LABEL[action] : LABEL[action]);
+  // Load and Unload act at once, without a question: their buttons are only live when that action is possible (and never
+  // while printing). So do all three QIDI Box buttons, as on the printer's own Box card. Buttons that move a toolhead or
+  // eject an AFC lane still ask first.
+  const direct = noAsk || lbl === "Load" || lbl === "Unload";
   const cur = lane && action === "load" ? (SLOTSNOW.find(s => s.isActive && s.lane !== lane) || {}).lane : null;
-  if (running || !confirm(lane ? (cur ? "Swap to " + lane + "?\n" + cur + " is loaded, so it is unloaded first, then " + lane + " is loaded.\nThe printer moves filament." : lbl + " " + lane + "?\nThe printer runs its AFC lane macro and moves filament.") : CONFIRM[action](tool))) return;
+  if (running || !direct && !await ask(lane ? (cur ? "Swap to " + lane + "?\n" + cur + " is loaded, so it is unloaded first, then " + lane + " is loaded.\nThe printer moves filament." : lbl + " " + lane + "?\nThe printer runs its AFC lane macro and moves filament.") : CONFIRM[action](tool))) return;
   running = true;
+  if (window.__st) render(window.__st);                       // the tool buttons go inactive at once, not at the next poll
   notice.className = "pill"; notice.textContent = lbl + " " + who + " - running...";
   try {
     const j = await postControl({action: action, tool: tool, lane: lane});
@@ -774,7 +808,7 @@ async function tgtApply(v) {
     return mvSend({action: "goto", axis: tgtAxis, pos: n}, "Move " + tgtAxis);
   }
   if (!(n >= 0 && n <= tgtMax(tgtHeater))) { tgtIn.focus(); return; }
-  if ((printState === "printing" || printState === "paused") && !confirm("A print is running. Change the " + tgtTitle + " target to " + (n ? n + "°C" : "off") + "?")) return;
+  if ((printState === "printing" || printState === "paused") && !await ask("A print is running. Change the " + tgtTitle + " target to " + (n ? n + "°C" : "off") + "?")) return;
   tgtPop.hidden = true;
   try {
     await postControl({action: "temp", heater: tgtHeater, target: n});
@@ -855,8 +889,8 @@ mvEl.addEventListener("click", ev => {
   if (!b || b.disabled) return;
   const [kind, a, d] = b.dataset.mv.split(":");
   if (kind === "jog") mvSend({action: "jog", axis: a, dist: (+d) * (a === "Z" ? Math.min(mvStep, 10) : mvStep)}, "Move " + a);
-  else if (kind === "home") { if (confirm("Home " + (a === "all" ? "all axes" : a.toUpperCase()) + "?\nThe toolhead/bed will move.")) mvSend({action: "home", axes: a}, "Homing"); }
-  else if (kind === "motors_off") { if (confirm("Turn the stepper motors off?\nThe printer will lose its homed position.")) mvSend({action: "motors_off"}, "Motors off"); }
+  else if (kind === "home") { ask("Home " + (a === "all" ? "all axes" : a.toUpperCase()) + "?\nThe toolhead/bed will move.", "Home").then(ok => { if (ok) mvSend({action: "home", axes: a}, "Homing"); }); }
+  else if (kind === "motors_off") { ask("Turn the stepper motors off?\nThe printer will lose its homed position.", "Motors off").then(ok => { if (ok) mvSend({action: "motors_off"}, "Motors off"); }); }
 });
 function renderMove(st) {
   if (!CONTROLS || !st) return;
@@ -884,7 +918,7 @@ document.getElementById("grid").addEventListener("click", ev => {
   const s = ev.target.closest(".spool");
   if (s) return openSpool(+s.dataset.spool);
   const b = ev.target.closest("button[data-act]");
-  if (b && !b.disabled) control(b.dataset.act, +b.dataset.tool, b.dataset.lane);
+  if (b && !b.disabled) control(b.dataset.act, +b.dataset.tool, b.dataset.lane, b.dataset.who, b.textContent, b.dataset.direct === "1");
 });
 
 // ---- Temperatures: every heater / temperature sensor the printer reports (discovered, like Fluidd) ----
@@ -1048,7 +1082,7 @@ function renderPrintCtl(state) {
   document.getElementById("ebtn").disabled = false;                      // never locked by another command that is running
 }
 async function printControl(action) {
-  if (pbusy || !confirm(PCONFIRM[action])) return;
+  if (pbusy || !await ask(PCONFIRM[action])) return;
   pbusy = true; renderPrintCtl(printState);
   notice.className = "pill"; notice.textContent = PLABEL[action] + " - sending...";
   try {
@@ -1741,7 +1775,7 @@ ptEl("ptune").addEventListener("click", ev => {
   const t = b.dataset.tune, num = id => { const v = ptEl(id).value; return v === "" ? NaN : +v; };
   if (t === "zdown") tuneSend("z_adjust", -ptStep, "Z offset");
   else if (t === "zup") tuneSend("z_adjust", ptStep, "Z offset");
-  else if (t === "zreset") { if (confirm("Set the Z offset back to 0?\nThe nozzle moves by the current offset straight away.")) tuneSend("z_reset", 0, "Z offset"); }
+  else if (t === "zreset") { ask("Set the Z offset back to 0?\nThe nozzle moves by the current offset straight away.", "Reset").then(ok => { if (ok) tuneSend("z_reset", 0, "Z offset"); }); }
   else if (t === "speed100") tuneSend("speed", 100, "Speed");
   else if (t === "flow100") tuneSend("flow", 100, "Flow");
   else if (t === "pa") tuneSend("pa", num("ptpa"), "Pressure advance");
@@ -2181,7 +2215,7 @@ function slotsQidi(st) {
     if (!ext) for (let t = 0; t < 16; t++) if (V["value_t" + t] === name) { tool = t; break; }
     const mat = String(f.type || ""), title = String(f.filament || mat || "Filament"), temps = f.min_temp && f.max_temp ? f.min_temp + " - " + f.max_temp + " °C" : "";
     out.push({i, ex: isActive ? (st[exName(0)] || {}) : {}, info: {}, loaded, uid: "", sp: null, col: m.color ? afcColor(m.color) : "#808080", mat, rem: null, total: 0, isActive, ext,
-      lane: name, tool, label: ext ? "External" : (Math.floor(n / 4) + 1) + "ABCD"[n % 4], status: isActive ? "In use" : ext ? (loaded ? "Standby" : "Not set") : loaded ? "Ready" : "Empty",
+      lane: name, tool, slot: n, label: ext ? "External" : (Math.floor(n / 4) + 1) + "ABCD"[n % 4], status: isActive ? "In use" : ext ? (loaded ? "Standby" : "Not set") : loaded ? "Ready" : "Empty",
       map: ext ? "by hand" : "T" + tool, unit: ext ? "External spool, not through the Box" : "Box " + (Math.floor(n / 4) + 1),
       frac: loaded ? .7 : .05, spool: "left", remTxt: "-", title: loaded ? title : ext ? "Not set" : "Empty", brand: loaded ? String(m.vendor || "") : ext ? "no material chosen" : "no filament",
       vendor: String(m.vendor || ""), temps, boxTemp: +f.box_max_temp > 0 ? "up to " + f.box_max_temp + " °C" : ""});
@@ -2813,7 +2847,7 @@ bootstrap();
   }
   function setNote(msg, bad) { const n = $("fnote"); n.textContent = msg; n.style.color = bad ? "var(--bad)" : "var(--sub)"; }
   async function openFile(p, force) {
-    if (!force && edDirty() && !confirm("Discard unsaved changes to " + fs_.cur + "?")) return;
+    if (!force && edDirty() && !await ask("Discard unsaved changes to " + fs_.cur + "?")) return;
     try {
       const r = await get("/config/read?path=" + encodeURIComponent(p));
       Object.assign(fs_, {cur: r.path, base: r.content, mod: r.modified, editable: r.editable});
@@ -2824,7 +2858,7 @@ bootstrap();
   async function saveFile() {
     if (!fs_.cur || !fs_.editable || !edDirty()) return;
     const printing = /printing|paused/i.test(($("job") || {}).textContent || "");
-    if (!confirm("Save changes to " + fs_.cur + "?" + (printing ? "\n\nA print is running. The file is only read on restart, so the print is not affected." : "") + "\n\nThe previous version is backed up on the dashboard server first.")) return;
+    if (!await ask("Save changes to " + fs_.cur + "?" + (printing ? "\n\nA print is running. The file is only read on restart, so the print is not affected." : "") + "\n\nThe previous version is backed up on the dashboard server first.")) return;
     $("fsave").disabled = true; setNote("Saving...");
     try {
       const j = await postControl({action: "save_config", path: fs_.cur, content: $("edta").value, modified: fs_.mod});
@@ -2843,7 +2877,7 @@ bootstrap();
   });
   $("fsave").onclick = saveFile;
   $("frevert").onclick = () => { $("edta").value = fs_.base; gutter(); edState(); };
-  $("freload").onclick = () => { if (fs_.cur && (!edDirty() || confirm("Discard unsaved changes and reload from the printer?"))) openFile(fs_.cur, true); };
+  $("freload").onclick = async () => { if (fs_.cur && (!edDirty() || await ask("Discard unsaved changes and reload from the printer?", "Discard"))) openFile(fs_.cur, true); };
   window.addEventListener("beforeunload", e => { if (edDirty()) { e.preventDefault(); e.returnValue = ""; } });
   // ---------- Printers: every printer at a glance (status only; a click opens that printer) ----------
   let ovSig = "";
@@ -3209,14 +3243,14 @@ bootstrap();
     }
     else if (b.dataset.sw) selectPrinter(b.dataset.sw);
     else if (b.dataset.rm) {
-      if (!confirm("Remove this printer from the dashboard? (The printer itself is not touched.)")) return;
+      if (!await ask("Remove this printer from the dashboard? (The printer itself is not touched.)")) return;
       const was = PRINTERS.find(p => p.id === b.dataset.rm);
       await post({action: "remove_printer", id: b.dataset.rm});
       if (was && was.active) selectPrinter("main"); else { await loadPrinters(); render(); }
     }
     else if (b.dataset.del) {
       const [kind, id] = b.dataset.del.split(":");
-      if (!confirm("Delete this custom graphic?")) return;
+      if (!await ask("Delete this custom graphic?")) return;
       await reload((await post({action: "delete_pack", kind, id})).config); msg("Deleted");
     }
     else if (b.dataset.edit) {
@@ -3319,7 +3353,7 @@ bootstrap();
       const card = b.closest(".mcard"), params = {};
       card.querySelectorAll("[data-p]").forEach(i => { if (i.value.trim()) params[i.dataset.p] = i.value.trim(); });
       const line = b.dataset.run + Object.entries(params).map(([k, v]) => " " + k + "=" + v).join("");
-      if (!confirm("Run this macro on " + CFG.name + "?\n\n" + line + "\n\nIt runs on the printer immediately and macros can move or heat it.")) return;
+      if (!await ask("Run this macro on " + CFG.name + "?\n\n" + line + "\n\nIt runs on the printer immediately and macros can move or heat it.")) return;
       b.disabled = true; running = true;
       try { const j = await post({action: "run_macro", name: b.dataset.run, params}); msg("Ran " + j.cmd); }
       finally { running = false; b.disabled = locked() || !!b.dataset.blocked; }

@@ -297,8 +297,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
         Callers build `script` from fixed commands and checked values only; this never sees text typed in a browser."""
         logging.info("running %s", script.replace("\n", " ; "))
         url = "http://%s:7125/printer/gcode/script?script=%s" % (self.printer, urllib.parse.quote(script))
-        with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=timeout) as r:
-            r.read()
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, method="POST"), timeout=timeout) as r:
+                r.read()
+        except urllib.error.HTTPError as e:                   # Klipper refused or the macro failed: pass on what it said, not just "400 Bad Request"
+            raise RuntimeError(self.moonraker_error(e)) from None
+
+    @staticmethod
+    def moonraker_error(e):
+        """The message inside Moonraker's error reply ({"error": {"message": ...}}), or the plain HTTP error."""
+        try:
+            msg = json.loads(e.read(65536) or b"{}").get("error", {}).get("message")
+        except Exception:  # noqa: BLE001
+            msg = None
+        return str(msg).strip()[:400] if msg else str(e)
 
     # ---- several printers: "main" comes from config.json; the others are added in the UI and kept in printers.json ----
     pid = "main"
@@ -399,13 +411,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 if has(c.split(" ")[0]):
                     out[act] = c
             return out
-        if self.provider() == "qidibox":                      # one card per Box slot; {n} is the tool number the slot is mapped to (T0 = slot0 unless remapped)
-            for act, names in (("load", ("LOAD_T{n}", "T{n}")), ("unload", ("ULOAD_T{n}", "UNLOAD_T{n}"))):      # a wrapper macro that homes / checks first is preferred when the printer has one
-                for c in names:
-                    if self.template_ok(c):
-                        out[act] = c
-                        break
-            return out
+        if self.provider() == "qidibox":
+            # One card per Box slot; {n} is the slot number. These are the commands QIDI's own Fluidd "Control Box" card
+            # sends for Load and Unload: the Box firmware then does the whole sequence (heat, cut, retract, purge), not just
+            # the bare feed that the T<n> / UNLOAD_T<n> macros do. The firmware registers them without a description, so
+            # they are missing from Klipper's command list and cannot be checked for here; a printer that lacks them
+            # answers "Unknown command", which the page shows.
+            # "park" is the Eject button: E_BOX (Fluidd's "Uninstall") pulls a waiting filament back out of its slot.
+            return {"load": "E_LOAD slot={n}", "unload": "E_UNLOAD slot={n}", "park": "E_BOX slot={n}"}
         if has("AUTO_FEEDING") and "filament_detect" in self.objects():      # Snapmaker U1: tools and parking are native commands, not macros
             return {"load": "AUTO_FEEDING EXTRUDER={n} LOAD=1", "unload": "AUTO_FEEDING EXTRUDER={n} UNLOAD=1", "pickup": "T{n}", "park": "PARK_EXTRUDER{nz}"}
         def with_tool(name, extra=""):

@@ -146,17 +146,20 @@ class Providers(unittest.TestCase):
         self.assertEqual(handler(["extruder"], settings={"provider": "qidibox"}).provider(), "extruders")
         self.assertEqual(handler(self.TC, settings={"provider": "extruders"}).provider(), "extruders")
 
-    def test_qidi_box_buttons_use_the_slot_count(self):
-        h = handler(self.BOX, ["LOAD_T0", "LOAD_T1", "LOAD_T2", "LOAD_T3", "ULOAD_T0", "ULOAD_T1", "ULOAD_T2", "ULOAD_T3"])
-        self.assertEqual((h.tool_count(), h.slot_count()), (1, 4))
-        self.assertEqual(h.command_for("load", 3), "LOAD_T3")
-        self.assertEqual(h.command_for("unload", 2), "ULOAD_T2")
-        self.assertIsNone(h.command_for("load", 4))
-        self.assertIsNone(h.command_for("park", 0))
+    def test_qidi_box_buttons_send_what_qidis_fluidd_sends(self):
+        # E_LOAD / E_UNLOAD are not in Klipper's command list (no description), so they must not depend on it
+        for commands in ([], ["LOAD_T0", "LOAD_T1", "LOAD_T2", "LOAD_T3", "ULOAD_T0", "T0", "UNLOAD_T0"]):
+            h = handler(self.BOX, commands)
+            self.assertEqual((h.tool_count(), h.slot_count()), (1, 4))
+            self.assertEqual(h.command_for("load", 3), "E_LOAD slot=3")
+            self.assertEqual(h.command_for("unload", 0), "E_UNLOAD slot=0")
+            self.assertIsNone(h.command_for("load", 4))
+            self.assertEqual(h.command_for("park", 2), "E_BOX slot=2")      # the Eject button
+            self.assertIsNone(h.command_for("pickup", 0))
 
-    def test_qidi_box_falls_back_to_stock_macros(self):
-        h = handler(self.BOX, ["T0", "T1", "T2", "T3", "UNLOAD_T0", "UNLOAD_T1", "UNLOAD_T2", "UNLOAD_T3"])
-        self.assertEqual((h.command_for("load", 1), h.command_for("unload", 1)), ("T1", "UNLOAD_T1"))
+    def test_qidi_box_buttons_can_be_overridden(self):
+        h = handler(self.BOX, ["ULOAD_T0", "ULOAD_T1", "ULOAD_T2", "ULOAD_T3"], cfg={"macros": {"unload": "ULOAD_T{n}"}})
+        self.assertEqual((h.command_for("load", 1), h.command_for("unload", 1)), ("E_LOAD slot=1", "ULOAD_T1"))
 
     def test_toolchanger_buttons(self):
         h = handler(self.TC, ["T0", "T1", "T2", "SELECT_TOOL", "UNSELECT_TOOL"])
