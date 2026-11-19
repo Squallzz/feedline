@@ -116,12 +116,31 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        if not Handler.cfg.get("allow_embed"):
+        if not self.embed_allowed():
             self.send_header("X-Frame-Options", "DENY")                 # no clickjacking of the control buttons
         for k, v in (headers or {}).items():
             self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
+
+    @staticmethod
+    def embed_allowed():
+        """May other pages (e.g. a Home Assistant card) show the dashboard in a frame? Settings choice first, then config.json."""
+        st = load_json(os.path.join(Handler.state, "server.json"), {})
+        return bool(st["allow_embed"]) if "allow_embed" in st else bool(Handler.cfg.get("allow_embed"))
+
+    def set_embed(self, req):
+        v = req.get("allow")
+        if v is not None and not isinstance(v, bool):
+            return self.jreply(400, {"error": "bad value"})
+        st = load_json(os.path.join(self.state, "server.json"), {})
+        if v is None:
+            st.pop("allow_embed", None)
+        else:
+            st["allow_embed"] = v
+        os.makedirs(self.state, exist_ok=True)
+        write_json_atomic(os.path.join(self.state, "server.json"), st)
+        self.jreply(200, {"ok": True, "config": self.public_config()})
 
     def blocked(self):
         """True (after answering) when the request must not be served: unknown Host name (DNS rebinding)."""
@@ -559,7 +578,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         light = self.light_cfg()
         ui_light = st.get("light")
         return {
-            "options": {"screen": {"on": bool(scr and scr.get("snapshot")), "source": "ui" if "screen" in st else ("config" if scr else "none")},
+            "options": {"embed": {"on": self.embed_allowed(), "source": "ui" if "allow_embed" in load_json(os.path.join(self.state, "server.json"), {}) else ("config" if c.get("allow_embed") else "none")},
+                        "screen": {"on": bool(scr and scr.get("snapshot")), "source": "ui" if "screen" in st else ("config" if scr else "none")},
                         "light": {"mode": "none" if ui_light is False else ("pick" if isinstance(ui_light, dict) and self.light_for(ui_light.get("object")) else "auto"),
                                   "choices": [o for _, o, _, _ in self.light_choices()], "active": light.get("object")}},
             "name": name, "defaultName": c.get("name"), "graphics": gsel,
@@ -1194,6 +1214,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self.delete_pack(req)
             if req.get("action") == "light":
                 return self.light_control(req)
+            if req.get("action") == "set_embed":
+                return self.set_embed(req)
             if req.get("action") == "set_spoolman":
                 return self.set_spoolman(req)
             if req.get("action") == "set_lane":

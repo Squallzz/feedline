@@ -14,7 +14,7 @@ dashboard through the browser, or (c) a compromised printer/Spoolman feeding bad
 | 1 | High | No authentication: anyone reaching the port can start/stop moves, heat, change macros, edit printer config files | **Accepted by design**: Feedline has no login. Run it only on a trusted network, firewall the port, or put it behind a reverse proxy that does authentication and TLS |
 | 2 | Med | DNS rebinding: a malicious site could re-point a name at the dashboard's IP and drive it from the victim's browser | **Fixed**: Host header allowlist (IPs, single-label and common local suffixes, plus `allowed_hosts`); others get 421 |
 | 3 | Med | Cross-site requests (CSRF) | Already covered: `/control` requires the custom `X-Feedline-Control` header (cannot be sent cross-site without CORS, which the server never grants) |
-| 4 | Med | Clickjacking and MIME sniffing | **Fixed**: `X-Frame-Options: DENY` (unless `allow_embed`), `nosniff`, `Referrer-Policy: no-referrer` |
+| 4 | Med | Clickjacking and MIME sniffing | **Fixed**: `X-Frame-Options: DENY` (unless embedding is turned on in Settings or `allow_embed`), `nosniff`, `Referrer-Policy: no-referrer` |
 | 5 | Med | Stored XSS from printer-supplied names/titles (heater, fan, lane names) and uploaded SVG graphics | **Fixed**: those values are HTML-escaped; uploaded SVG has scripts, handlers, external links and non-local `url()` removed, and packs are served with `Content-Security-Policy: sandbox` |
 | 6 | Low | Request-size and slow-client handling | **Fixed**: negative/oversized `Content-Length` rejected (6 MB cap), 30 s socket timeout |
 | 7 | Low | Unbounded growth of config backups | **Fixed**: newest 20 per file kept |

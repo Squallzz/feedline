@@ -2412,7 +2412,7 @@ bootstrap();
       '<div class="sub">New printers get the generic setup: temperatures, fans, jobs, console, files, camera (if Moonraker has one) and one pickup button per tool. Anyone who can open this page can add one, so keep the dashboard on a trusted network.</div></div>' +
       '<div class="vcard"><h3>Filament system</h3><div class="srow"><select id="setfs">' + fsOptions() + '</select><span class="sub">Decides how filament is read and which filament graphic is used. ' +
       'AFC / BoxTurtle (ArmoredTurtle) shows one 3D card per lane; it is detected automatically when a printer is added.</span></div></div>' +
-      optionsCard() +
+      optionsCard() + embedCard() +
       '<div class="vcard"><h3>Spoolman</h3><div class="srow"><label>Spoolman address</label><input id="smurl" placeholder="http://192.168.1.20:7912" spellcheck="false" value="' + escH(CFG.spoolmanServer || "") + '"' + (CONTROLS ? "" : " disabled") + '>' +
       '<button id="smsave"' + (CONTROLS ? "" : " disabled") + '>Save</button><button id="smreset"' + (CONTROLS ? "" : " disabled") + ' title="Go back to the value in config.json">Use config.json</button></div>' +
       '<div class="sub">' + (CFG.spoolmanServer ? "Connected to " + escH(CFG.spoolmanServer) + (CFG.spoolmanFromUi ? " (set here)" : " (from config.json)") : "No Spoolman configured.") +
@@ -2452,6 +2452,29 @@ bootstrap();
       '<div class="srow" style="margin-top:12px"><label>Light button</label><select id="setlight"' + lock + '>' +
       lopts.map(([v, l]) => '<option value="' + escH(v) + '"' + (v === cur ? " selected" : "") + ">" + escH(l) + "</option>").join("") + '</select></div>' +
       '<div class="sub">The button that switches the chamber / case light on the printer picture. Automatic picks the LED or light pin that looks like one; choose another from the list if it picked wrong, or hide the button.</div></div>';
+  }
+  // show the dashboard inside Home Assistant (or any page): allow framing + a ready-made card
+  const haUrl = () => { try { return localStorage.getItem("fl_ha") || ""; } catch (e) { return ""; } };
+  const haCard = () => "type: iframe\nurl: " + location.origin + "/\naspect_ratio: 75%";
+  function embedCard() {
+    const e = (CFG.options || {}).embed || {}, lock = CONTROLS ? "" : " disabled";
+    return '<div class="vcard"><h3>Home Assistant and other pages</h3>' +
+      '<div class="srow"><label class="rad"><input type="checkbox" id="setembed"' + (e.on ? " checked" : "") + lock + '> Allow this dashboard to be shown inside another page</label></div>' +
+      '<div class="sub">Needed to put Feedline in a Home Assistant dashboard card. When it is off, browsers refuse to show Feedline in a frame. ' +
+      (e.source === "config" ? "Currently on because of config.json; unticking here overrides it. " : "") +
+      'Anyone who can open a page that frames Feedline can use it from there just as from this page, so only turn it on if you need it.</div>' +
+      '<div id="haopts"' + (e.on ? "" : " hidden") + '>' +
+      '<h4>Add it to Home Assistant</h4><div class="sub">1. Copy this card. 2. In Home Assistant open a dashboard, choose Edit, Add card, Webpage (iframe), switch to the code editor and paste it.</div>' +
+      '<textarea id="hacard" readonly rows="3" spellcheck="false" style="width:100%;max-width:420px;margin:8px 0;font-family:ui-monospace,monospace;background:#0a0818;color:#e8e6ff;border:1px solid #352F6B;border-radius:8px;padding:8px">' + escH(haCard()) + '</textarea>' +
+      '<div class="srow"><button id="hacopy" type="button">Copy card</button><span id="hamsg" class="sub"></span></div>' +
+      '<div class="srow" style="margin-top:10px"><label>Home Assistant address (optional)</label><input id="haurl" placeholder="http://homeassistant.local:8123" spellcheck="false" value="' + escH(haUrl()) + '">' +
+      '<button id="haopen" type="button">Open the dashboard editor</button></div>' +
+      '<div class="sub">The address is only remembered in this browser. Two things to know: the address in the card must work from the browser that shows Home Assistant, and if you open Home Assistant over <code>https://</code> your browser will block a plain <code>http://</code> Feedline in the card. In that case serve Feedline over https with a reverse proxy.</div></div></div>';
+  }
+  function copyText(txt, ta) {
+    if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(txt);
+    ta.focus(); ta.select();
+    return document.execCommand("copy") ? Promise.resolve() : Promise.reject(new Error("select the text and press Ctrl+C"));
   }
   async function probeScreen() {
     const el = $("scrprobe"); if (!el) return;
@@ -2512,6 +2535,7 @@ bootstrap();
   async function guard(fn) { try { await fn(); } catch (e) { msg(String(e.message || e), true); } }
 
   root.addEventListener("change", async ev => {
+    if (ev.target.id === "setembed") await guard(async () => { await reload((await post({action: "set_embed", allow: ev.target.checked})).config); msg(ev.target.checked ? "Embedding allowed" : "Embedding blocked"); });
     if (ev.target.id === "setscr") await guard(async () => { await reload((await post({action: "save_settings", screen: ev.target.checked})).config); msg(ev.target.checked ? "Remote touchscreen on" : "Remote touchscreen off"); });
     if (ev.target.id === "setlight") await guard(async () => {
       const v = ev.target.value;
@@ -2539,6 +2563,17 @@ bootstrap();
   root.addEventListener("click", ev => guard(async () => {
     const b = ev.target.closest("button"); if (!b) return;
     if (b.id === "setnamebtn") { await reload((await post({action: "save_settings", name: $("setname").value})).config); msg("Name saved"); }
+    else if (b.id === "hacopy") {
+      const m = $("hamsg");
+      try { await copyText($("hacard").value, $("hacard")); m.textContent = "Copied"; } catch (e) { m.textContent = String(e.message || e); }
+    }
+    else if (b.id === "haopen") {
+      let u = $("haurl").value.trim().replace(/\/+$/, "");
+      if (u && !/^https?:\/\//i.test(u)) u = "http://" + u;
+      if (!/^https?:\/\/(?:[a-z0-9.\-]+|\[[0-9a-f:]+\])(?::\d{1,5})?$/i.test(u)) throw new Error("enter an address like http://homeassistant.local:8123");
+      try { localStorage.setItem("fl_ha", u); } catch (e) {}
+      window.open(u + "/lovelace/0?edit=1", "_blank", "noopener");
+    }
     else if (b.id === "scrprobebtn") probeScreen();
     else if (b.id === "scrreset") { await reload((await post({action: "save_settings", screen: null})).config); msg("Touchscreen setting reset"); }
     else if (b.id === "setgbtn") { await reload((await post({action: "save_settings", graphics: {printer: $("setpp").value, toolchanger: $("settp").value, unit: $("setun").value}})).config); msg("Graphics applied"); }

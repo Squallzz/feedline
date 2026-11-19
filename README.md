@@ -105,8 +105,31 @@ Feedline is one small Python process (it used about 20 MB of memory on the test 
 **Tips**
 - Give the machine a fixed address (DHCP reservation) so bookmarks keep working.
 - Feedline has no login, so keep the VM on your home network or put it behind a reverse proxy that handles sign-in and HTTPS (see [SECURITY.md](SECURITY.md)). If a reverse proxy runs on the same machine, start Feedline with `--bind 127.0.0.1`.
-- To show it inside Home Assistant, add an iframe or webpage card and set `"allow_embed": true` in `config.json`.
+- To show it inside Home Assistant, see [Home Assistant](#home-assistant) below (one toggle in Settings).
 - Several printers? One Feedline instance handles them all (Settings > Printers).
+
+## Home Assistant
+
+Feedline can be shown as a card on a Home Assistant dashboard. No file editing is needed:
+
+1. Open **Settings > Home Assistant and other pages** and tick **Allow this dashboard to be shown inside another page**.
+2. Press **Copy card**. It copies a ready-made card using the address you are browsing from:
+
+       type: iframe
+       url: http://192.168.1.60:8081/
+       aspect_ratio: 75%
+
+3. In Home Assistant open a dashboard, choose Edit > Add card > Webpage (iframe), switch to the code editor and paste. Optionally type your Home Assistant address into the card's address box and press **Open the dashboard editor** to jump straight to the edit view.
+
+![Home Assistant card helper in Settings](docs/homeassistant.png)
+
+Notes:
+- Leave the toggle off if you do not need it: while it is off, browsers refuse to show Feedline inside any other page. While it is on, any page can frame it, which matters because Feedline has no login (see [SECURITY.md](SECURITY.md)).
+- The address in the card is opened by the browser that shows Home Assistant, so it must be reachable from there (a name or IP, not `localhost`).
+- If you open Home Assistant over `https://`, browsers block a plain `http://` Feedline in the card (mixed content). Put Feedline behind an https reverse proxy in that case.
+- With several printers, the selected printer is remembered in the browser; some browsers do not keep that inside a frame, so a framed Feedline may fall back to the first printer.
+- The setting can also be preset with `allow_embed` in `config.json`; the toggle in Settings overrides it.
+
 ## Install (Linux, about two minutes)
 
 Requirements: Python 3.8+ (nothing to `pip install`), and a Klipper printer whose Moonraker answers on port 7125 from this machine.
@@ -143,7 +166,7 @@ See `config.example.json`. Only `printer` is required. Anything the browser coul
 | `printer` | Moonraker host (port 7125) |
 | `name` | header text (can also be changed in Settings) |
 | `allowed_hosts` | extra Host names the server answers to (anti DNS-rebinding). IP addresses, single-label names and `.local/.lan/.home.arpa/.internal/.ts.net` always work |
-| `allow_embed` | `true` lets another site show the page in a frame (e.g. a Home Assistant card); default refuses framing |
+| `allow_embed` | optional; normally use Settings > Home Assistant and other pages. `true` lets another site show the page in a frame (e.g. a Home Assistant card); default refuses framing |
 | `allow_config_edit` | `false` makes the Files tab read-only |
 | `spoolman`, `spoolman_url` | Spoolman the server talks to (`host:port` or a URL such as `http://192.168.1.20:7912`, so it can run on any machine, not just this one), and the URL browsers open (defaults to the same address). Can also be set in Settings > Spoolman, which overrides this and is checked against Spoolman's `/api/v1/info` before saving |
 | `provider` | `auto`, `u1` (Snapmaker RFID tags matched in Spoolman) or `extruders` (one slot per extruder; spool from `tool_spools` or Moonraker's active spool) |
