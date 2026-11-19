@@ -18,19 +18,16 @@ install -m 644 "$SRC/feedline_server.py" "$DEST/feedline_server.py"
 if [ ! -f "$DEST/config.json" ]; then
   PRINTER="${1:-}"
   [ -n "$PRINTER" ] || { printf "Moonraker host or IP of your printer: "; read -r PRINTER; }
-  PW="$(python3 -c 'import secrets; print(secrets.token_urlsafe(12))')"
-  python3 - "$SRC/config.example.json" "$DEST/config.json" "$PRINTER" "$PW" <<'PY'
+  python3 - "$SRC/config.example.json" "$DEST/config.json" "$PRINTER" <<'PY'
 import json, sys
-src, dst, printer, pw = sys.argv[1:5]
+src, dst, printer = sys.argv[1:4]
 cfg = json.load(open(src))
 cfg["printer"] = printer
-cfg["auth"] = {"user": "admin", "password": pw}
 json.dump(cfg, open(dst, "w"), indent=2)
 PY
-  echo "Created $DEST/config.json  (login: admin / $PW)"
+  echo "Created $DEST/config.json"
 fi
 # the service runs as a dynamic user that no group can be assigned to, so the file must be world-readable
-# (it holds the login password: fine on a single-purpose machine, otherwise use FEEDLINE_PASSWORD in a systemd drop-in)
 chmod 644 "$DEST/config.json"
 
 install -m 644 "$SRC/feedline.service" /etc/systemd/system/feedline.service

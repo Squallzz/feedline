@@ -3,13 +3,13 @@
 One HTML page (`feedline.html`, installed as `index.html`) plus a stdlib-only Python proxy (`feedline_server.py`).
 Works with any Klipper + Moonraker printer; ships with a drawn Snapmaker U1 view and a generic picture-based view.
 
-![Dashboard: camera, jog controls, tool cards with live filament, temperatures and fans](docs/dashboard.png)
+![Dashboard with the drawn Snapmaker U1: live camera, tool cards with filament feed lines, and a front view of the printer showing nozzle temperatures, fans, bed and chamber](docs/dashboard.png)
 
-*Home: camera, motion controls, one card per tool with the Spoolman filament, temperatures and fans (clickable to set targets).*
+*Home on a Snapmaker U1: the printer is drawn live from its state. Each tool card feeds a coloured line down to its toolhead, the active tool is highlighted, and temperatures, fans, bed and chamber are clickable.*
 
 ![AFC / BoxTurtle lanes with status pills and Load / Unload / Eject buttons](docs/afc.png)
 
-*With AFC / BoxTurtle: status pills (AFC state, loaded lane, hub, toolhead sensor, Turtleneck) and a card per lane. Shown against a simulated AFC printer.*
+*With AFC / BoxTurtle: status pills (AFC state, loaded lane, hub, toolhead sensor, Turtleneck) and a card per lane. Shown with the drawn U1 against a simulated AFC printer.*
 
 ![Graphics settings: printer, toolchanger and spool graphics chosen independently](docs/graphics.png)
 
@@ -25,11 +25,11 @@ Requirements: Python 3.8+ (nothing to `pip install`), and a Klipper printer whos
     git clone https://github.com/Squallzz/feedline.git && cd feedline
     sudo ./install.sh 192.168.1.50              # your printer's address
 
-The script copies the files to `/opt/feedline`, writes `config.json` with a random login password (printed once), installs the hardened
+The script copies the files to `/opt/feedline`, writes `config.json`, installs the hardened
 `feedline.service` (dynamic user, read-only filesystem, state in `/var/lib/feedline`) and starts it. Open `http://192.168.1.60:8081/ (your server's address)`.
 
 Manual install: copy `feedline.html` to `/opt/feedline/index.html`, `feedline_server.py` and `graphics/` next to it, copy `config.example.json`
-to `/opt/feedline/config.json` and set `printer` (and `auth`), then run the command below, or copy `feedline.service` to `/etc/systemd/system/`
+to `/opt/feedline/config.json` and set `printer`, then run the command below, or copy `feedline.service` to `/etc/systemd/system/`
 and `systemctl enable --now feedline`.
 
 Update: re-run `sudo ./install.sh` from a newer copy (config and settings are kept). Uninstall: `systemctl disable --now feedline`,
@@ -53,7 +53,6 @@ See `config.example.json`. Only `printer` is required. Anything the browser coul
 | --- | --- |
 | `printer` | Moonraker host (port 7125) |
 | `name` | header text (can also be changed in Settings) |
-| `auth` | `{"user","password"}`: HTTP Basic login for everything (or env `FEEDLINE_PASSWORD` / `FEEDLINE_USER`). Strongly recommended; without it the server logs a warning at start |
 | `allowed_hosts` | extra Host names the server answers to (anti DNS-rebinding). IP addresses, single-label names and `.local/.lan/.home.arpa/.internal/.ts.net` always work |
 | `allow_embed` | `true` lets another site show the page in a frame (e.g. a Home Assistant card); default refuses framing |
 | `allow_config_edit` | `false` makes the Files tab read-only |
@@ -81,9 +80,7 @@ See `config.example.json`. Only `printer` is required. Anything the browser coul
   `data-text="temp|target|tool|material|name|remaining|fan"`, `data-show="loaded|empty|active|idle|heating"`.
   Scripts, event handlers, external links and global CSS are stripped; ids are prefixed.
 
-Without `auth` in `config.json` the web UI has no login: anyone who can open the page can use the controls, add printers and edit
-config files. Set `auth`, keep it on a trusted network, or put it behind a TLS reverse proxy. HTTP Basic sends the password in clear
-text without TLS. See [SECURITY.md](SECURITY.md).
+Feedline has no login. Anyone who can open the page can use the controls, add printers and edit config files, so run it only on a network you trust, or put it behind a reverse proxy that handles authentication and TLS. See [SECURITY.md](SECURITY.md).
 
 ## Filament systems
 

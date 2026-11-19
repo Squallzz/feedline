@@ -24,7 +24,6 @@ ever talks to this one host (no CORS, no extra firewall rules):
 Nothing else is forwarded: no free-form G-code and no other Moonraker endpoints.
 """
 import argparse
-import hmac
 import http.server
 import json
 import logging
@@ -62,7 +61,6 @@ DEFAULT_CFG = {
     "tool_spools": None,             # {"0": 12, "1": 7}: fixed Spoolman spool per tool (provider "extruders")
     "temp_limits": {"extruder": 300, "heater_bed": 110, "heater_generic": 150},
     "graphics": {"printer": None, "toolchanger": None},
-    "auth": None,                    # {"user": "admin", "password": "..."}: HTTP Basic login for the whole dashboard (or set FEEDLINE_PASSWORD / FEEDLINE_USER). Strongly recommended
     "allowed_hosts": [],             # extra Host names the dashboard answers to (IP addresses, single-label and .local/.lan/.ts.net names always work)
     "allow_embed": False,            # true = the page may be shown inside a frame on another site (e.g. a Home Assistant dashboard card)
     "allow_config_edit": True,       # false = the Files tab is read-only (config files can then not be changed from the browser)
@@ -106,7 +104,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
     _cache = {}
 
     timeout = 30                    # a client that stops sending cannot hold a thread forever
-    auth = None                     # (user, password) when the login is enabled
 
     def log_message(self, *a):
         pass
@@ -126,7 +123,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def blocked(self):
-        """True (after answering) when the request must not be served: unknown Host name (DNS rebinding) or missing login."""
+        """True (after answering) when the request must not be served: unknown Host name (DNS rebinding)."""
         host = (self.headers.get("Host") or "").strip().lower()
         name = host[1:host.index("]")] if host.startswith("[") and "]" in host else host.rsplit(":", 1)[0] if host.count(":") == 1 else host
         ok = bool(name) and ("." not in name or name.endswith(HOST_SUFFIXES) or name in [str(h).lower() for h in Handler.cfg.get("allowed_hosts") or []])
@@ -139,15 +136,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if not ok:
             self.reply(421, "text/plain", b"unknown host name: add it to allowed_hosts in config.json")
             return True
-        if Handler.auth:
-            sent = self.headers.get("Authorization", "")
-            try:
-                user, _, pw = base64.b64decode(sent.split(" ", 1)[1]).decode("utf-8").partition(":") if sent.lower().startswith("basic ") else ("", "", "")
-            except Exception:  # noqa: BLE001
-                user = pw = ""
-            if not (hmac.compare_digest(user.encode(), Handler.auth[0].encode()) & hmac.compare_digest(pw.encode(), Handler.auth[1].encode())):
-                self.reply(401, "text/plain", b"login required", {"WWW-Authenticate": 'Basic realm="Feedline", charset="UTF-8"'})
-                return True
         return False
 
     def jreply(self, code, obj):
@@ -1238,13 +1226,6 @@ def main():
         ap.error("no printer: set \"printer\" in config.json or pass --printer HOST")
     Handler.cfg, Handler.root, Handler.state = cfg, a.root, a.state
     Handler.backups = os.path.join(a.state, "backups")
-    au = cfg.get("auth") or {}
-    pw = os.environ.get("FEEDLINE_PASSWORD") or au.get("password")
-    if pw:
-        Handler.auth = (os.environ.get("FEEDLINE_USER") or au.get("user") or "admin", str(pw))
-    else:
-        logging.warning("WARNING: no login configured - anyone who can reach port %d can control the printer. "
-                        "Set \"auth\" in config.json or FEEDLINE_PASSWORD, or keep it on a trusted network.", a.port)
     logging.info("Feedline listening on %s:%d for printer %s", a.bind, a.port, Handler.printer)
     http.server.ThreadingHTTPServer((a.bind, a.port), Handler).serve_forever()
 

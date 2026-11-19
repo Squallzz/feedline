@@ -11,7 +11,7 @@ dashboard through the browser, or (c) a compromised printer/Spoolman feeding bad
 
 | # | Sev | Finding | Status |
 | - | --- | --- | --- |
-| 1 | High | No authentication: anyone reaching the port can start/stop moves, heat, change macros, edit printer config files | **Mitigated**: optional HTTP Basic login (`auth` / `FEEDLINE_PASSWORD`, constant-time compare); startup warning when off. Not on by default: you must set it |
+| 1 | High | No authentication: anyone reaching the port can start/stop moves, heat, change macros, edit printer config files | **Accepted by design**: Feedline has no login. Run it only on a trusted network, firewall the port, or put it behind a reverse proxy that does authentication and TLS |
 | 2 | Med | DNS rebinding: a malicious site could re-point a name at the dashboard's IP and drive it from the victim's browser | **Fixed**: Host header allowlist (IPs, single-label and common local suffixes, plus `allowed_hosts`); others get 421 |
 | 3 | Med | Cross-site requests (CSRF) | Already covered: `/control` requires the custom `X-Feedline-Control` header (cannot be sent cross-site without CORS, which the server never grants) |
 | 4 | Med | Clickjacking and MIME sniffing | **Fixed**: `X-Frame-Options: DENY` (unless `allow_embed`), `nosniff`, `Referrer-Policy: no-referrer` |
@@ -25,16 +25,14 @@ dashboard through the browser, or (c) a compromised printer/Spoolman feeding bad
 
 ## Residual risks (known, not fixed)
 
-- No TLS. With `auth` on, the password travels in clear text unless you front it with a TLS reverse proxy (Caddy, nginx, Home Assistant).
-- A single shared login; no rate limiting on login attempts. Use a long random password (the installer generates one).
-- `config.json` must be readable by the service user, so it is world-readable on the host when installed by `install.sh`.
-- Error messages from failed upstream requests are passed to the browser (can reveal internal addresses to someone already logged in).
+- No login and no TLS. Anyone on the network can use every control; protect it with a firewall or an authenticating TLS reverse proxy (Caddy, nginx, Home Assistant).
+- Error messages from failed upstream requests are passed to the browser (can reveal internal addresses to anyone who can open the page).
 - The server follows HTTP redirects from Moonraker/Spoolman and trusts webcam URLs the printer reports.
 - The page itself is a large inline script; a strict CSP is not possible without rewriting it.
 
 ## Recommendations
 
-1. Set `auth`, or put the dashboard behind a reverse proxy that does.
+1. Put the dashboard behind a reverse proxy that does authentication and TLS, or restrict the port to trusted machines.
 2. Bind to localhost (`--bind 127.0.0.1`) when a reverse proxy is on the same machine; firewall port 8081 otherwise.
 3. Never expose it to the internet directly.
 4. Set `allow_config_edit: false` if you do not need the Files tab.
