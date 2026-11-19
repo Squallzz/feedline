@@ -30,7 +30,7 @@ If your U1 runs [paxx12's SnapmakerU1 Extended Firmware](https://github.com/paxx
 
 ![The remote touchscreen window open on top of the dashboard](docs/screen-open.png)
 
-*Screenshots were taken while the printer's display was asleep, so the screen is black; it shows the printer's real UI when the display is awake.*
+*Top: the live screen in the drawn U1. Bottom: the interactive window, showing the printer's own print-status page.*
 
 To enable it, add this to `config.json` (the paths are on the printer) and restart Feedline:
 
