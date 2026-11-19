@@ -64,7 +64,7 @@ Feedline reads your [Spoolman](https://github.com/Donkie/Spoolman) spools and sh
 ![Settings > Spoolman](docs/spoolman-settings.png)
 
 Notes:
-- Feedline only **reads** Spoolman. It never creates spools or changes their weights; the printer / Moonraker does the usage tracking.
+- The Feedline dashboard itself only **reads** Spoolman. It does not create spools or change weights. Adding spools for new tags is done separately (in Spoolman, or by a helper that watches the printer's tags and creates the spool; that helper is not part of this repo yet).
 - Colour, material and weight come from Spoolman when the tag is matched, and from the tag otherwise.
 - This tag matching is for Snapmaker U1 printers (filament system "Snapmaker U1"). Other printers show Moonraker's active Spoolman spool on the active tool, or a fixed spool per tool set with `tool_spools` in `config.json`.
 - Spoolman has no login either, so keep both on a trusted network.
