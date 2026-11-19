@@ -60,7 +60,7 @@ See `config.example.json`. Only `printer` is required. Anything the browser coul
 | `provider` | `auto`, `u1` (Snapmaker RFID tags matched in Spoolman) or `extruders` (one slot per extruder; spool from `tool_spools` or Moonraker's active spool) |
 | `tools` | number of tools; null = count extruders |
 | `macros` | buttons per tool: `load`, `unload`, `park`, `pickup`. `{n}` = tool number, `{nz}` = number or empty for tool 0. Actions you leave out are auto-detected (`auto_macros: false` turns that off); `""` disables one |
-| `light` | `{"object","on","off"}` G-code for the chamber light button |
+| `light` | `{"object","on","off"}` G-code for the chamber light button. Left out, Feedline looks for an LED (`led`, `neopixel`, `dotstar`, `pca9632`) or a light-named `output_pin` (name contains light/lamp/led/chamber/case...) and toggles it with `SET_LED` / `SET_PIN`; `false` hides the button |
 | `screen` | `{"snapshot","interactive"}` paths of a touchscreen page (U1) |
 | `webcam` | `{"mode","live","snapshot"}`; null = first webcam Moonraker reports |
 | `tool_fans` | per tool `{"hotend": "heater_fan ...", "part": "fan_generic ..."}` for the overlays |

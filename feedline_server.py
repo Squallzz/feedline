@@ -53,7 +53,7 @@ DEFAULT_CFG = {
     "macros": None,                  # tool buttons, e.g. {"load": "AUTO_FEEDING EXTRUDER={n} LOAD=1", "pickup": "T{n}"}; "" disables one.
                                      # {n} = tool number, {nz} = number or "" for tool 0. Actions not listed are auto-detected
     "auto_macros": True,             # find load/unload/park/pickup macros by name when not configured
-    "light": None,                   # {"object": "led cavity_led", "on": "<gcode>", "off": "<gcode>"}
+    "light": None,                   # {"object": "led cavity_led", "on": "<gcode>", "off": "<gcode>"}; null = find an LED / light pin by name; false = no light button
     "screen": None,                  # {"snapshot": "/screen/snapshot", "interactive": "/screen/"} (printers with a touchscreen page)
     "webcam": None,                  # {"mode": "webrtc|mjpeg|snapshot", "live": "/url", "snapshot": "/url"}; null = ask Moonraker
     "tool_fans": None,               # [{"hotend": "heater_fan e0_nozzle_fan", "part": "fan"}, ...] per tool, for the overlays
@@ -555,7 +555,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         eff = self.effective_macros()
         cam = self.webcam()
         scr = c.get("screen")
-        light = c.get("light")
+        light = self.light_cfg()
         return {
             "name": name, "defaultName": c.get("name"), "graphics": gsel,
             "packs": {k: BUILTIN_PACKS[k] + self.custom_packs(k) for k in BUILTIN_PACKS},
@@ -782,10 +782,39 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             self.reply(502, "application/json", json.dumps({"error": str(e)}).encode())
 
+    LED_TYPES = ("led", "neopixel", "dotstar", "pca9632", "pca9533")
+    LIGHT_HINT = re.compile(r"light|lamp|led|illum|chamber|cavity|enclosure|case", re.I)
+    LIGHT_SKIP = re.compile(r"nozzle|logo|status|fan|heater|beeper|buzzer|power|psu|relay|probe|lcd|stepper|sensor|enable|reset|kill", re.I)
+
+    def light_cfg(self):
+        """The light button: config.json "light" (false = none), else an LED or light pin found on the printer (never an unnamed pin)."""
+        light = self.cfg.get("light")
+        if light is False:
+            return {}
+        if isinstance(light, dict) and light.get("on") and light.get("off"):
+            return light
+        return self.cached("light", 60, self.detect_light) or {}
+
+    def detect_light(self):
+        cmds, found = self.commands(), []
+        for o in self.objects():
+            kind, _, name = o.partition(" ")
+            if not name or not re.fullmatch(r"[\w.\-]{1,60}", name) or self.LIGHT_SKIP.search(name):
+                continue
+            if kind in self.LED_TYPES and "SET_LED" in cmds:
+                found.append((0 if self.LIGHT_HINT.search(name) else 1, o,
+                              "SET_LED LED=%s RED=1 GREEN=1 BLUE=1 WHITE=1" % name, "SET_LED LED=%s RED=0 GREEN=0 BLUE=0 WHITE=0" % name))
+            elif kind == "output_pin" and "SET_PIN" in cmds and self.LIGHT_HINT.search(name):
+                found.append((0, o, "SET_PIN PIN=%s VALUE=1" % name, "SET_PIN PIN=%s VALUE=0" % name))
+        if not found:
+            return {}
+        _, obj, on, off = sorted(found)[0]
+        return {"object": obj, "on": on, "off": off}
+
     def light_control(self, req):
         """Chamber LED (led cavity_led, RGBW; white only). Safe at any time, including during a print."""
         on = req.get("on")
-        light = self.cfg.get("light") or {}
+        light = self.light_cfg()
         if not isinstance(on, bool) or not light.get("on") or not light.get("off"):
             return self.reply(400, "application/json", b'{"error":"no light configured"}')
         cmd = light["on"] if on else light["off"]
