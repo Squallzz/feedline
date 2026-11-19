@@ -73,6 +73,7 @@
   #stage .tool{margin:0}
   #stage.u1layout .tool{margin:0 5px}
   .slotsvg{width:100%;height:auto;display:block}
+  #pname.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0} /* the drop-down already shows the name; keep the h1 for screen readers */
   #psel{background:#14122b;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:5px 8px;font:inherit;font-size:14px;margin-left:10px}
   .stool{transition:transform 1.8s linear}
   @container (max-width:720px){#stage main,#stage.u1layout main{padding:0;gap:10px;grid-template-columns:repeat(2,1fr);max-width:none} #stage .tool,#stage.u1layout .tool{margin:0} #scene{display:none}}
@@ -94,6 +95,7 @@
   .stats{display:flex;justify-content:space-between;gap:6px;margin-top:8px;font-size:10px;color:var(--sub)}
   .stats b{display:block;color:var(--text);font-size:11px;font-weight:600;white-space:nowrap}
   .stats > div{min-width:0;text-align:center}
+  .stats .sw{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px;border:1px solid #fff4}
   #notice:not(:empty){padding:3px 12px;border-radius:999px;font-size:12px;background:#1D1A42;border:1px solid var(--edge);color:var(--muted)}
   #notice.on{color:var(--good);border-color:#2c6b48} #notice.off{color:var(--bad);border-color:#7a2c40}
   .acts{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:9px}
@@ -107,7 +109,7 @@
          display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
   .f{background:#0f0d24;border:1px solid #231f4a;border-radius:12px;padding:8px 9px}
   .f.on{border-color:#2d4f94}
-  .f .nm{font-size:11px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .f .nm{font-size:11px;line-height:1.25;min-height:2.5em;color:var(--sub);overflow:hidden;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
   .f.on .nm{color:var(--muted)}
   .f .v{font-size:17px;font-weight:600;margin:1px 0 4px}
   .f .rpm{font-size:10px;color:var(--sub);min-height:14px}
@@ -211,14 +213,16 @@
   #sceneWrap .f .rpm{display:none}
   #sceneWrap .f input,#sceneWrap .f .bar{grid-column:1 / span 2}
   #sceneWrap .f .bar{margin:4px 0 2px}
-  #cam .box{background:var(--card);border:1px solid var(--edge);border-radius:20px;padding:14px}
+  /* the card chrome sits on the #cam section (video box + move controls); the phone rules below split them so the layout can reorder them */
+  #cam{background:var(--card);border:1px solid var(--edge);border-radius:20px;padding:14px}
   #con .box{background:var(--card);border:1px solid var(--edge);border-radius:20px;padding:14px}
   #cam .hd,#con .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
   [hidden]{display:none !important}
   /* the camera picture sits centred in #camview, which takes the picture's shape as shown (after any quarter turn) */
   #camview{position:relative;width:100%;aspect-ratio:16/9;margin:0 auto;overflow:hidden;background:#07060f;border-radius:12px}
   #camview > *{position:absolute;top:50%;left:50%;width:100%;height:100%;border:0;display:block;object-fit:contain;transform:translate(-50%,-50%)}
-  #cam button.badge{background:none;cursor:pointer;font:inherit;font-size:11px;margin-right:6px}
+  #cam button.badge{background:#1f1b45;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:4px 12px;cursor:pointer;font:inherit;font-size:12px;margin-right:8px} /* the mode toggle is a button; #camstat stays a plain badge */
+  #cam button.badge:hover{border-color:#9580FF}
   footer{text-align:center;color:var(--sub);font-size:12px;padding-bottom:20px}
   /* left navigation + extra views */
   #nav{position:fixed;left:0;top:0;bottom:0;width:60px;background:#0d0b22;border-right:1px solid #231f4a;display:flex;flex-direction:column;align-items:center;gap:2px;padding:14px 0;z-index:40}
@@ -230,6 +234,25 @@
   body{padding-left:60px}
   #layout{padding:16px 6px 18px 8px;gap:8px}
   #colL{flex-basis:clamp(550px,36vw,860px)}
+  /* Phone: flatten both columns (display:contents) so every Home block is a direct flex item of #layout and can be ordered freely:
+     camera, print info, status + filament cards + drawing, temperatures, move controls, fans, console.
+     Without a box #colR is no longer the size container, so the container-query rules (2 columns, drawing hidden) stop applying; the 2-column cards are set here. */
+  @media (max-width:700px){
+    #layout{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:14px}
+    #colL,#colR,#mid,#stage,#sceneWrap,#sideR,#cam{display:contents}
+    #cam .box{order:1;background:var(--card);border:1px solid var(--edge);border-radius:20px;padding:14px}
+    #pinfo{order:2} #afcbar{order:3;margin:0} #grid{order:4} #scene{order:5;flex:none} #temps{order:6}
+    #move{order:7;margin:0;padding:12px 14px;background:var(--card);border:1px solid var(--edge);border-radius:20px}
+    #fans{order:8} #con{order:9}
+    #stage main,#stage.u1layout main{padding:0;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr));max-width:none;margin:0}
+    #stage .tool,#stage.u1layout .tool{margin:0}
+    #sconn{display:none}   /* the connector lines assume the cards sit in one row above the drawing */
+    #pgrid{grid-template-columns:repeat(2,1fr)}
+    #pgrid .p .v{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+    .mv button{min-height:38px;min-width:38px;padding:6px 10px}
+    #cam button.badge{min-height:38px;padding:6px 14px}
+    .acts button{min-height:38px;padding:6px 0}
+  }
   .view{padding:16px 24px 30px;max-width:1300px;margin:0 auto}
   .view h2{font-size:18px;font-weight:600;margin:0 0 14px}
   .sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px}
@@ -374,6 +397,7 @@
   <div id="camview"><iframe id="camframe" title="Printer camera (live)" allow="autoplay; fullscreen"></iframe>
   <img id="camlive" alt="Printer camera (live)" hidden>
   <img id="camimg" alt="Printer camera" hidden></div>
+</div>
   <section id="move" hidden>
     <div class="mv">
       <div class="steps" id="mvsteps"></div>
@@ -389,7 +413,7 @@
       <div id="mvpos" class="mvpos"></div>
     </div>
   </section>
-</div></section>
+</section>
 <section id="pinfo"><h2>Print</h2><div id="pgrid"></div></section>
 <section id="con"><h2>Console</h2><div class="box">
   <div class="hd"><span class="tn">Live</span><span id="constat" class="badge">Loading</span></div>
@@ -854,7 +878,9 @@ function tempTitle(n) {
   if (n === "extruder") return "T0 nozzle";
   const m = n.match(/^extruder(\d+)$/);
   if (m) return "T" + m[1] + " nozzle";
-  return n.replace(/^(heater_generic|temperature_sensor|temperature_fan) /, "");
+  // Klipper object names use underscores: show them as words (the raw name goes in the row's tooltip)
+  const w = n.replace(/^(heater_generic|temperature_sensor|temperature_fan) /, "").replace(/_/g, " ");
+  return w.charAt(0).toUpperCase() + w.slice(1);
 }
 function spark(arr, hot) {
   if (arr.length < 2) return '<svg viewBox="0 0 160 34"></svg>';
@@ -872,7 +898,7 @@ function renderTemps(st) {
     const hot = hasTarget && o.target > 0;
     const pw = typeof o.power === "number" ? Math.round(o.power * 100) : null;
     const tgt = /^(extruder\d*|heater_bed)$/.test(n) ? tgtSpan(n, tempTitle(n), o.target, false) : (o.target > 0 ? o.target.toFixed(0) + "°" : "off");
-    const row = '<div class="tr' + (hot ? " hot" : "") + '"><span class="nm">' + escH(tempTitle(n)) + '</span><span class="v">' + o.temperature.toFixed(1) + '°' +
+    const row = '<div class="tr' + (hot ? " hot" : "") + '"><span class="nm" title="' + escH(n) + '">' + escH(tempTitle(n)) + '</span><span class="v">' + o.temperature.toFixed(1) + '°' +
       (hasTarget ? ' <small>/ ' + tgt + '</small>' : "") + '</span>' +
       (pw !== null ? '<div class="bar" title="heater power ' + pw + '%"><i style="width:' + pw + '%"></i></div>' : "") + '</div>';
     (hasTarget ? heaters : sensors).push({n, row});
@@ -956,7 +982,7 @@ function renderFans(st) {
   fgrid.innerHTML = rows.map(f => {
     const pct = Math.round(f.s * 100);
     const adjustable = CONTROLS && (f.n === "fan" || f.n.startsWith("fan_generic "));
-    return '<div class="f' + (pct > 0 ? " on" : "") + '"><div class="nm">' + escH(f.t) + '</div>' +
+    return '<div class="f' + (pct > 0 ? " on" : "") + '"><div class="nm" title="' + escH(f.t) + '">' + escH(f.t) + '</div>' +
       '<div class="v">' + pct + '%</div>' +
       '<div class="rpm">' + (typeof f.rpm === "number" && f.rpm > 0 ? Math.round(f.rpm) + ' rpm' : "") + '</div>' +
       (adjustable ? '<input type="range" min="0" max="100" step="5" value="' + pct + '" data-fan="' + escH(fanKey(f.n)) + '" aria-label="' + escH(f.t) + ' speed">'
@@ -2113,8 +2139,8 @@ function render(st) {
       slotGraphic(s) +
       '<div class="mat">' + escH(s.title) + '</div>' +
       '<div class="brand">' + escH(s.brand) + '</div>' +
-      '<div class="stats"><div><b>' + (s.loaded && s.col ? s.col.slice(1) : "-") + '</b>color</div>' +
-      '<div><b>' + s.remTxt + '</b>' + s.spool + '</div>' +
+      '<div class="stats"><div><b>' + (s.loaded && s.col ? '<i class="sw" style="background:' + escH(s.col) + '"></i>' + escH(s.col.slice(1)) : "-") + '</b>Color</div>' +
+      (s.remTxt !== "-" ? '<div><b>' + s.remTxt + '</b>' + escH(String(s.spool || "").replace(/^./, c => c.toUpperCase())) + '</div>' : "") +
       (CFG.spoolman ? '<div><b>' + (s.sp ? "#" + s.sp.id : "-") + '</b>Spoolman</div>' : "") + '</div>' + actions(i, s.loaded, isActive, ex, s) + '</div>';
   }
   document.getElementById("grid").innerHTML = out;
@@ -2315,6 +2341,7 @@ async function loadPrinters() {
   const sel = document.getElementById("psel");
   sel.hidden = PRINTERS.length < 2;
   document.getElementById("navprinters").hidden = PRINTERS.length < 2;      // the overview is only worth a page with two or more printers
+  document.getElementById("pname").classList.toggle("vh", !sel.hidden);
   sel.innerHTML = PRINTERS.map(p => '<option value="' + escH(p.id) + '"' + (p.active ? " selected" : "") + ">" + escH(p.name) + "</option>").join("");
 }
 document.getElementById("psel").addEventListener("change", e => selectPrinter(e.target.value));
