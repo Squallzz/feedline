@@ -73,7 +73,8 @@ DEFAULT_CFG = {
     "motion": True,                  # drawn printer models: the toolhead and bed follow the printer's real position (Settings can turn it off)
     "allowed_hosts": [],             # extra Host names the dashboard answers to (IP addresses, single-label and .local/.lan/.ts.net names always work)
     "allow_embed": False,            # true = the page may be shown inside a frame on another site (e.g. a Home Assistant dashboard card)
-    "allow_config_edit": True,       # false = the Files tab is read-only (config files can then not be changed from the browser)
+    "mesh_bed_temp": 60,             # Calibrate bed mesh heats a cold bed to this (C) first and switches it off after; 0 = do not heat
+    "allow_config_edit": True,      # false = the Files tab is read-only (config files can then not be changed from the browser)
 }
 HOST_SUFFIXES = (".local", ".lan", ".home.arpa", ".internal", ".localdomain", ".ts.net")
 # Drawn printer models (the page draws them; see MODELS in index.html). Original, simplified drawings in each model's
@@ -1087,25 +1088,86 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             self.jreply(502, {"error": str(e)})
 
-    def mesh_control(self, req):
-        """Probe the bed (BED_MESH_CALIBRATE). Only when the printer is idle and every axis is homed. The new mesh stays in the
-        printer's memory: saving it needs SAVE_CONFIG, which restarts Klipper, so that is left to the user at the printer."""
+    def mesh_steps(self):
+        """What it takes to probe the bed from the printer's current state: a list of (what it does, G-code). Only a printer that
+        is idle and ready is touched. Needed preparation is added: home all axes, level the gantry (QGL / Z tilt) when the
+        printer has that and it is not levelled yet, home Z again after that, and heat a cold bed (config `mesh_bed_temp`,
+        default 60 C; 0 = do not heat), switched off again afterwards."""
         if "BED_MESH_CALIBRATE" not in self.commands():
-            return self.jreply(409, {"error": "this printer has no BED_MESH_CALIBRATE command"})
-        if not self.busy.acquire(blocking=False):
-            return self.jreply(409, {"error": "another command is still running"})
+            raise PermissionError("this printer has no BED_MESH_CALIBRATE command")
+        objs = self.objects()
+        levelling = [o for o in ("quad_gantry_level", "z_tilt") if o in objs]
+        st = self.mget("/printer/objects/query?print_stats&toolhead&webhooks&heater_bed" + "".join("&" + o for o in levelling))["result"]["status"]
+        ready = (st.get("webhooks") or {}).get("state", "ready")
+        if ready != "ready":
+            raise PermissionError("Klipper is not ready (%s)" % ready)
+        if st["print_stats"]["state"] in ("printing", "paused"):
+            raise PermissionError("refused: printer is %s" % st["print_stats"]["state"])
+        homed = all(a in (st["toolhead"].get("homed_axes") or "") for a in "xyz")
+        steps = [] if homed else [("Home all axes", "G28")]
+        if levelling and (not homed or not (st.get(levelling[0]) or {}).get("applied")):
+            label, cmd = ("Level the gantry", "QUAD_GANTRY_LEVEL") if levelling[0] == "quad_gantry_level" else ("Level the bed (Z tilt)", "Z_TILT_ADJUST")
+            steps += [(label, cmd), ("Home Z again", "G28 Z")]
+        temp = min(int(self.cfg.get("mesh_bed_temp", 60) or 0), self.temp_limit("heater_bed") or 0)
+        heat = st.get("heater_bed") is not None and temp > 0 and not float((st["heater_bed"] or {}).get("target") or 0)
+        if heat:
+            steps.append(("Heat the bed to %d C" % temp, "M190 S%d" % temp))
+        steps.append(("Probe the bed", "BED_MESH_CALIBRATE"))
+        if heat:
+            steps.append(("Switch the bed heater off", "M140 S0"))
+        return steps
+
+    def mesh_plan(self):
         try:
-            st = self.mget("/printer/objects/query?print_stats&toolhead")["result"]["status"]
-            if st["print_stats"]["state"] in ("printing", "paused"):
-                return self.jreply(409, {"error": "refused: printer is %s" % st["print_stats"]["state"]})
-            if not all(a in (st["toolhead"].get("homed_axes") or "") for a in "xyz"):
-                return self.jreply(409, {"error": "home all axes first"})
-            self.run_gcode("BED_MESH_CALIBRATE", 900)
-            self.jreply(200, {"ok": True, "cmd": "BED_MESH_CALIBRATE"})
+            self.jreply(200, {"steps": [label for label, _ in self.mesh_steps()]})
+        except PermissionError as e:
+            self.jreply(409, {"error": str(e)})
         except Exception as e:  # noqa: BLE001
             self.jreply(502, {"error": str(e)})
+
+    def mesh_control(self, req):
+        """Probe the bed, doing whatever preparation is needed first (see mesh_steps). The new mesh stays in the printer's
+        memory: saving it needs SAVE_CONFIG, which restarts Klipper, so that is left to the user at the printer."""
+        if not self.busy.acquire(blocking=False):
+            return self.jreply(409, {"error": "another command is still running"})
+        heated = off = False
+        label = ""
+        try:
+            try:
+                steps = self.mesh_steps()
+            except PermissionError as e:
+                return self.jreply(409, {"error": str(e)})
+            for label, cmd in steps:
+                heated = heated or cmd.startswith("M190")
+                self.run_gcode(cmd, 900)
+                off = off or cmd == "M140 S0"
+            self.jreply(200, {"ok": True, "steps": [s[0] for s in steps]})
+        except Exception as e:  # noqa: BLE001
+            if heated and not off:                                 # a step failed after we heated the bed: do not leave it on
+                try:
+                    self.run_gcode("M140 S0", 15)
+                except Exception:  # noqa: BLE001
+                    pass
+            self.jreply(502, {"error": "%s failed: %s" % (label, e) if label else str(e)})
         finally:
             self.busy.release()
+
+    # Console: one line of G-code typed in the browser. Anything Klipper accepts, except what restarts or stops the printer, writes
+    # firmware, or runs a shell command on the host (gcode_shell_command): there is no login here, so those stay off.
+    CONSOLE_DENY = re.compile(CMD_DENY.pattern + r"|^RUN_SHELL|^SHELL_COMMAND", re.I)
+
+    def gcode_control(self, req):
+        script = req.get("script")
+        if not isinstance(script, str) or not script.strip() or len(script) > 500 or re.search(r"[\x00-\x1f\x7f]", script):
+            return self.jreply(400, {"error": "enter one line of G-code (up to 500 characters)"})
+        word = script.split()[0]
+        if self.CONSOLE_DENY.match(word):
+            return self.jreply(403, {"error": "%s is not allowed here: restarts, emergency stop, firmware and shell commands use the printer's own controls" % word.upper()})
+        try:
+            self.run_gcode(script.strip(), 600)
+            self.jreply(200, {"ok": True})
+        except Exception as e:  # noqa: BLE001
+            self.jreply(502, {"error": str(e)})
 
     def fan_control(self, req):
         """Set a controllable fan: the part fan ("fan") or a fan_generic. heater_fan* (hotend/PSU fans) are
@@ -1616,7 +1678,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     # POST /control: the method that handles each "action". Print controls, tool buttons and macros are handled in do_POST
     # itself, because they share the one-command-at-a-time lock and the "not while printing" rule.
-    ROUTES = {"tune": "tune_control", "mesh_calibrate": "mesh_control","fan": "fan_control", "temp": "temp_control", "light": "light_control",
+    ROUTES = {"tune": "tune_control", "mesh_calibrate": "mesh_control", "gcode": "gcode_control", "fan": "fan_control", "temp": "temp_control", "light": "light_control",
               "home": "move_control", "jog": "move_control", "goto": "move_control", "motors_off": "move_control",
               "set_lane": "lane_control", "set_slot": "box_slot_control", "save_config": "config_save",
               "save_settings": "save_settings", "save_pack": "save_pack", "delete_pack": "delete_pack",
@@ -1689,6 +1751,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                      "tools": self.tool_count()})
         if route == "/api/screen/probe":
             return self.jreply(200, self.screen_probe())
+        if route == "/api/mesh/plan":       # what Calibrate would do right now (read-only)
+            return self.mesh_plan()
         if route == "/api/events":          # print events for the Android app: ?since=<id of the last one seen>&wait=<seconds to wait for a new one>
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(path).query)
             try:

@@ -9,7 +9,7 @@ Works with any Klipper + Moonraker printer; ships with a drawn Snapmaker U1 view
 - [Print tuning](#print-tuning) while printing: Z offset, speed, flow, pressure advance. [Bed mesh](#tune-tab-bed-mesh) view with a Calibrate button.
 - Android app with print notifications (finished, failed, cancelled, paused): see [Android app](#android-app-apk).
 - Several printers: one instance, a Printers overview page, and a per-tab `?p=<id>` address so Home Assistant cards can each show a different printer.
-- Remote touchscreen (Paxx firmware), Spoolman, a Home Assistant card helper, a Macros tab and a read-only config file browser.
+- Remote touchscreen (Paxx firmware), Spoolman, a Home Assistant card helper, a Macros tab, a Console tab where you can send G-code, and a config file browser and editor.
 
 ![Dashboard with the drawn Snapmaker U1: live camera, tool cards with filament feed lines, and a front view of the printer showing nozzle temperatures, fans, bed and chamber](docs/dashboard.png)
 
@@ -216,6 +216,8 @@ See `config.example.json`. Only `printer` is required. Anything the browser coul
 | `allowed_hosts` | extra Host names the server answers to (anti DNS-rebinding). IP addresses, single-label names and `.local/.lan/.home.arpa/.internal/.ts.net` always work |
 | `allow_embed` | optional; normally use Settings > Home Assistant and other pages. `true` lets another site show the page in a frame (e.g. a Home Assistant card); default refuses framing |
 | `allow_config_edit` | `false` makes the Files tab read-only |
+| `mesh_bed_temp` | Calibrate bed mesh heats a cold bed to this temperature (default 60 C) before probing and switches it off afterwards; `0` = never heat |
+| `events` | `false` turns off the server-side watching of print states that feeds the Android app's notifications (default on) |
 | `spoolman`, `spoolman_url` | Spoolman the server talks to (`host:port` or a URL such as `http://192.168.1.20:7912`, so it can run on any machine, not just this one), and the URL browsers open (defaults to the same address). Can also be set in Settings > Spoolman, which overrides this and is checked against Spoolman's `/api/v1/info` before saving |
 | `provider` | `auto`, `u1` (Snapmaker RFID tags matched in Spoolman) or `extruders` (one slot per extruder; spool from `tool_spools` or Moonraker's active spool) |
 | `tools` | number of tools; null = count extruders |
@@ -274,7 +276,11 @@ Unlike moves and tool changes these are allowed while printing; that is what the
 
 ## Tune tab: bed mesh
 
-The **Tune** tab shows the loaded bed mesh as a heatmap and a 3D surface. **Calibrate bed mesh** runs `BED_MESH_CALIBRATE` on the printer (after a confirmation) and then reloads the picture. It works on every printer that has that command, and only when the printer is idle and all axes are homed; otherwise the server refuses and says why. Heat the bed first if your printer needs it. The new mesh stays in the printer's memory only: saving it needs `SAVE_CONFIG`, which restarts Klipper, so run that on the printer (Feedline never restarts Klipper). The probing takes a few minutes and cannot be stopped from here. Checked with a stand-in printer, not on real hardware.
+The **Tune** tab shows the loaded bed mesh as a heatmap and a 3D surface. **Calibrate bed mesh** first shows what it is about to do (it looks at the printer's current state), asks for confirmation, does the preparation and then runs `BED_MESH_CALIBRATE` and reloads the picture. The preparation is only what is missing: it homes all axes if they are not homed; levels the gantry (`QUAD_GANTRY_LEVEL`, or `Z_TILT_ADJUST` on a printer with Z tilt) when the printer has that and it is not levelled yet, followed by homing Z again; and heats a cold bed to `mesh_bed_temp` (60 C unless you set another value in `config.json`, `0` = never) and switches it off afterwards, also when a step fails. It works on every printer that has `BED_MESH_CALIBRATE`, never while a print is running or paused, and not while Klipper is not ready; the server then refuses and says why. The new mesh stays in the printer's memory only: saving it needs `SAVE_CONFIG`, which restarts Klipper, so run that on the printer (Feedline never restarts Klipper). The whole thing takes a few minutes and cannot be stopped from here. It does not cool, clean or change the nozzle, and printers that need a special preparation of their own (a custom macro) may need that run first. Checked with a stand-in printer, not on real hardware.
+
+## Console
+
+The **Console** tab shows the printer's G-code log live and has an input box at the bottom: type one line of G-code (for example `M115`, `G28`, `SET_PIN PIN=led VALUE=1` or a macro name) and press Enter. Up and Down bring back earlier lines. Klipper's answer, including errors, shows up in the log. It works while a print is running too, so be careful with moves. Anything Klipper accepts is allowed except `RESTART`, `FIRMWARE_RESTART`, `SAVE_CONFIG`, `M112` (emergency stop), `SHUTDOWN`, firmware and flash commands, and `RUN_SHELL_COMMAND`; use the printer's own screen for those. Lines are limited to 500 characters and one command at a time. See [SECURITY.md](SECURITY.md): there is no login, so anyone who can open the page can send G-code.
 
 ## Macros tab
 

@@ -502,6 +502,11 @@
     <label style="font-size:12.5px;color:var(--muted);display:flex;gap:6px;align-items:center"><input id="conhidetemp" type="checkbox"> Hide temperature reports</label>
     <span id="concount" style="font-size:12px;color:var(--sub);margin-left:auto"></span></div>
   <pre id="fconlog"></pre>
+  <form id="congo" autocomplete="off" style="display:flex;gap:8px;margin-top:10px;align-items:center">
+    <input id="conin" type="text" maxlength="500" spellcheck="false" autocapitalize="characters" placeholder="Send G-code, for example M115 or G28 (Up / Down = earlier commands)" aria-label="G-code to send" style="flex:1;min-width:0;background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:13px ui-monospace,monospace;padding:8px 10px">
+    <button id="consend" type="submit">Send</button>
+  </form>
+  <div id="conerr" role="status" style="font-size:12.5px;color:var(--muted);margin-top:6px;min-height:1.3em"></div>
 </section>
 <section id="v-settings" class="view" hidden></section>
 <section id="v-macros" class="view" hidden></section>
@@ -2797,8 +2802,14 @@ bootstrap();
 
   $("meshcal").addEventListener("click", async () => {
     const b = $("meshcal"), m = $("meshcalmsg");
-    if (!await ask("Probe the bed now? The printer must be idle with all axes homed (heat the bed first if your printer needs that). The toolhead moves and it takes a few minutes. The new mesh is kept in the printer's memory only: run SAVE_CONFIG on the printer to keep it.", "Calibrate")) return;
-    b.disabled = true; m.textContent = "Probing the bed... this can take several minutes";
+    let plan;
+    try {
+      const r = await fetch("/api/mesh/plan", {cache: "no-store"}), j = await r.json().catch(() => ({}));
+      if (!r.ok) { m.textContent = "Cannot calibrate now: " + (j.error || "HTTP " + r.status); return; }
+      plan = j.steps;
+    } catch (e) { m.textContent = "Cannot calibrate now: " + String(e.message || e); return; }
+    if (!await ask("Calibrate the bed mesh? The printer will: " + plan.map((s, i) => (i + 1) + ". " + s).join("  ") + ". The toolhead moves and it takes a few minutes. The new mesh is kept in the printer's memory only: run SAVE_CONFIG on the printer to keep it.", "Calibrate")) return;
+    b.disabled = true; m.textContent = "Working... this can take several minutes";
     try { await postControl({action: "mesh_calibrate"}); m.textContent = "Done. Run SAVE_CONFIG on the printer to keep this mesh."; await loadMesh(); }
     catch (e) { m.textContent = String(e.message || e); }
     finally { b.disabled = false; }
@@ -2818,10 +2829,34 @@ bootstrap();
     if (atBottom) box.scrollTop = box.scrollHeight;
   }
   async function loadConsole() {
-    try { conItems = (await get("/server/gcode_store?count=1000")).result.gcode_store; $("fconstat").textContent = "Live"; renderFullCon(); }
+    try { conItems = (await get("/server/gcode_store?count=1000")).result.gcode_store; $("fconstat").textContent = "Live"; renderFullCon(); conLock(); }
     catch (e) { $("fconstat").textContent = "Offline"; throw e; }
   }
   $("confilter").addEventListener("input", renderFullCon); $("conhidetemp").addEventListener("change", renderFullCon);
+  // type G-code: Enter sends it, Up / Down walk through earlier lines. The server refuses restarts, emergency stop, firmware and shell commands.
+  const conHist = []; let conPos = 0;
+  const conLock = () => {            // re-checked on every refresh: the page decides later whether it may send commands
+    const off = typeof CONTROLS !== "undefined" && !CONTROLS;
+    $("conin").disabled = $("consend").disabled = off;
+    $("conin").placeholder = off ? "Sending is turned off on this dashboard" : "Send G-code, for example M115 or G28 (Up / Down = earlier commands)";
+  };
+  $("congo").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const inp = $("conin"), err = $("conerr"), line = inp.value.trim();
+    if (!line) return;
+    $("consend").disabled = true; err.textContent = "";
+    try {
+      await postControl({action: "gcode", script: line});
+      if (conHist[conHist.length - 1] !== line) conHist.push(line);
+      conPos = conHist.length; inp.value = "";
+      setTimeout(() => loadConsole().catch(() => {}), 300);
+    } catch (e) { err.textContent = String(e.message || e); err.style.color = "var(--bad)"; setTimeout(() => { err.style.color = ""; }, 8000); }
+    finally { $("consend").disabled = false; inp.focus(); }
+  });
+  $("conin").addEventListener("keydown", e => {
+    if (e.key === "ArrowUp" && conHist.length) { e.preventDefault(); conPos = Math.max(0, conPos - 1); e.target.value = conHist[conPos]; }
+    else if (e.key === "ArrowDown" && conHist.length) { e.preventDefault(); conPos = Math.min(conHist.length, conPos + 1); e.target.value = conHist[conPos] || ""; }
+  });
   // ---------- Files: config browser + editor ----------
   const fs_ = {list: [], open: new Set(), cur: null, base: "", mod: "", editable: false, loading: false};
   const canWrite = () => (typeof CONTROLS === "undefined" || CONTROLS);

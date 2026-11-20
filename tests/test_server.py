@@ -267,35 +267,101 @@ class PrintEvents(unittest.TestCase):
 
 
 class MeshCalibrate(unittest.TestCase):
-    def run_it(self, state="standby", homed="xyz", commands=("BED_MESH_CALIBRATE",)):
+    def run_it(self, state="standby", homed="xyz", commands=("BED_MESH_CALIBRATE",), objs=("heater_bed",), bed=60, applied=True,
+               klippy="ready", cfg=None, fail=None):
         sent = []
 
         class Fake(fs.Handler):
             def commands(self):
                 return {c.upper() for c in commands}
 
+            def objects(self):
+                return list(objs)
+
             def mget(self, path, timeout=8):
-                return {"result": {"status": {"print_stats": {"state": state}, "toolhead": {"homed_axes": homed}}}}
+                st = {"print_stats": {"state": state}, "toolhead": {"homed_axes": homed}, "webhooks": {"state": klippy},
+                      "quad_gantry_level": {"applied": applied}, "z_tilt": {"applied": applied}}
+                if "heater_bed" in objs:
+                    st["heater_bed"] = {"target": bed}
+                return {"result": {"status": st}}
 
             def run_gcode(self, script, timeout=15):
                 sent.append(script)
+                if fail and script.startswith(fail):
+                    raise RuntimeError("boom")
 
             def jreply(self, code, obj):
                 sent.append((code, obj))
 
         h = object.__new__(Fake)
-        h.pid, h.printer, h.cfg = "test", "printer.test", dict(fs.DEFAULT_CFG)
+        h.pid, h.printer, h.cfg = "test", "printer.test", dict(fs.DEFAULT_CFG, **(cfg or {}))
         h.mesh_control({})
         return sent
 
-    def test_runs_when_idle_and_homed(self):
-        self.assertEqual(self.run_it(), ["BED_MESH_CALIBRATE", (200, {"ok": True, "cmd": "BED_MESH_CALIBRATE"})])
+    def test_hot_bed_homed_just_probes(self):
+        out = self.run_it(bed=65)
+        self.assertEqual(out, ["BED_MESH_CALIBRATE", (200, {"ok": True, "steps": ["Probe the bed"]})])
+
+    def test_cold_bed_is_heated_and_switched_off(self):
+        out = self.run_it(bed=0)
+        self.assertEqual(out[:3], ["M190 S60", "BED_MESH_CALIBRATE", "M140 S0"])
+
+    def test_homes_first(self):
+        self.assertEqual(self.run_it(homed="xy", bed=60)[:2], ["G28", "BED_MESH_CALIBRATE"])
+        self.assertEqual(self.run_it(homed="", bed=60)[:2], ["G28", "BED_MESH_CALIBRATE"])
+
+    def test_levels_the_gantry_when_needed(self):
+        out = self.run_it(objs=("heater_bed", "quad_gantry_level"), applied=False, bed=60)
+        self.assertEqual(out[:3], ["QUAD_GANTRY_LEVEL", "G28 Z", "BED_MESH_CALIBRATE"])
+        self.assertEqual(self.run_it(objs=("heater_bed", "z_tilt"), applied=False, bed=60, homed="")[:4], ["G28", "Z_TILT_ADJUST", "G28 Z", "BED_MESH_CALIBRATE"])
+        self.assertEqual(self.run_it(objs=("heater_bed", "quad_gantry_level"), applied=True, bed=60)[0], "BED_MESH_CALIBRATE")
+
+    def test_heating_can_be_turned_off_and_is_capped(self):
+        self.assertEqual(self.run_it(bed=0, cfg={"mesh_bed_temp": 0})[0], "BED_MESH_CALIBRATE")
+        self.assertEqual(self.run_it(bed=0, cfg={"mesh_bed_temp": 400})[0], "M190 S110")
+        self.assertEqual(self.run_it(objs=(), bed=0)[0], "BED_MESH_CALIBRATE")
 
     def test_refused(self):
-        for kw in ({"state": "printing"}, {"state": "paused"}, {"homed": "xy"}, {"homed": ""}, {"commands": ()}):
+        for kw in ({"state": "printing"}, {"state": "paused"}, {"commands": ()}, {"klippy": "shutdown"}, {"klippy": "startup"}):
             out = self.run_it(**kw)
             self.assertEqual(len(out), 1, kw)
             self.assertEqual(out[0][0], 409, kw)
+
+    def test_failure_names_the_step_and_switches_the_heater_off(self):
+        out = self.run_it(bed=0, fail="BED_MESH_CALIBRATE")
+        self.assertEqual(out[:3], ["M190 S60", "BED_MESH_CALIBRATE", "M140 S0"])
+        self.assertEqual(out[3][0], 502)
+        self.assertIn("Probe the bed failed", out[3][1]["error"])
+        self.assertEqual(self.run_it(bed=0, fail="M190")[-1][0], 502)            # heating itself failed: still switched off, still reported
+
+
+class ConsoleGcode(unittest.TestCase):
+    def send(self, script):
+        sent = []
+
+        class Fake(fs.Handler):
+            def run_gcode(self, s, timeout=15):
+                sent.append(s)
+
+            def jreply(self, code, obj):
+                sent.append(code)
+
+        h = object.__new__(Fake)
+        h.pid, h.printer, h.cfg = "test", "printer.test", dict(fs.DEFAULT_CFG)
+        h.gcode_control({"script": script})
+        return sent
+
+    def test_sends_a_line(self):
+        self.assertEqual(self.send("  M115 "), ["M115", 200])
+        self.assertEqual(self.send("SET_PIN PIN=led VALUE=1"), ["SET_PIN PIN=led VALUE=1", 200])
+
+    def test_refuses_dangerous_and_bad_input(self):
+        for bad in ("M112", "m112", "RESTART", "FIRMWARE_RESTART", "SAVE_CONFIG", "SHUTDOWN_NOW", "EMERGENCY_STOP", "FLASH_X", "RUN_SHELL_COMMAND CMD=x",
+                    "M115\nRESTART", "", "   ", "x" * 501):
+            out = self.send(bad)
+            self.assertEqual(len(out), 1, bad)
+            self.assertIn(out[0], (400, 403), bad)
+        self.assertEqual(self.send(None), [400])
 
 
 if __name__ == "__main__":

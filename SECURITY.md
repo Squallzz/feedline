@@ -21,6 +21,7 @@ dashboard through the browser, or (c) a compromised printer/Spoolman feeding bad
 | 8 | Low | Config editing is powerful (a Klipper config can run G-code on restart) | `allow_config_edit: false` makes it read-only; edits are limited to text config types, 512 KB, with a backup and a changed-on-printer check; never restarts Klipper |
 | 9 | Low | Path traversal in config/pack paths | Reviewed: strict allowlist regex, no `..`, no hidden files |
 | 10 | Low | G-code injection | Reviewed: macro buttons and custom macro text are limited to `NAME KEY=value` of commands the printer reports; restart/shutdown-style commands denied; temperatures and fan speeds range-checked |
+| 12 | Med | The Console tab sends free-form G-code (anyone who can open the page can move, heat and run macros) | **Accepted, limited**: one line of up to 500 characters, no control characters or newlines, and the commands that restart Klipper, emergency-stop, write firmware or run a shell command on the host (`RUN_SHELL_COMMAND`, from gcode_shell_command) are refused. A user-defined macro that itself runs a shell command cannot be detected, so treat console access as full control of the printer, like any dashboard without a login |
 | 11 | Info | SSRF through "add printer" / Spoolman address | Loopback, link-local, unspecified and multicast refused; private LAN addresses are allowed on purpose (that is the point). A DNS name could change between check and use |
 
 ## Residual risks (known, not fixed)
