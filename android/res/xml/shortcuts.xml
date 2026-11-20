@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="change_address" android:enabled="true" android:icon="@drawable/ic_launcher"
+        android:shortcutShortLabel="@string/change_address" android:shortcutLongLabel="@string/change_address">
+        <intent android:action="app.feedline.CHANGE_ADDRESS" android:targetPackage="app.feedline" android:targetClass="app.feedline.MainActivity" />
+    </shortcut>
+</shortcuts>

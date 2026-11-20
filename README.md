@@ -167,6 +167,15 @@ Feedline is an installable web app (PWA), so it gets its own icon and a full-scr
 
 Chrome only offers a real install when the page is served over **https** (or from `localhost`) and your phone trusts the certificate, so set up the [reverse proxy](#home-assistant) first. Over plain `http://` you can still use "Add to Home Screen", which makes a shortcut that opens in the browser. The app shows live data only; if the server cannot be reached it shows a short "not reachable" page. It does not run in the background, so it cannot send notifications (for print-finished alerts use Home Assistant's phone app). Away from home the phone needs a VPN such as Tailscale, since Feedline has no login and should not be exposed to the internet.
 
+### Android app (APK)
+
+If you do not want to set up https, build the small Android app in [`android/`](android). It is a full-screen WebView around your Feedline server (about 17 KB, no dependencies), so updates to Feedline show up without reinstalling it:
+
+- First start asks for the server address (for example `http://192.168.1.60:8081/`). Plain `http://` works, so the camera and touchscreen window keep working. Long-press the app icon > **Change server address** to change it later; if the server cannot be reached the app offers Retry and Change address.
+- Back button goes back in the dashboard, the screen stays on while it is open, file pickers (graphics uploads), downloads (log export) and confirm dialogs work.
+- Build (Windows, needs a JDK 11+ and the Android SDK with `platforms;android-34` and `build-tools;35.0.0`): `powershell -File android\build.ps1 -Sdk C:\path\to\android-sdk`. It writes `android/feedline.apk`, signed with a key it creates in `%USERPROFILE%\.android\feedline.jks` (keep that file: a new key cannot update an app installed with the old one). Copy the APK to the phone, open it, and allow installs from that source.
+- Tested in an Android 14 emulator (installs, address dialog, loads the dashboard). Not tried on a physical phone, and push notifications are not included.
+
 ## Install (Linux, about two minutes)
 
 Requirements: Python 3.8+ (nothing to `pip install`), and a Klipper printer whose Moonraker answers on port 7125 from this machine.
