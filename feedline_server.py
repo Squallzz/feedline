@@ -179,6 +179,22 @@ MIME_EXT = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "i
 EXT_MIME = {v: k for k, v in MIME_EXT.items()}
 MAX_PACK_IMAGE = 3 * 1024 * 1024
 ACTIONS = ("load", "unload", "park", "pickup")
+PWA_MANIFEST = {
+    "name": "Feedline", "short_name": "Feedline", "description": "Klipper printer dashboard",
+    "start_url": "/", "scope": "/", "display": "standalone", "background_color": "#0A0814", "theme_color": "#0A0814",
+    "icons": [{"src": "/graphics/feedline-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+              {"src": "/graphics/feedline-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}]}
+# Service worker: Chrome only offers "Install app" when one exists. It never caches anything (printer data must be live); when the
+# server cannot be reached it shows a short offline page instead of the browser's error page.
+PWA_SW = """self.addEventListener('install', e => self.skipWaiting());
+self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+self.addEventListener('fetch', e => {
+  if (e.request.mode !== 'navigate') return;
+  e.respondWith(fetch(e.request).catch(() => new Response(
+    '<!doctype html><meta name=viewport content="width=device-width,initial-scale=1"><body style="background:#0A0814;color:#DEDCFA;font:16px system-ui;padding:2em;text-align:center"><h2>Feedline is not reachable</h2><p>Check that you are on the home network (or VPN) and that the server is running.</p><p><a style="color:#9580FF" href="">Try again</a></p>',
+    {status: 503, headers: {'Content-Type': 'text/html; charset=utf-8'}})));
+});
+"""
 CMD_DENY = re.compile(r"^(FIRMWARE_)?RESTART$|^SAVE_CONFIG$|^M112$|^SHUTDOWN|^EMERGENCY|^FIRMWARE|^FLASH", re.I)
 TOOL_ARGS = ("TOOL", "T", "EXTRUDER", "N", "INDEX", "TOOLHEAD", "TOOL_NUMBER")
 RECT_ANCHORS = ("bed", "chamber", "screen")
@@ -1666,6 +1682,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         elif route in ("/", "/index.html"):
             with open(os.path.join(self.root, "index.html"), "rb") as f:
                 return self.reply(200, "text/html; charset=utf-8", f.read())
+        elif route == "/manifest.webmanifest":              # makes the page installable as an app (Chrome / Android "Install app")
+            return self.reply(200, "application/manifest+json", json.dumps(PWA_MANIFEST).encode(), {"Cache-Control": "no-cache"})
+        elif route == "/sw.js":
+            return self.reply(200, "text/javascript; charset=utf-8", PWA_SW.encode(), {"Cache-Control": "no-cache"})
         elif route in ("/printer/objects/query", "/printer/objects/list", "/server/gcode_store", "/server/files/metadata",
                      "/server/history/list", "/server/history/totals", "/server/spoolman/status"):            # job history (read-only)
             url = "http://%s:7125%s" % (self.printer, path)

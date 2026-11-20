@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Feedline</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0A0814">
+<link rel="icon" type="image/png" href="/graphics/feedline-192.png">
+<link rel="apple-touch-icon" href="/graphics/feedline-192.png">
 <style>
   :root{--bg:#0A0814;--card:#13112A;--edge:#352F6B;--text:#DEDCFA;--muted:#A29EDB;--sub:#8985C4;
         --violet:#7A63F2;--blue:#3B82F6;--good:#4ADE80;--warn:#E8B04F;--bad:#F0577A;color-scheme:dark;accent-color:#7A63F2}
@@ -3389,6 +3393,10 @@ bootstrap();
   }));
   window.macrosLoad = load;
 })();
+</script>
+<script>
+/* lets Chrome / Android offer "Install app"; only works over https (or localhost) */
+try { if ("serviceWorker" in navigator && window.isSecureContext) navigator.serviceWorker.register("/sw.js").catch(function () {}); } catch (e) {}
 </script>
 </body>
 </html>

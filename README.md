@@ -157,6 +157,16 @@ Notes:
 - With several printers, give each card its printer in the address: `url: http://192.168.1.60:8081/?p=<id>` (see Settings > Printers). Without `?p=` a framed Feedline shows the printer picked last in that browser, which some browsers do not remember inside a frame. Buttons that ask first (Load, Home, Pause, Emergency stop...) use an in-page dialog, so they also work inside a card.
 - The setting can also be preset with `allow_embed` in `config.json`; the toggle in Settings overrides it.
 
+## Install as an app (Android, iPhone, desktop)
+
+Feedline is an installable web app (PWA), so it gets its own icon and a full-screen window with no browser bar:
+
+- **Android (Chrome):** open Feedline, then menu (three dots) > **Install app** (or **Add to Home screen**).
+- **iPhone / iPad (Safari):** Share > **Add to Home Screen**.
+- **Desktop Chrome / Edge:** the install icon in the address bar.
+
+Chrome only offers a real install when the page is served over **https** (or from `localhost`) and your phone trusts the certificate, so set up the [reverse proxy](#home-assistant) first. Over plain `http://` you can still use "Add to Home Screen", which makes a shortcut that opens in the browser. The app shows live data only; if the server cannot be reached it shows a short "not reachable" page. It does not run in the background, so it cannot send notifications (for print-finished alerts use Home Assistant's phone app). Away from home the phone needs a VPN such as Tailscale, since Feedline has no login and should not be exposed to the internet.
+
 ## Install (Linux, about two minutes)
 
 Requirements: Python 3.8+ (nothing to `pip install`), and a Klipper printer whose Moonraker answers on port 7125 from this machine.
