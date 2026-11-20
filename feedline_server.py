@@ -1087,6 +1087,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             self.jreply(502, {"error": str(e)})
 
+    def mesh_control(self, req):
+        """Probe the bed (BED_MESH_CALIBRATE). Only when the printer is idle and every axis is homed. The new mesh stays in the
+        printer's memory: saving it needs SAVE_CONFIG, which restarts Klipper, so that is left to the user at the printer."""
+        if "BED_MESH_CALIBRATE" not in self.commands():
+            return self.jreply(409, {"error": "this printer has no BED_MESH_CALIBRATE command"})
+        if not self.busy.acquire(blocking=False):
+            return self.jreply(409, {"error": "another command is still running"})
+        try:
+            st = self.mget("/printer/objects/query?print_stats&toolhead")["result"]["status"]
+            if st["print_stats"]["state"] in ("printing", "paused"):
+                return self.jreply(409, {"error": "refused: printer is %s" % st["print_stats"]["state"]})
+            if not all(a in (st["toolhead"].get("homed_axes") or "") for a in "xyz"):
+                return self.jreply(409, {"error": "home all axes first"})
+            self.run_gcode("BED_MESH_CALIBRATE", 900)
+            self.jreply(200, {"ok": True, "cmd": "BED_MESH_CALIBRATE"})
+        except Exception as e:  # noqa: BLE001
+            self.jreply(502, {"error": str(e)})
+        finally:
+            self.busy.release()
+
     def fan_control(self, req):
         """Set a controllable fan: the part fan ("fan") or a fan_generic. heater_fan* (hotend/PSU fans) are
         driven by Klipper from heater temperature and are deliberately not settable here."""
@@ -1596,7 +1616,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     # POST /control: the method that handles each "action". Print controls, tool buttons and macros are handled in do_POST
     # itself, because they share the one-command-at-a-time lock and the "not while printing" rule.
-    ROUTES = {"tune": "tune_control", "fan": "fan_control", "temp": "temp_control", "light": "light_control",
+    ROUTES = {"tune": "tune_control", "mesh_calibrate": "mesh_control","fan": "fan_control", "temp": "temp_control", "light": "light_control",
               "home": "move_control", "jog": "move_control", "goto": "move_control", "motors_off": "move_control",
               "set_lane": "lane_control", "set_slot": "box_slot_control", "save_config": "config_save",
               "save_settings": "save_settings", "save_pack": "save_pack", "delete_pack": "delete_pack",
@@ -1669,6 +1689,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                      "tools": self.tool_count()})
         if route == "/api/screen/probe":
             return self.jreply(200, self.screen_probe())
+        if route == "/api/events":          # print events for the Android app: ?since=<id of the last one seen>&wait=<seconds to wait for a new one>
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(path).query)
+            try:
+                since = int(q["since"][0]) if "since" in q else None
+                wait = min(25, max(0, int(q.get("wait", ["0"])[0])))
+            except ValueError:
+                return self.jreply(400, {"error": "bad request"})
+            return self.jreply(200, EVENTS.since(since, wait))
         if route == "/api/overview":
             return self.jreply(200, self.overview())
         if route == "/api/printers":
@@ -1718,6 +1746,83 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.reply(502, "text/plain", str(e).encode())
 
 
+# ---- print events: a background thread watches every printer's print state and records what changed, so a phone can be told ----
+class Events:
+    """The most recent print events, in memory. Ids are millisecond timestamps, so they keep growing across restarts."""
+    def __init__(self, keep=100):
+        self.cond, self.items, self.keep, self.last = threading.Condition(), [], keep, int(time.time() * 1000)
+
+    def add(self, **ev):
+        with self.cond:
+            self.last = max(self.last + 1, int(time.time() * 1000))
+            ev.update(id=self.last, time=time.time())
+            self.items.append(ev)
+            del self.items[:-self.keep]
+            self.cond.notify_all()
+
+    def since(self, last, wait=0):
+        """Events newer than id `last`; waits up to `wait` seconds for one. Without `last` (a client's first call) none are
+        returned, only the newest id, so a new client starts from now instead of replaying old events."""
+        with self.cond:
+            if last is not None and wait > 0 and not any(e["id"] > last for e in self.items):
+                self.cond.wait(wait)
+            return {"last": self.last, "events": [e for e in self.items if last is not None and e["id"] > last]}
+
+
+EVENTS = Events()
+
+
+def fmt_duration(sec):
+    sec = int(sec or 0)
+    h, m = sec // 3600, sec % 3600 // 60
+    return ("%dh %02dm" % (h, m)) if h else ("%d min" % m)
+
+
+def print_event(prev, cur, ps):
+    """What to tell the user when a printer's print state goes from `prev` to `cur` (Moonraker's print_stats), or None.
+    The first look at a printer (prev None) never produces an event."""
+    if prev is None or prev == cur:
+        return None
+    fname = os.path.basename(str(ps.get("filename") or ""))
+    msg = str(ps.get("message") or "").strip()[:200]
+    if cur == "complete":
+        return {"kind": "complete", "title": "Print finished", "text": (fname + (" in " + fmt_duration(ps.get("total_duration")) if ps.get("total_duration") else "")).strip() or "The print is done"}
+    if cur == "error":
+        return {"kind": "error", "title": "Print failed", "text": msg or fname or "The printer reported an error"}
+    if cur == "cancelled":
+        return {"kind": "cancelled", "title": "Print cancelled", "text": fname or "The print was cancelled"}
+    if cur == "paused" and prev == "printing":
+        return {"kind": "paused", "title": "Print paused", "text": msg or fname or "The print is paused"}
+    return None
+
+
+def watch_printers(interval=5):
+    """Poll every printer's print state (read-only) and record changes in EVENTS. Never ends; never sends a command."""
+    h = object.__new__(Handler)
+    h.pid, h.headers = "main", {}
+    seen, skip = {}, {}
+    while True:
+        try:
+            for row in h.printer_list():
+                now = time.time()
+                if skip.get(row["id"], 0) > now:
+                    continue
+                try:
+                    with urllib.request.urlopen("http://%s:7125/printer/objects/query?print_stats" % row["host"], timeout=4) as r:
+                        ps = json.load(r)["result"]["status"]["print_stats"]
+                except Exception:  # noqa: BLE001
+                    skip[row["id"]] = now + 20            # printer off or unreachable: look again in a while
+                    continue
+                cur = ps.get("state")
+                ev = print_event(seen.get(row["id"]), cur, ps)
+                seen[row["id"]] = cur
+                if ev:
+                    EVENTS.add(printer=row["id"], name=row["name"], **ev)
+        except Exception:  # noqa: BLE001
+            logging.exception("print watcher")
+        time.sleep(interval)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8081)
@@ -1738,6 +1843,8 @@ def main():
         ap.error("no printer: set \"printer\" in config.json or pass --printer HOST")
     Handler.cfg, Handler.root, Handler.state = cfg, a.root, a.state
     Handler.backups = os.path.join(a.state, "backups")
+    if cfg.get("events", True):
+        threading.Thread(target=watch_printers, daemon=True).start()
     logging.info("Feedline listening on %s:%d for printer %s", a.bind, a.port, Handler.printer)
     http.server.ThreadingHTTPServer((a.bind, a.port), Handler).serve_forever()
 

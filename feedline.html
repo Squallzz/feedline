@@ -509,6 +509,7 @@
   <div class="ovnote">Click a printer to open it. This page only shows status; controls are on each printer's own page.</div></section>
 <section id="v-tune" class="view" hidden>
   <h2>Tune - bed mesh</h2>
+  <div class="srow" style="margin:0 0 14px"><button id="meshcal" type="button" title="Probe the bed with BED_MESH_CALIBRATE (printer idle and homed)">Calibrate bed mesh</button><span id="meshcalmsg" role="status" style="color:var(--muted);font-size:13px"></span></div>
   <div class="sgrid" id="meshstats"></div>
   <div class="meshrow">
     <div class="vcard"><h3>Heatmap (top view, front at the bottom)</h3><div id="meshmap"></div><div class="legend"></div><div id="meshleg"></div></div>
@@ -2794,6 +2795,15 @@ bootstrap();
     surfData = {M, nx, ny, mn, range, ex: x1 - x0, ey: y1 - y0, x0, y0}; mountSurf(); drawSurf();
   }
 
+  $("meshcal").addEventListener("click", async () => {
+    const b = $("meshcal"), m = $("meshcalmsg");
+    if (!await ask("Probe the bed now? The printer must be idle with all axes homed (heat the bed first if your printer needs that). The toolhead moves and it takes a few minutes. The new mesh is kept in the printer's memory only: run SAVE_CONFIG on the printer to keep it.", "Calibrate")) return;
+    b.disabled = true; m.textContent = "Probing the bed... this can take several minutes";
+    try { await postControl({action: "mesh_calibrate"}); m.textContent = "Done. Run SAVE_CONFIG on the printer to keep this mesh."; await loadMesh(); }
+    catch (e) { m.textContent = String(e.message || e); }
+    finally { b.disabled = false; }
+  });
+
   // ---------- Console (full history, polled while the page is open) ----------
   let conItems = [], conTick = 0;
   function renderFullCon() {
@@ -3069,7 +3079,7 @@ bootstrap();
       '<div class="sub">New printers get the generic setup: temperatures, fans, jobs, console, files, camera (if Moonraker has one) and one pickup button per tool. Anyone who can open this page can add one, so keep the dashboard on a trusted network.</div></div>' +
       '<div class="vcard" id="set-fs"><h3>Filament system</h3><div class="srow"><select id="setfs">' + fsOptions() + '</select><span class="sub">Decides how filament is read and which filament graphic is used. ' +
       'AFC / BoxTurtle (ArmoredTurtle) shows one 3D card per lane; it is detected automatically when a printer is added.</span></div></div>' +
-      optionsCard() + embedCard() +
+      optionsCard() + appCard() + embedCard() +
       '<div class="vcard" id="set-sm"><h3>Spoolman</h3><div class="srow"><label>Spoolman address</label><input id="smurl" placeholder="http://192.168.1.20:7912" spellcheck="false" value="' + escH(CFG.spoolmanServer || "") + '"' + (CONTROLS ? "" : " disabled") + '>' +
       '<button id="smsave"' + (CONTROLS ? "" : " disabled") + '>Save</button><button id="smreset"' + (CONTROLS ? "" : " disabled") + ' title="Go back to the value in config.json">Use config.json</button></div>' +
       '<div class="sub">' + (CFG.spoolmanServer ? "Connected to " + escH(CFG.spoolmanServer) + (CFG.spoolmanFromUi ? " (set here)" : " (from config.json)") : "No Spoolman configured.") +
@@ -3129,6 +3139,14 @@ bootstrap();
       (c.viewFromUi ? '<button id="camreset" type="button">Reset</button>' : "") + '</div>' +
       '<div class="sub">Turns the camera picture the right way up, for live video and snapshots. The printer says: ' + escH(say(pv)) + " (its webcam settings in Moonraker). " +
       (c.viewFromUi ? "Set here instead; Reset goes back to the printer's setting." : "A change here applies to this dashboard only and does not change the printer.") + '</div>';
+  }
+  // Phone notifications: only shown inside the Feedline Android app, which provides window.FeedlineApp
+  function appCard() {
+    const a = window.FeedlineApp;
+    if (!a || typeof a.getNotify !== "function") return "";
+    return '<div class="vcard" id="set-app"><h3>Phone notifications (Android app)</h3>' +
+      '<div class="srow"><label class="rad"><input type="checkbox" id="setnotify"' + (a.getNotify() ? " checked" : "") + '> Tell me when a print finishes, fails, is cancelled or pauses</label></div>' +
+      '<div class="sub">The app keeps a small background connection to this server and shows a notification for every printer. It works while the phone is on the home network (or connected by VPN). Android may delay notifications while the phone sleeps unless the app is excluded from battery optimization.</div></div>';
   }
   // show the dashboard inside Home Assistant (or any page): allow framing + a ready-made card
   const haUrl = () => { try { return localStorage.getItem("fl_ha") || ""; } catch (e) { return ""; } };
@@ -3213,6 +3231,7 @@ bootstrap();
   async function guard(fn) { try { await fn(); } catch (e) { msg(String(e.message || e), true); } }
 
   root.addEventListener("change", async ev => {
+    if (ev.target.id === "setnotify" && window.FeedlineApp) { window.FeedlineApp.setNotify(ev.target.checked); msg(ev.target.checked ? "Notifications on" : "Notifications off"); return; }
     if (ev.target.id === "setembed") await guard(async () => { await reload((await post({action: "set_embed", allow: ev.target.checked})).config); msg(ev.target.checked ? "Embedding allowed" : "Embedding blocked"); });
     if (ev.target.id === "setscr") await guard(async () => { await reload((await post({action: "save_settings", screen: ev.target.checked})).config); msg(ev.target.checked ? "Remote touchscreen on" : "Remote touchscreen off"); });
     if (ev.target.id === "setlight") await guard(async () => {

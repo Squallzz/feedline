@@ -234,5 +234,69 @@ class Limits(unittest.TestCase):
                 h.macro_command(bad)
 
 
+class PrintEvents(unittest.TestCase):
+    def test_transitions(self):
+        ps = {"filename": "gcodes/benchy.gcode", "total_duration": 8130, "message": "Heater extruder not heating"}
+        ev = fs.print_event("printing", "complete", ps)
+        self.assertEqual((ev["kind"], ev["title"], ev["text"]), ("complete", "Print finished", "benchy.gcode in 2h 15m"))
+        self.assertEqual(fs.print_event("printing", "error", ps)["text"], "Heater extruder not heating")
+        self.assertEqual(fs.print_event("paused", "cancelled", ps)["kind"], "cancelled")
+        self.assertEqual(fs.print_event("printing", "paused", {})["kind"], "paused")
+
+    def test_no_event(self):
+        for prev, cur in ((None, "complete"), (None, "error"), ("complete", "complete"), ("standby", "printing"), ("paused", "printing"),
+                          ("standby", "paused"), ("complete", "standby")):
+            self.assertIsNone(fs.print_event(prev, cur, {}), (prev, cur))
+
+    def test_queue_replays_only_newer_events(self):
+        q = fs.Events()
+        first = q.since(None)                                    # a client's first call: just the newest id
+        self.assertEqual(first["events"], [])
+        q.add(kind="complete", title="a")
+        q.add(kind="error", title="b")
+        got = q.since(first["last"])
+        self.assertEqual([e["title"] for e in got["events"]], ["a", "b"])
+        self.assertEqual(q.since(got["last"])["events"], [])
+        self.assertTrue(got["events"][0]["id"] < got["events"][1]["id"])
+
+    def test_queue_is_bounded(self):
+        q = fs.Events(keep=3)
+        for i in range(5):
+            q.add(kind="x", title=str(i))
+        self.assertEqual([e["title"] for e in q.since(0)["events"]], ["2", "3", "4"])
+
+
+class MeshCalibrate(unittest.TestCase):
+    def run_it(self, state="standby", homed="xyz", commands=("BED_MESH_CALIBRATE",)):
+        sent = []
+
+        class Fake(fs.Handler):
+            def commands(self):
+                return {c.upper() for c in commands}
+
+            def mget(self, path, timeout=8):
+                return {"result": {"status": {"print_stats": {"state": state}, "toolhead": {"homed_axes": homed}}}}
+
+            def run_gcode(self, script, timeout=15):
+                sent.append(script)
+
+            def jreply(self, code, obj):
+                sent.append((code, obj))
+
+        h = object.__new__(Fake)
+        h.pid, h.printer, h.cfg = "test", "printer.test", dict(fs.DEFAULT_CFG)
+        h.mesh_control({})
+        return sent
+
+    def test_runs_when_idle_and_homed(self):
+        self.assertEqual(self.run_it(), ["BED_MESH_CALIBRATE", (200, {"ok": True, "cmd": "BED_MESH_CALIBRATE"})])
+
+    def test_refused(self):
+        for kw in ({"state": "printing"}, {"state": "paused"}, {"homed": "xy"}, {"homed": ""}, {"commands": ()}):
+            out = self.run_it(**kw)
+            self.assertEqual(len(out), 1, kw)
+            self.assertEqual(out[0][0], 409, kw)
+
+
 if __name__ == "__main__":
     unittest.main()

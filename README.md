@@ -6,7 +6,8 @@ Works with any Klipper + Moonraker printer; ships with a drawn Snapmaker U1 view
 **Features at a glance**
 - Live view: camera (rotation and mirroring honored), temperatures, fans, chamber, job progress and thumbnail, moving toolhead and bed drawn from the printer's real position.
 - Filament systems: Snapmaker U1 (RFID + Spoolman), AFC / BoxTurtle, QIDI Box, toolchangers (StealthChanger, klipper-toolchanger), or plain extruders. See [Filament systems](#filament-systems).
-- [Print tuning](#print-tuning) while printing: Z offset, speed, flow, pressure advance.
+- [Print tuning](#print-tuning) while printing: Z offset, speed, flow, pressure advance. [Bed mesh](#tune-tab-bed-mesh) view with a Calibrate button.
+- Android app with print notifications (finished, failed, cancelled, paused): see [Android app](#android-app-apk).
 - Several printers: one instance, a Printers overview page, and a per-tab `?p=<id>` address so Home Assistant cards can each show a different printer.
 - Remote touchscreen (Paxx firmware), Spoolman, a Home Assistant card helper, a Macros tab and a read-only config file browser.
 
@@ -174,7 +175,8 @@ If you do not want to set up https, build the small Android app in [`android/`](
 - First start asks for the server address (for example `http://192.168.1.60:8081/`). Plain `http://` works, so the camera and touchscreen window keep working. Long-press the app icon > **Change server address** to change it later; if the server cannot be reached the app offers Retry and Change address.
 - Back button goes back in the dashboard, the screen stays on while it is open, file pickers (graphics uploads), downloads (log export) and confirm dialogs work.
 - Build (Windows, needs a JDK 11+ and the Android SDK with `platforms;android-34` and `build-tools;35.0.0`): `powershell -File android\build.ps1 -Sdk C:\path\to\android-sdk`. It writes `android/feedline.apk`, signed with a key it creates in `%USERPROFILE%\.android\feedline.jks` (keep that file: a new key cannot update an app installed with the old one). Copy the APK to the phone, open it, and allow installs from that source.
-- Tested in an Android 14 emulator (installs, address dialog, loads the dashboard). Not tried on a physical phone, and push notifications are not included.
+- **Print notifications:** the app shows a notification when a print finishes, fails, is cancelled or pauses, for every printer Feedline knows. Tapping one opens that printer. Allow notifications when Android asks, and switch them on or off in Feedline's Settings (the **Phone notifications** card only appears inside the app). No Google services or outside server are involved: the server watches the printers (read-only) and the app keeps one small connection open to your Feedline server, so it works on your home network or over a VPN, not from the internet. Android may delay alerts while the phone sleeps; the app offers once to be excluded from battery optimization to prevent that. It restarts itself after a reboot. Set `"events": false` in `config.json` to turn the server-side watching off.
+- Tested in an Android 14 emulator (installs, address dialog, permission prompt, finished and failed notifications from a stand-in printer). Not tried on a physical phone, and the Settings switch inside the app, tapping a notification and the battery prompt have not been tried.
 
 ## Install (Linux, about two minutes)
 
@@ -269,6 +271,10 @@ The **Print tuning** card on Home (under Print) is for adjusting a running print
 - **Pressure advance** (0 to 2) and its **smooth time** (0 to 0.2 s), for the tool in use.
 
 Unlike moves and tool changes these are allowed while printing; that is what they are for. Each request is range-checked on the server and turned into one fixed command (`SET_GCODE_OFFSET Z_ADJUST=`, `M220`, `M221`, `SET_PRESSURE_ADVANCE`). Nothing is saved on the printer: after a restart it is back to its configured values. The commands were checked as text and the read-out against a running printer; they were not sent to a real print.
+
+## Tune tab: bed mesh
+
+The **Tune** tab shows the loaded bed mesh as a heatmap and a 3D surface. **Calibrate bed mesh** runs `BED_MESH_CALIBRATE` on the printer (after a confirmation) and then reloads the picture. It works on every printer that has that command, and only when the printer is idle and all axes are homed; otherwise the server refuses and says why. Heat the bed first if your printer needs it. The new mesh stays in the printer's memory only: saving it needs `SAVE_CONFIG`, which restarts Klipper, so run that on the printer (Feedline never restarts Klipper). The probing takes a few minutes and cannot be stopped from here. Checked with a stand-in printer, not on real hardware.
 
 ## Macros tab
 

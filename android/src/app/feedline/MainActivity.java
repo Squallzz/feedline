@@ -1,6 +1,12 @@
 package app.feedline;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
+import android.os.Build;
+import android.os.PowerManager;
+import android.provider.Settings;
+import android.webkit.JavascriptInterface;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.content.Context;
@@ -102,15 +108,63 @@ public class MainActivity extends Activity {
                 } catch (Exception e) { Toast.makeText(MainActivity.this, "Download failed", Toast.LENGTH_LONG).show(); }
             }
         });
+        web.addJavascriptInterface(new Bridge(), "FeedlineApp");      // lets the Settings page switch phone notifications on and off
         handle(getIntent());
+        startWatching();
     }
 
     @Override protected void onNewIntent(Intent i) { super.onNewIntent(i); handle(i); }
 
     private void handle(Intent i) {
         String url = prefs.getString("url", null);
+        String printer = i.getStringExtra("printer");               // a notification was tapped: open that printer
         if (ACTION_CHANGE.equals(i.getAction()) || url == null) askAddress(url == null ? "" : url);
+        else if (printer != null) web.loadUrl(Uri.parse(url).buildUpon().clearQuery().appendQueryParameter("p", printer).build().toString());
         else if (web.getUrl() == null) web.loadUrl(url);
+    }
+
+    /** Print notifications: needs the notification permission on Android 13+, then a small foreground service. */
+    private boolean askedPermission;
+
+    private void startWatching() {
+        if (prefs.getString("url", null) == null || !prefs.getBoolean("notify", true)) return;
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            if (!askedPermission) { askedPermission = true; requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 9); }
+            return;
+        }
+        try { NotifyService.start(this); } catch (RuntimeException e) { /* not allowed right now; tried again when the app is next opened */ }
+    }
+
+    @Override public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        if (req == 9 && res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED) startWatching();
+        else if (req == 9) Toast.makeText(this, "Notifications are off. You can allow them in Android settings.", Toast.LENGTH_LONG).show();
+    }
+
+    /** Offered once: without this Android may hold back notifications while the phone sleeps. */
+    private void offerBatteryExemption() {
+        if (Build.VERSION.SDK_INT < 23 || prefs.getBoolean("batt_asked", false)) return;
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm.isIgnoringBatteryOptimizations(getPackageName())) return;
+        prefs.edit().putBoolean("batt_asked", true).apply();
+        new AlertDialog.Builder(this).setTitle("Deliver notifications on time?")
+            .setMessage("Android can delay notifications while the phone sleeps. Allow Feedline to run in the background so print alerts arrive promptly.")
+            .setPositiveButton("Allow", (d, w) -> {
+                try { startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName()))); }
+                catch (Exception e) { /* no such screen on this phone */ }
+            }).setNegativeButton("Not now", null).show();
+    }
+
+    /** What the Settings page can call as window.FeedlineApp. */
+    private class Bridge {
+        @JavascriptInterface public boolean getNotify() { return prefs.getBoolean("notify", true); }
+        @JavascriptInterface public void setNotify(final boolean on) {
+            prefs.edit().putBoolean("notify", on).apply();
+            runOnUiThread(() -> {
+                if (on) { askedPermission = false; startWatching(); offerBatteryExemption(); }
+                else stopService(new Intent(MainActivity.this, NotifyService.class));
+            });
+        }
     }
 
     private static String clean(String v) {
@@ -133,8 +187,9 @@ public class MainActivity extends Activity {
             .setPositiveButton("Open", (d, w) -> {
                 String u = clean(in.getText().toString());
                 if (u == null) { askAddress(current); return; }
-                prefs.edit().putString("url", u).apply();
+                prefs.edit().putString("url", u).remove("last").apply();      // a new server starts its own event history
                 web.loadUrl(u);
+                startWatching();
             }).setNegativeButton("Cancel", null).show();
     }
 
