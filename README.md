@@ -1,7 +1,14 @@
 # Feedline: a Klipper printer dashboard
 
 One HTML page (`feedline.html`, installed as `index.html`) plus a stdlib-only Python proxy (`feedline_server.py`).
-Works with any Klipper + Moonraker printer; ships with a drawn Snapmaker U1 view and a generic picture-based view.
+Works with any Klipper + Moonraker printer; ships with a drawn Snapmaker U1 view, about 27 other drawn printer models (QIDI, Creality, Voron, RatRig, Sovol, Elegoo, Anycubic, Flashforge, Prusa, FLSUN) picked automatically, and a generic picture-based view.
+
+**Features at a glance**
+- Live view: camera (rotation and mirroring honored), temperatures, fans, chamber, job progress and thumbnail, moving toolhead and bed drawn from the printer's real position.
+- Filament systems: Snapmaker U1 (RFID + Spoolman), AFC / BoxTurtle, QIDI Box, toolchangers (StealthChanger, klipper-toolchanger), or plain extruders. See [Filament systems](#filament-systems).
+- [Print tuning](#print-tuning) while printing: Z offset, speed, flow, pressure advance.
+- Several printers: one instance, a Printers overview page, and a per-tab `?p=<id>` address so Home Assistant cards can each show a different printer.
+- Remote touchscreen (Paxx firmware), Spoolman, a Home Assistant card helper, a Macros tab and a read-only config file browser.
 
 ![Dashboard with the drawn Snapmaker U1: live camera, tool cards with filament feed lines, and a front view of the printer showing nozzle temperatures, fans, bed and chamber](docs/dashboard.png)
 
@@ -257,4 +264,4 @@ Lists every user-facing macro (names not starting with `_`) with its description
 ## Not covered
 
 Happy Hare multi-material units have no provider yet (the interface is `slotsU1` / `slotsAFC` / `slotsExtruders` in the page).
-Only the U1, the generic path and a simulated AFC printer were tested; other printers' macros and objects are untested.
+Tested on real printers: the Snapmaker U1, a QIDI Plus4 with one QIDI Box and a Voron 2.4 (mostly read-only). Simulated only: AFC / BoxTurtle, toolchangers, and the detection of other printer brands. Other printers' macros and objects are untested.
