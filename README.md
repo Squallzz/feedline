@@ -154,7 +154,7 @@ Notes:
       }
 
   On a home network without a public domain, create a local DNS name (for example `feedline`) pointing at the proxy and sign its certificate with a local CA that your devices trust. If the name has dots and is not `.local`, `.lan` or similar, add it to `allowed_hosts`. If the proxy runs on the same machine, start Feedline with `--bind 127.0.0.1`. The live camera and touchscreen window are loaded by your browser straight from the printer over http, so an https page may block them (mixed content); this is not yet verified.
-- With several printers, give each card its printer in the address: `url: http://192.168.1.60:8081/?p=<id>` (see Settings > Printers). Without `?p=` a framed Feedline shows the printer picked last in that browser, which some browsers do not remember inside a frame.
+- With several printers, give each card its printer in the address: `url: http://192.168.1.60:8081/?p=<id>` (see Settings > Printers). Without `?p=` a framed Feedline shows the printer picked last in that browser, which some browsers do not remember inside a frame. Buttons that ask first (Load, Home, Pause, Emergency stop...) use an in-page dialog, so they also work inside a card.
 - The setting can also be preset with `allow_embed` in `config.json`; the toggle in Settings overrides it.
 
 ## Install (Linux, about two minutes)
