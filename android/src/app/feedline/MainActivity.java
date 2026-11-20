@@ -31,7 +31,7 @@ import android.widget.Toast;
 
 /** Feedline: a full-screen WebView around your Feedline server. The address is asked for on first start. */
 public class MainActivity extends Activity {
-    static final String DEFAULT_URL = "http://10.0.2.83:8081/";
+    static final String EXAMPLE_URL = "http://192.168.1.60:8081/";   // only shown as a hint; the address is always asked for
     static final String ACTION_CHANGE = "app.feedline.CHANGE_ADDRESS";
     private WebView web;
     private SharedPreferences prefs;
@@ -109,7 +109,7 @@ public class MainActivity extends Activity {
 
     private void handle(Intent i) {
         String url = prefs.getString("url", null);
-        if (ACTION_CHANGE.equals(i.getAction()) || url == null) askAddress(url == null ? DEFAULT_URL : url);
+        if (ACTION_CHANGE.equals(i.getAction()) || url == null) askAddress(url == null ? "" : url);
         else if (web.getUrl() == null) web.loadUrl(url);
     }
 
@@ -124,10 +124,11 @@ public class MainActivity extends Activity {
     private void askAddress(String current) {
         final EditText in = new EditText(this);
         in.setInputType(InputType.TYPE_TEXT_VARIATION_URI);
+        in.setHint(EXAMPLE_URL);
         in.setText(current);
         in.setSelectAllOnFocus(true);
         new AlertDialog.Builder(this).setTitle("Feedline address")
-            .setMessage("Where is your Feedline server? For example http://192.168.1.60:8081/")
+            .setMessage("Where is your Feedline server? Enter its address, for example " + EXAMPLE_URL)
             .setView(in).setCancelable(prefs.getString("url", null) != null)
             .setPositiveButton("Open", (d, w) -> {
                 String u = clean(in.getText().toString());
@@ -143,8 +144,8 @@ public class MainActivity extends Activity {
         if (errDialog != null) errDialog.dismiss();          // never stack error dialogs
         errDialog = new AlertDialog.Builder(this).setTitle("Feedline is not reachable")
             .setMessage(why + "\n\nCheck that you are on the home network (or VPN) and that the server is running.")
-            .setPositiveButton("Retry", (d, w) -> web.loadUrl(prefs.getString("url", DEFAULT_URL)))
-            .setNeutralButton("Change address", (d, w) -> askAddress(prefs.getString("url", DEFAULT_URL)))
+            .setPositiveButton("Retry", (d, w) -> web.loadUrl(prefs.getString("url", EXAMPLE_URL)))
+            .setNeutralButton("Change address", (d, w) -> askAddress(prefs.getString("url", "")))
             .setNegativeButton("Close", null).show();
     }
 
