@@ -5,8 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Feedline</title>
 <style>
-  :root{--bg:#0A0814;--card:#13112A;--edge:#352F6B;--text:#DEDCFA;--muted:#A29EDB;--sub:#6B66A5;
-        --violet:#7A63F2;--blue:#3B82F6;--good:#4ADE80;--warn:#E8B04F;--bad:#F0577A}
+  :root{--bg:#0A0814;--card:#13112A;--edge:#352F6B;--text:#DEDCFA;--muted:#A29EDB;--sub:#8985C4;
+        --violet:#7A63F2;--blue:#3B82F6;--good:#4ADE80;--warn:#E8B04F;--bad:#F0577A;color-scheme:dark;accent-color:#7A63F2}
+  /* global: keyboard focus ring, disabled look, file-picker button that matches the app buttons */
+  :is(button,select,input,textarea,a,[role=button],[tabindex]):focus-visible{outline:2px solid #9580FF;outline-offset:2px}
+  button:disabled,input:disabled,select:disabled{opacity:.45;cursor:not-allowed}
+  input[type=file]::file-selector-button{background:#1f1b45;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:6px 12px;margin-right:10px;font:inherit;cursor:pointer}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 "Segoe UI",system-ui,sans-serif}
   header{display:flex;align-items:center;gap:14px;padding:18px 24px 6px;flex-wrap:wrap}
@@ -23,6 +27,14 @@
   main{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
   /* Front view of the printer; each card sits under its toolhead's real dock position (X = 35, 102.7, 170.2, 237.7 mm) */
   #colR{container-type:inline-size}
+  [data-spin]{transform-box:fill-box;transform-origin:center}      /* spool parts that turn while filament is fed (spinApply) */
+  /* the in-page "are you sure?" dialog (ask()) */
+  #askmodal{position:fixed;inset:0;z-index:95;background:#000b;display:flex;align-items:center;justify-content:center;padding:16px}
+  #askmodal .dlg{background:#14122b;border:1px solid #352F6B;border-radius:14px;max-width:440px;width:100%;padding:18px 20px;color:#e8e6ff;box-shadow:0 12px 40px #000c}
+  #askmsg{white-space:pre-wrap;font-size:14px;line-height:1.45;margin:0 0 16px}
+  #askmodal .row{display:flex;justify-content:flex-end;gap:10px}
+  #askmodal button{background:#1D1A42;border:1px solid #352F6B;color:#e8e6ff;border-radius:8px;padding:7px 18px;cursor:pointer;font:inherit;font-size:13px;min-width:84px}
+  #askmodal button:hover{border-color:#9580FF} #askok{background:#7A63F2;border-color:#7A63F2;color:#fff;font-weight:600}
   .spool{cursor:pointer;outline:none} .spool:hover circle:first-child,.spool:focus-visible circle:first-child{stroke:#9580FF}
   #spmodal{position:fixed;inset:0;background:rgba(5,4,14,.72);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
   #spmodal .dlg{background:#14122b;border:1px solid #352F6B;border-radius:14px;max-width:440px;width:100%;max-height:90vh;overflow:auto;padding:18px 20px;position:relative;color:#e8e6ff}
@@ -43,6 +55,7 @@
   #spmodal .laneedit input[type=color]{padding:2px;height:34px;cursor:pointer}
   #spmodal .laneedit .row{grid-column:1 / -1;display:flex;gap:10px;align-items:center}
   #spmodal .laneedit .sub{grid-column:1 / -1;font-size:11px;color:#6B66A5}
+  #spmodal .laneedit select{background:#0a0818;border:1px solid #352F6B;border-radius:8px;color:#fff;font:inherit;font-size:14px;padding:5px 8px;width:100%;box-sizing:border-box}
   #spmodal .laneedit button{background:#1D1A42;border:1px solid #352F6B;color:#e8e6ff;border-radius:8px;padding:6px 14px;cursor:pointer;font:inherit;font-size:13px}
   #spmodal .laneedit button.go{background:#7A63F2;border-color:#7A63F2;color:#fff} #spmodal .laneedit button:disabled{opacity:.4;cursor:default}
   #stage{max-width:800px;width:100%;margin:0 auto}
@@ -69,6 +82,7 @@
   #stage .tool{margin:0}
   #stage.u1layout .tool{margin:0 5px}
   .slotsvg{width:100%;height:auto;display:block}
+  #pname.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0} /* the drop-down already shows the name; keep the h1 for screen readers */
   #psel{background:#14122b;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:5px 8px;font:inherit;font-size:14px;margin-left:10px}
   .stool{transition:transform 1.8s linear}
   @container (max-width:720px){#stage main,#stage.u1layout main{padding:0;gap:10px;grid-template-columns:repeat(2,1fr);max-width:none} #stage .tool,#stage.u1layout .tool{margin:0} #scene{display:none}}
@@ -90,9 +104,10 @@
   .stats{display:flex;justify-content:space-between;gap:6px;margin-top:8px;font-size:10px;color:var(--sub)}
   .stats b{display:block;color:var(--text);font-size:11px;font-weight:600;white-space:nowrap}
   .stats > div{min-width:0;text-align:center}
+  .stats .sw{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px;border:1px solid #fff4}
   #notice:not(:empty){padding:3px 12px;border-radius:999px;font-size:12px;background:#1D1A42;border:1px solid var(--edge);color:var(--muted)}
   #notice.on{color:var(--good);border-color:#2c6b48} #notice.off{color:var(--bad);border-color:#7a2c40}
-  .acts{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:9px}
+  .acts{display:grid;grid-template-columns:repeat(auto-fit,minmax(44px,1fr));gap:5px;margin-top:9px}      /* two, three or four buttons share one row when they fit */
   .acts button{background:#1D1A42;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:4px 0;font:inherit;font-size:11px;cursor:pointer}
   .acts button:hover:not(:disabled){border-color:var(--violet);background:#2a2560}
   .acts button:disabled{opacity:.35;cursor:not-allowed}
@@ -103,7 +118,7 @@
          display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
   .f{background:#0f0d24;border:1px solid #231f4a;border-radius:12px;padding:8px 9px}
   .f.on{border-color:#2d4f94}
-  .f .nm{font-size:11px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .f .nm{font-size:11px;line-height:1.25;min-height:2.5em;color:var(--sub);overflow:hidden;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
   .f.on .nm{color:var(--muted)}
   .f .v{font-size:17px;font-weight:600;margin:1px 0 4px}
   .f .rpm{font-size:10px;color:var(--sub);min-height:14px}
@@ -193,6 +208,15 @@
   #pgrid .p{min-width:0} #pgrid .p .k{font-size:11px;color:var(--sub)} #pgrid .p .v{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #pgrid .p .s{font-size:10.5px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:13px}
   #pgrid .wide{grid-column:span 2}
+  /* Print tuning: one row per setting */
+  #ptune{margin-top:14px} #ptune h2{font-size:15px;font-weight:600;margin:0 0 10px;color:var(--muted)}
+  .ptbox{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:10px 12px;display:flex;flex-direction:column;gap:10px}
+  .ptrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px} .ptrow .k{color:var(--sub);font-size:12px;min-width:64px}
+  .ptrow b{font-weight:600;min-width:58px;font-variant-numeric:tabular-nums} .ptrow input[type=range]{flex:1 1 120px;min-width:100px}
+  .ptrow input[type=number]{width:84px;background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:inherit;font-size:13px;padding:4px 8px}
+  .ptrow button,.ptsteps button{background:#1D1A42;border:1px solid var(--edge);color:var(--text);border-radius:8px;cursor:pointer;font:inherit;font-size:12px;padding:4px 10px}
+  .ptrow button:hover:not(:disabled){border-color:#9580FF} .ptsteps{display:inline-flex;gap:4px} .ptsteps button.on{background:#7A63F2;border-color:#7A63F2;color:#fff}
+  .ptnote{font-size:11.5px;color:var(--sub)}
   #move{margin-top:10px;padding-top:8px;border-top:1px solid #231f4a}
   .mv{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
   .mv .grp,.mv .steps{display:flex;gap:4px}
@@ -207,13 +231,16 @@
   #sceneWrap .f .rpm{display:none}
   #sceneWrap .f input,#sceneWrap .f .bar{grid-column:1 / span 2}
   #sceneWrap .f .bar{margin:4px 0 2px}
-  #cam .box{background:var(--card);border:1px solid var(--edge);border-radius:20px;padding:14px}
+  /* the card chrome sits on the #cam section (video box + move controls); the phone rules below split them so the layout can reorder them */
+  #cam{background:var(--card);border:1px solid var(--edge);border-radius:20px;padding:14px}
   #con .box{background:var(--card);border:1px solid var(--edge);border-radius:20px;padding:14px}
   #cam .hd,#con .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
   [hidden]{display:none !important}
-  #cam iframe{width:100%;aspect-ratio:16/9;border:0;background:#07060f;border-radius:12px;display:block}
-  #cam button.badge{background:none;cursor:pointer;font:inherit;font-size:11px;margin-right:6px}
-  #cam img{width:100%;aspect-ratio:16/9;object-fit:contain;background:#07060f;border-radius:12px;display:block}
+  /* the camera picture sits centred in #camview, which takes the picture's shape as shown (after any quarter turn) */
+  #camview{position:relative;width:100%;aspect-ratio:16/9;margin:0 auto;overflow:hidden;background:#07060f;border-radius:12px}
+  #camview > *{position:absolute;top:50%;left:50%;width:100%;height:100%;border:0;display:block;object-fit:contain;transform:translate(-50%,-50%)}
+  #cam button.badge{background:#1f1b45;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:4px 12px;cursor:pointer;font:inherit;font-size:12px;margin-right:8px} /* the mode toggle is a button; #camstat stays a plain badge */
+  #cam button.badge:hover{border-color:#9580FF}
   footer{text-align:center;color:var(--sub);font-size:12px;padding-bottom:20px}
   /* left navigation + extra views */
   #nav{position:fixed;left:0;top:0;bottom:0;width:60px;background:#0d0b22;border-right:1px solid #231f4a;display:flex;flex-direction:column;align-items:center;gap:2px;padding:14px 0;z-index:40}
@@ -225,6 +252,25 @@
   body{padding-left:60px}
   #layout{padding:16px 6px 18px 8px;gap:8px}
   #colL{flex-basis:clamp(550px,36vw,860px)}
+  /* Phone: flatten both columns (display:contents) so every Home block is a direct flex item of #layout and can be ordered freely:
+     camera, print info, status + filament cards + drawing, temperatures, move controls, fans, console.
+     Without a box #colR is no longer the size container, so the container-query rules (2 columns, drawing hidden) stop applying; the 2-column cards are set here. */
+  @media (max-width:700px){
+    #layout{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:14px}
+    #colL,#colR,#mid,#stage,#sceneWrap,#sideR,#cam{display:contents}
+    #cam .box{order:1;background:var(--card);border:1px solid var(--edge);border-radius:20px;padding:14px}
+    #pinfo,#ptune{order:2} #afcbar{order:3;margin:0} #grid{order:4} #scene{order:5;flex:none} #temps{order:6}
+    #move{order:7;margin:0;padding:12px 14px;background:var(--card);border:1px solid var(--edge);border-radius:20px}
+    #fans{order:8} #con{order:9}
+    #stage main,#stage.u1layout main{padding:0;gap:10px;grid-template-columns:repeat(2,minmax(0,1fr));max-width:none;margin:0}
+    #stage .tool,#stage.u1layout .tool{margin:0}
+    #sconn{display:none}   /* the connector lines assume the cards sit in one row above the drawing */
+    #pgrid{grid-template-columns:repeat(2,1fr)}
+    #pgrid .p .v{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+    .mv button{min-height:38px;min-width:38px;padding:6px 10px}
+    #cam button.badge{min-height:38px;padding:6px 14px}
+    .acts button{min-height:38px;padding:6px 0}
+  }
   .view{padding:16px 24px 30px;max-width:1300px;margin:0 auto}
   .view h2{font-size:18px;font-weight:600;margin:0 0 14px}
   .sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px}
@@ -232,12 +278,28 @@
   .stat .k{font-size:12px;color:var(--muted)} .stat .n{font-size:26px;font-weight:600;margin-top:4px} .stat .s{font-size:12px;color:var(--sub);margin-top:2px}
   .vcard{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:14px 16px;margin-bottom:16px}
   .vcard h3{margin:0 0 10px;font-size:14px;font-weight:600;color:var(--muted)}
+  /* Printers overview: one card per printer */
+  #ovgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+  .ovcard{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:12px;cursor:pointer;display:flex;flex-direction:column;gap:10px;text-align:left;color:var(--text);font:inherit}
+  .ovcard:hover,.ovcard:focus-visible{border-color:#9580FF;outline:none} .ovcard.here{box-shadow:inset 0 0 0 1px #7A63F2}
+  .ovcard.off{opacity:.6}
+  .ovhd{display:flex;align-items:center;gap:8px} .ovhd b{font-size:15px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ovst{padding:2px 10px;border-radius:999px;font-size:11.5px;border:1px solid var(--edge);color:var(--muted);white-space:nowrap}
+  .ovst.printing{color:var(--good);border-color:#2c6b48} .ovst.paused{color:var(--warn);border-color:#7a5f2c} .ovst.error,.ovst.shutdown{color:var(--bad);border-color:#7a2c40}
+  .ovpic{position:relative;aspect-ratio:16/9;background:#07060f;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center}
+  .ovpic .ovcam{width:100%;height:100%;object-fit:cover;display:block} .ovpic > svg{height:100%;width:auto;max-width:100%}
+  .ovpic .ovthumb{position:absolute;right:8px;bottom:8px;width:64px;height:64px;object-fit:contain;background:rgba(10,8,24,.78);border:1px solid var(--edge);border-radius:8px}
+  .ovfile{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+  .ovbar{height:7px;background:#0a0818;border-radius:4px;overflow:hidden} .ovbar i{display:block;height:100%;background:#7A63F2;border-radius:4px}
+  .ovrow{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--muted)} .ovrow b{color:var(--text);font-weight:600}
+  .ovsub{font-size:11.5px;color:var(--sub)} .ovnote{font-size:12px;color:var(--sub);margin-top:14px} .ovbody{display:flex;flex-direction:column;gap:7px}
   .jobtbl{width:100%;border-collapse:collapse}
   .jobtbl th{font-size:12px;font-weight:500;color:var(--sub);text-align:left;padding:6px 10px;border-bottom:1px solid #231f4a}
-  .jobtbl td{padding:8px 10px;border-bottom:1px solid #1a1740;vertical-align:middle}
+  .jobtbl td{padding:8px 10px;border-bottom:1px solid #1a1740;vertical-align:middle;white-space:nowrap}      /* dates and times stay on one line; only the file name gives way */
+  .jobtbl th{white-space:nowrap}
   .jobtbl tr:hover td{background:#17143a}
   .jobtbl img{width:44px;height:44px;border-radius:8px;background:#07060f;object-fit:contain;display:block}
-  .jobtbl .fn{max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .jobtbl .fn{width:100%;max-width:0;min-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}   /* max-width:0 + width:100% = take the free width, truncate only when the table is narrow */
   .st{white-space:nowrap;display:inline-block;padding:2px 10px;border-radius:999px;font-size:11.5px;border:1px solid var(--edge);color:var(--muted)}
   .st.completed{color:var(--good);border-color:#2c6b48} .st.cancelled,.st.interrupted,.st.klippy_shutdown,.st.klippy_disconnect,.st.error{color:var(--bad);border-color:#7a2c40} .st.in_progress{color:var(--warn);border-color:#7a5f2c}
   .chip{display:inline-flex;align-items:center;gap:5px;margin:2px 6px 2px 0;padding:2px 9px 2px 6px;border-radius:999px;background:#1D1A42;border:1px solid var(--edge);color:var(--text);font:inherit;font-size:12px;cursor:pointer}
@@ -248,7 +310,7 @@
   .seg button.on{background:#7A63F2;border-color:#7A63F2;color:#fff}
   #fconlog{margin:0;height:calc(100vh - 150px);min-height:300px;overflow:auto;background:#07060f;border:1px solid var(--edge);border-radius:12px;padding:10px 14px;font:12.5px/1.5 Consolas,"Cascadia Mono",monospace;color:#c9c6f0;white-space:pre-wrap;word-break:break-word}
   #fconlog .cmd{color:#7fb2ff} #fconlog .err{color:var(--bad)} #fconlog .dim{color:var(--sub)}
-  .fwrap{display:flex;gap:14px;align-items:stretch;height:calc(100vh - 100px);min-height:420px}
+  .fwrap{display:flex;gap:14px;align-items:stretch;height:calc(100vh - 170px);min-height:420px}   /* viewport minus header, title row and padding, so only the two panes scroll */
   .fside{flex:0 0 330px;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:10px;min-width:0}
   .fside input{background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:inherit;font-size:13px;padding:6px 10px;margin-bottom:8px;width:100%}
   #ftree{overflow:auto;flex:1;font-size:13px}
@@ -280,7 +342,7 @@
   .seg-b{text-decoration:none;display:inline-block;background:#1D1A42;border:1px solid var(--edge);color:var(--muted);border-radius:999px;padding:3px 12px;cursor:pointer;font:inherit;font-size:12px}
   .legend{height:10px;border-radius:5px;margin-top:10px;background:linear-gradient(90deg,#3b6fe0,#43b8b0,#4ade80,#e8d44f,#f0577a)}
   .legend + div{display:flex;justify-content:space-between;font-size:11.5px;color:var(--sub);margin-top:3px}
-  @media (max-width:700px){#nav .brand{display:none}#nav{width:100%;height:56px;top:auto;bottom:0;right:0;flex-direction:row;justify-content:center;border-right:0;border-top:1px solid #231f4a;padding:4px}body{padding-left:0;padding-bottom:60px}}
+  @media (max-width:700px){#nav .brand{display:none}#nav{width:100%;height:calc(60px + env(safe-area-inset-bottom,0px));top:auto;bottom:0;right:0;flex-direction:row;justify-content:flex-start;overflow-x:auto;border-right:0;border-top:1px solid #231f4a;padding:4px 4px env(safe-area-inset-bottom,0px)}#nav button{width:auto;flex:0 0 auto;min-width:56px;height:52px;padding:6px 8px;font-size:11px}body{padding-left:0;padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
 
   #v-settings{max-width:900px}
   #v-settings .vcard{margin-bottom:16px;padding:14px 16px}
@@ -291,17 +353,29 @@
   #v-settings button{background:#1f1b45;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer}
   #v-settings button:hover{border-color:#9580FF} #v-settings button.danger{color:#ff8a8a}
   #v-settings .sub{font-size:12px;color:var(--sub);margin-top:8px} #v-settings code{background:#0a0818;padding:1px 5px;border-radius:4px;font-size:11.5px}
-  #v-settings .prow{display:flex;gap:12px;align-items:center;padding:7px 0;border-top:1px solid var(--edge);font-size:13px} #v-settings .prow span{color:var(--muted);flex:1}
+  #v-settings .prow{display:flex;gap:12px;align-items:center;padding:7px 0;border-top:1px solid var(--edge);font-size:13px} #v-settings .prow span{color:var(--muted);flex:1} #v-settings .prow span.sub{flex:0 0 auto;margin:0 0 0 auto;text-align:right;color:var(--sub)}
   #v-settings .gcols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;margin-bottom:12px} @media(max-width:700px){#v-settings .gcols{grid-template-columns:1fr}}
   #v-settings .gprev{margin-top:10px;min-height:120px;background:#0a0818;border-radius:10px;padding:8px;display:flex;gap:10px;align-items:center;justify-content:center}
+  /* Graphics card: three equal columns, each a label above a full-width list above a preview of the same height */
+  #v-settings .gcols > div{min-width:0;display:flex;flex-direction:column}
+  #v-settings .gcols label{display:block;margin-bottom:6px}
+  #v-settings .gcols select{margin-left:0;width:100%;min-width:0}
+  #v-settings .gcols .gprev{height:230px;min-height:0;box-sizing:border-box;overflow:hidden}
+  #v-settings .gcols .gprev > svg,#v-settings .gcols .gprev > img{max-height:100%;max-width:100%}
+  #v-settings .gnote{margin:0 0 12px}
+  #v-settings .gopt{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding-top:12px;margin-top:12px;border-top:1px solid var(--edge)}
+  #v-settings .gopt .sub{margin-top:0;flex:1 1 260px} #v-settings .gopt .rad{margin-right:0;white-space:nowrap}
   #v-settings .gprev img{max-width:100%;max-height:240px} #v-settings .tprev>svg{width:46%;height:auto;max-height:200px}
+  #v-settings #addhost{flex:1;min-width:220px}
+  #v-settings .jump{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 14px} #v-settings .jump button{padding:4px 10px;font-size:12px;border-radius:999px}
+  #v-settings .vcard{scroll-margin-top:12px}
   #pkov text{pointer-events:none}
   .badge:empty{display:none}.badge.bad{background:#4a1d28;color:#ff9aa8}
 
   #v-macros{max-width:1100px} #v-macros .vcard{margin-bottom:16px;padding:14px 16px} #v-macros h3{margin:0 0 10px;font-size:15px}
   #v-macros .srow{display:flex;gap:10px;align-items:center;flex-wrap:wrap} #v-macros .sub{font-size:12px;color:var(--sub)} #v-macros code{background:#0a0818;padding:1px 5px;border-radius:4px;font-size:11.5px}
   #v-macros input{background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:inherit;font-size:13px;padding:6px 10px;min-width:0}
-  #v-macros button{background:#1f1b45;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer} #v-macros button:hover:not(:disabled){border-color:#9580FF} #v-macros button:disabled{opacity:.45;cursor:default}
+  #v-macros button{background:#1f1b45;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer} #v-macros button:hover:not(:disabled){border-color:#9580FF} #v-macros button:disabled{opacity:.45;cursor:not-allowed}
   #v-macros .mrow{display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--edge);flex-wrap:wrap} #v-macros .mrow input{flex:1 1 280px} #v-macros .ml{width:150px;display:flex;flex-direction:column}
   .mgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
   .mcard{background:#0e0c22;border:1px solid var(--edge);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
@@ -313,6 +387,7 @@
 <nav id="nav" aria-label="Sections">
   <div class="brand" title="Feedline"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7A63F2" stroke-width="2.6" stroke-linecap="round"><circle cx="5" cy="5" r="2.2" fill="#7A63F2" stroke="none"/><path d="M6.8 7l10 10" stroke-dasharray="0.1 3.4"/><circle cx="19" cy="19" r="2.2" fill="#E8B04F" stroke="none"/></svg><b>Feedline</b></div>
   <button data-view="home" class="on" title="Home"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>Home</button>
+  <button data-view="printers" id="navprinters" hidden title="All printers at a glance"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></svg>Printers</button>
   <button data-view="jobs" title="Previous jobs"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>Jobs</button>
   <button data-view="history" title="Print statistics"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>History</button>
   <button data-view="tune" title="Bed mesh"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5-9 5z"/><path d="M3 14l9 5 9-5"/></svg>Tune</button>
@@ -323,7 +398,7 @@
 </nav>
 <header>
   <h1 id="pname">Printer</h1><select id="psel" hidden title="Switch printer"></select>
-  <span id="conn" class="pill">connecting...</span>
+  <span id="conn" class="pill">Connecting...</span>
   <div id="job"></div>
   <span id="printctl" hidden>
     <button id="pbtn" data-print="pause">Pause</button>
@@ -337,9 +412,11 @@
 <section id="cam"><div class="box">
   <div class="hd"><span class="tn">Camera</span>
     <span><button id="cammode" class="badge" title="Switch between live video and 1 fps snapshots">Use snapshots</button>
-    <span id="camstat" class="badge">loading</span></span></div>
-  <iframe id="camframe" title="Printer camera (live)" allow="autoplay; fullscreen"></iframe>
-  <img id="camimg" alt="Printer camera" hidden>
+    <span id="camstat" class="badge">Loading</span></span></div>
+  <div id="camview"><iframe id="camframe" title="Printer camera (live)" allow="autoplay; fullscreen"></iframe>
+  <img id="camlive" alt="Printer camera (live)" hidden>
+  <img id="camimg" alt="Printer camera" hidden></div>
+</div>
   <section id="move" hidden>
     <div class="mv">
       <div class="steps" id="mvsteps"></div>
@@ -355,10 +432,19 @@
       <div id="mvpos" class="mvpos"></div>
     </div>
   </section>
-</div></section>
+</section>
 <section id="pinfo"><h2>Print</h2><div id="pgrid"></div></section>
+<section id="ptune" hidden><h2>Print tuning</h2><div class="ptbox">
+  <div class="ptrow"><span class="k">Z offset</span><b id="ptz">0.000 mm</b><span class="ptsteps" id="ptzsteps" role="group" aria-label="Z offset step in mm"></span>
+    <button data-tune="zdown" title="Move the nozzle closer to the bed by the chosen step">&#9660; Closer</button><button data-tune="zup" title="Move the nozzle away from the bed by the chosen step">&#9650; Further</button><button data-tune="zreset" title="Set the Z offset back to 0">Reset</button></div>
+  <div class="ptrow"><label class="k" for="ptspeed">Speed</label><input type="range" id="ptspeed" min="0" max="200" step="5" value="100" list="pt100"><b id="ptspeedv">100%</b><button data-tune="speed100" title="Back to 100%">100%</button></div>
+  <div class="ptrow"><label class="k" for="ptflow">Flow</label><input type="range" id="ptflow" min="50" max="150" step="1" value="100" list="pt100"><datalist id="pt100"><option value="100"></option></datalist><b id="ptflowv">100%</b><button data-tune="flow100" title="Back to 100%">100%</button></div>
+  <div class="ptrow"><label class="k" for="ptpa">Pressure advance</label><input type="number" id="ptpa" min="0" max="2" step="0.005" inputmode="decimal"><button data-tune="pa">Set</button>
+    <label class="k" for="ptsm">Smooth time</label><input type="number" id="ptsm" min="0" max="0.2" step="0.005" inputmode="decimal"><button data-tune="smooth">Set</button></div>
+  <div class="ptnote">These take effect at once, also during a print. They are not saved on the printer: after a restart it is back to its configured values.</div>
+</div></section>
 <section id="con"><h2>Console</h2><div class="box">
-  <div class="hd"><span class="tn">Live</span><span id="constat" class="badge">loading</span></div>
+  <div class="hd"><span class="tn">Live</span><span id="constat" class="badge">Loading</span></div>
   <pre id="conlog"></pre>
 </div></section>
 <section id="fans"><h2>Fan speeds</h2><div id="fgrid"></div></section>
@@ -391,15 +477,15 @@
   <h2>History</h2>
   <div class="sgrid" id="histstats"></div>
   <div class="vcard"><h3>Outcome of recorded jobs</h3><div id="histbreak"></div></div>
-  <h2 style="margin-top:22px">Jobs</h2>
-  <div class="jobsmount"></div>
+  <h2 style="margin-top:22px">Recent jobs</h2>
+  <div class="jobsmount" data-limit="10"></div>
 </section>
 <section id="v-files" class="view" hidden style="max-width:none">
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px"><h2 style="margin:0">Files - printer config</h2><span style="margin-left:auto;display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--muted)">Export latest logs: <a class="seg-b" href="/logs/export?name=klippy.log" download title="Current Klipper log">klippy.log</a><a class="seg-b" href="/logs/export?name=moonraker.log" download title="Current Moonraker log">moonraker.log</a><a class="seg-b" href="/logs/export?name=all" download title="Both logs in one zip">Both (.zip)</a></span></div>
   <div class="fwrap">
     <div class="fside"><input id="ffilter" type="search" placeholder="Search files..."><div id="ftree"></div></div>
     <div class="fmain">
-      <div class="fbar"><span id="fpath" class="fp">No file open</span><span id="fbadge" class="badge" hidden></span><span id="fdirty" style="color:var(--warn)" hidden>&bull; unsaved</span>
+      <div class="fbar"><span id="fpath" class="fp">No file open</span><span id="fbadge" class="badge" hidden></span><span id="fdirty" style="color:var(--warn)" hidden>&bull; Unsaved</span>
         <span style="margin-left:auto;display:flex;gap:8px"><button id="frevert" disabled>Revert</button><button id="freload" disabled>Reload</button><button id="fsave" class="go" disabled>Save (Ctrl+S)</button></span></div>
       <div id="fnote" style="padding:6px 14px;font-size:12px;color:var(--sub);border-bottom:1px solid #231f4a">Pick a file on the left. Saving keeps a copy of the previous version on the dashboard server, and changes only take effect after Klipper/Moonraker is next restarted (this dashboard never restarts them). JSON and factory files are view-only.</div>
       <div class="fedit"><pre id="edgut">1</pre><div class="edwrap"><pre id="edhl" aria-hidden="true"></pre><textarea id="edta" spellcheck="false" wrap="off" readonly></textarea></div></div>
@@ -407,7 +493,7 @@
   </div>
 </section>
 <section id="v-console" class="view" hidden style="max-width:none">
-  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px"><h2 style="margin:0">Console</h2><span id="fconstat" class="badge">loading</span>
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px"><h2 style="margin:0">Console</h2><span id="fconstat" class="badge">Loading</span>
     <input id="confilter" type="search" placeholder="Filter lines..." style="background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:inherit;font-size:13px;padding:5px 10px;width:220px">
     <label style="font-size:12.5px;color:var(--muted);display:flex;gap:6px;align-items:center"><input id="conhidetemp" type="checkbox"> Hide temperature reports</label>
     <span id="concount" style="font-size:12px;color:var(--sub);margin-left:auto"></span></div>
@@ -415,6 +501,8 @@
 </section>
 <section id="v-settings" class="view" hidden></section>
 <section id="v-macros" class="view" hidden></section>
+<section id="v-printers" class="view" hidden><h2>Printers <span id="ovstat" class="badge"></span></h2><div id="ovgrid"></div>
+  <div class="ovnote">Click a printer to open it. This page only shows status; controls are on each printer's own page.</div></section>
 <section id="v-tune" class="view" hidden>
   <h2>Tune - bed mesh</h2>
   <div class="sgrid" id="meshstats"></div>
@@ -424,11 +512,12 @@
   </div>
 </section>
 
+<div id="askmodal" hidden role="alertdialog" aria-modal="true" aria-labelledby="askmsg"><div class="dlg"><p id="askmsg"></p><div class="row"><button id="askno" type="button">Cancel</button><button id="askok" type="button">OK</button></div></div></div>
 <script>
 const q = new URLSearchParams(location.search);
 let SPOOLMAN = q.get("spoolman") || "";          // browser-reachable Spoolman host:port (for the "Open in Spoolman" link)
 // Served from the printer itself: use same-origin Moonraker (nginx proxies /printer and /server).
-// Opened from a file or another host: pass ?printer=IP (defaults to 10.0.3.110).
+// Opened from a file or another host: pass ?printer=IP (defaults to the host the page was loaded from).
 let PRINTER = q.get("printer") || location.hostname;     // replaced by the configured Moonraker host when hosted
 let SAME = location.protocol !== "file:" && location.hostname === PRINTER;
 // Hosted (printer or the Spoolman VM): same-origin calls; the host proxies them. Opened as a file: direct.
@@ -467,6 +556,35 @@ const shade = (h, f) => {            // f<1 darker, f>1 lighter
 };
 
 const spoolInfo = [];     // per tool: matched Spoolman spool + printer tag info, for the details modal
+// Asking before a command. The browser's own confirm() is not used: embedded pages (a Home Assistant card, an in-app
+// browser pane) suppress it and it then answers "cancel" at once, so every button that asks first silently did nothing.
+// Resolves to true (go ahead) or false. Cancel has the focus, so a stray Enter never confirms; Escape cancels.
+function ask(message, okLabel) {
+  const m = document.getElementById("askmodal"), ok = document.getElementById("askok"), no = document.getElementById("askno");
+  if (!m.hidden) return Promise.resolve(false);              // one question at a time
+  document.getElementById("askmsg").textContent = message;
+  ok.textContent = okLabel || "OK";
+  return new Promise(resolve => {
+    const done = v => { m.hidden = true; ok.onclick = no.onclick = m.onclick = null; document.removeEventListener("keydown", key, true); resolve(v); };
+    const key = e => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(false); }
+      else if (e.key === "Tab") { e.preventDefault(); (document.activeElement === ok ? no : ok).focus(); }      // keep the focus inside the dialog
+    };
+    ok.onclick = () => done(true); no.onclick = () => done(false);
+    m.onclick = e => { if (e.target === m) done(false); };
+    document.addEventListener("keydown", key, true);
+    m.hidden = false; no.focus();
+  });
+}
+// Every command goes through here: POST /control with the header the server insists on (it blocks cross-site form posts).
+// Resolves to the server's reply; throws an Error carrying the server's message (or the HTTP status) when it is refused.
+async function postControl(body) {
+  const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify(body)});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+  return j;
+}
+const cap = s => { s = String(s == null ? "" : s); return s.charAt(0).toUpperCase() + s.slice(1); };      // status chips and badges start with a capital
 const escH = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
 function openSpool(i) {
   const d = spoolInfo[i]; if (!d) return;
@@ -497,10 +615,45 @@ function openSpool(i) {
     add("Color", d.loaded ? '<i class="sw" style="background:' + escH(d.col) + '"></i>' + escH(d.col) : ""); add("Weight", inf.WEIGHT ? inf.WEIGHT + " g" : ""); add("Tag UID", escH(d.uid));
     body = (rows.length ? "<table>" + rows.join("") + "</table>" : "<p>No filament detected.</p>") + (d.loaded ? "<p>This tag has no matching spool in Spoolman yet.</p>" : "");
   }
+  if (d.box) {                                                // QIDI Box slot: what was set for it on the printer
+    const b = d.box, r2 = [], row = (k, v) => { if (v) r2.push("<tr><th>" + escH(k) + "</th><td>" + v + "</td></tr>"); };
+    title = b.label + " · " + (b.loaded ? b.title : "Empty");
+    row("Material", escH(b.mat)); row("Vendor", escH(b.vendor)); row("Color", b.loaded ? '<i class="sw" style="background:' + escH(b.col) + '"></i>' + escH(b.col) : "");
+    row("Nozzle temp", escH(b.temps)); row("Drying temp", escH(b.boxTemp)); row("State", escH(b.status)); row(b.ext ? "Loaded" : "Printed as", escH(b.map)); row("Slot", escH(b.unit + (b.ext ? "" : ", " + b.lane)));
+    body = boxEditForm(b) + (b.loaded ? "<table>" + r2.join("") + "</table>" : b.ext ? "<p>No material is set for the external spool.</p>" : "<p>No filament in this slot.</p>") +
+      '<p class="sub">' + (b.ext ? "The external spool bypasses the Box and is loaded by hand. Nothing senses the spool itself: it shows as in use when the toolhead has filament and no Box slot is loaded. Its material and color are what was set on the printer."
+        : "Material and color are what was set for this slot on the printer (or read from the spool's tag). The Box does not weigh the spool, so there is no remaining amount.") + "</p>";
+  }
   if (d.lane) { title = d.lane + " · " + (d.loaded ? title : "Empty"); body = laneEditForm(d) + body; }
-  document.getElementById("spmodal-body").innerHTML = (d.lane ? "<h2>" : '<h2>T' + i + " &middot; ") + escH(title) + "</h2>" + body;
+  document.getElementById("spmodal-body").innerHTML = (d.lane || d.box ? "<h2>" : '<h2>T' + i + " &middot; ") + escH(title) + "</h2>" + body;
   document.getElementById("spmodal").hidden = false;
 }
+// QIDI Box: say what is in a slot when the spool has no RFID tag to read. The lists are the printer's own filament table;
+// the server stores the chosen rows in the Box's saved variables, exactly as the printer's own Box card does.
+function boxEditForm(b) {
+  const T = boxTable;
+  if (!T) return '<div class="laneedit"><div class="sub">The printer\'s filament list is not available, so this slot cannot be set here.</div></div>';
+  const locked = !CONTROLS || printState === "printing" || printState === "paused", dis = locked ? " disabled" : "";
+  const byNum = o => Object.keys(o || {}).filter(k => /^\d+$/.test(k)).sort((x, y) => x - y);
+  const sel = (id, opts, cur) => '<select id="' + id + '"' + dis + ">" + (opts.some(o => String(o[0]) === String(cur)) ? "" : '<option value="">(not set)</option>') +
+    opts.map(o => '<option value="' + escH(o[0]) + '"' + (String(o[0]) === String(cur) ? " selected" : "") + (o[2] ? ' style="background:' + escH(o[2]) + ";color:" + (parseInt(o[2].slice(1, 3), 16) > 150 ? "#000" : "#fff") + '"' : "") + ">" + escH(o[1]) + "</option>").join("") + "</select>";
+  const fil = Object.keys(T).filter(k => /^fila\d+$/.test(k)).sort((x, y) => x.slice(4) - y.slice(4)).map(k => [k.slice(4), (T[k].filament || k) + (T[k].type && T[k].type !== T[k].filament ? " (" + T[k].type + ")" : "")]);
+  const col = byNum(T.colordict).map(k => [k, afcColor(T.colordict[k]), afcColor(T.colordict[k])]), ven = byNum(T.vendor_list).map(k => [k, T.vendor_list[k]]);
+  return '<div class="laneedit" data-box-slot="' + b.slot + '"><h3>Set this slot</h3>' +
+    "<label>Filament" + sel("bx-fil", fil, b.ids.filament) + "</label><label>Color" + sel("bx-col", col, b.ids.color) + "</label><label>Vendor" + sel("bx-ven", ven, b.ids.vendor) + "</label>" +
+    '<div class="row"><button id="bx-save" class="go"' + dis + '>Save</button><span id="bx-msg" class="sub"></span></div>' +
+    '<div class="sub">' + (locked ? (CONTROLS ? "Not while a print is running." : "Setting a slot needs the dashboard server.") : "For a spool without an RFID tag. This is stored on the printer, like on its own Box card; a tag that is read later replaces it.") + "</div></div>";
+}
+document.getElementById("spmodal").addEventListener("click", async ev => {
+  const b = ev.target.closest("#bx-save"); if (!b) return;
+  const box = b.closest(".laneedit"), slot = +box.dataset.boxSlot, d = spoolInfo.find(x => x && x.box && x.box.slot === slot), msg = document.getElementById("bx-msg");
+  if (!d) return;
+  const body = {action: "set_slot", slot};
+  for (const [key, id] of [["filament", "bx-fil"], ["color", "bx-col"], ["vendor", "bx-ven"]]) { const v = document.getElementById(id).value; if (v !== "" && String(d.box.ids[key]) !== v) body[key] = +v; }
+  if (Object.keys(body).length === 2) { msg.textContent = "Nothing changed"; return; }
+  b.disabled = true; msg.textContent = "Saving...";
+  try { await postControl(body); msg.textContent = "Saved"; tick(); } catch (e) { msg.textContent = String(e.message || e); } finally { b.disabled = false; }
+});
 // AFC: change a lane's material / color / weight; the server turns it into SET_MATERIAL / SET_COLOR / SET_WEIGHT
 const MATERIALS = ["PLA", "PLA+", "PETG", "ABS", "ASA", "TPU", "PA", "PA-CF", "PC", "PETG-CF", "PVA", "HIPS"];
 function laneEditForm(d) {
@@ -525,12 +678,10 @@ document.getElementById("spmodal").addEventListener("click", async ev => {
   if (col.toLowerCase() !== (/^#[0-9a-f]{6}$/i.test(d.col || "") ? d.col.toLowerCase() : "#808080")) body.color = col;
   if (w !== "" && +w !== (typeof d.rem === "number" ? Math.round(d.rem) : null)) body.weight = +w;
   if (Object.keys(body).length === 2) { msg.textContent = "Nothing changed"; return; }
-  if (!confirm("Send to " + CFG.name + ":\n\n" + ["material", "color", "weight"].filter(k => k in body).map(k => k + " = " + body[k]).join("\n") + "\n\nfor " + box.dataset.lane + "?")) return;
+  if (!await ask("Send to " + CFG.name + ":\n\n" + ["material", "color", "weight"].filter(k => k in body).map(k => k + " = " + body[k]).join("\n") + "\n\nfor " + box.dataset.lane + "?")) return;
   b.disabled = true; msg.textContent = "Sending...";
   try {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify(body)});
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.status);
+    const j = await postControl(body);
     msg.textContent = "Saved"; tick();
   } catch (e) { msg.textContent = String(e.message || e); } finally { b.disabled = false; }
 });
@@ -572,9 +723,9 @@ function toolSvg(i, col, frac, temp, target, active, loaded, fanLabel) {
     '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="#1D1A42" stroke="#352F6B" stroke-width="2"/>' +
     // wound filament
     (loaded ? '<circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="url(#w' + i + ')"/>' +
-      '<circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="none" stroke="' + dark + '" stroke-width="1" stroke-dasharray="2 4" opacity=".6"/>' : "") +
+      '<circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="none" stroke="' + dark + '" stroke-width="1" stroke-dasharray="2 4" opacity=".6" data-spin="1"/>' + spinMarks(cx, cy, 26, rf - 3) : "") +
     // hub
-    '<circle cx="' + cx + '" cy="' + cy + '" r="22" fill="#0F0D24" stroke="#352F6B" stroke-width="2"/>' + spokes +
+    '<circle cx="' + cx + '" cy="' + cy + '" r="22" fill="#0F0D24" stroke="#352F6B" stroke-width="2"/><g data-spin="1">' + spokes + "</g>" +
     '<circle cx="' + cx + '" cy="' + cy + '" r="6" fill="#352F6B"/></g>' +
     '<text x="' + cx + '" y="166" text-anchor="middle" fill="' + (heat ? "#E8B04F" : "#A29EDB") + '" font-size="15" font-weight="600">' +
       tgtSpan(i ? "extruder" + i : "extruder", "T" + i + " nozzle", target, true, Math.round(temp) + '°' + (target > 0 || CONTROLS ? ' / ' + (target > 0 ? Math.round(target) + "°" : "off") : '')) + '</text>' +
@@ -585,14 +736,15 @@ function toolSvg(i, col, frac, temp, target, active, loaded, fanLabel) {
 let CONTROLS = HOSTED && !SAME;
 let printState = "", running = false;
 const LABEL = {load: "Load", unload: "Unload", park: "Park", pickup: "Pickup"};
+const QB_LABEL = {load: "Load", unload: "Unload", park: "Eject"};      // QIDI Box: Eject pulls a waiting filament out of its slot (Fluidd calls it Uninstall)
 function actions(i, loaded, isActive, ex, s) {
   const offered = ((CFG && CFG.actions) || []);
-  if (!CONTROLS || !offered.length) return "";
+  if (!CONTROLS || !offered.length || (s && s.ext)) return "";      // the external spool is loaded by hand
   const locked = running || printState === "printing" || printState === "paused";
-  const afc = CFG.provider === "afc";
-  const can = afc ? {load: loaded && !isActive, unload: loaded, park: isActive, pickup: loaded && !isActive} : {load: loaded, unload: loaded, park: isActive, pickup: !isActive};
+  const afc = CFG.provider === "afc", qb = CFG.provider === "qidibox";      // QIDI Box: Load a waiting slot, Unload the one in the toolhead; the button carries the slot number
+  const can = afc ? {load: loaded && !isActive, unload: loaded, park: isActive, pickup: loaded && !isActive} : qb ? {load: loaded && !isActive, unload: isActive, park: loaded && !isActive} : {load: loaded, unload: loaded, park: isActive, pickup: !isActive};
   return '<div class="acts">' + (afc ? ["park", "load", "unload"] : ["load", "unload", "park", "pickup"]).filter(a => offered.includes(a)).map(a =>
-    '<button data-act="' + a + '" data-tool="' + i + '"' + (afc ? ' data-lane="' + escH(s.lane) + '"' : "") + (locked || !can[a] ? " disabled" : "") + '>' + (afc ? AFC_LABEL[a] : LABEL[a]) + '</button>').join("") +
+    '<button data-act="' + a + '" data-tool="' + (qb ? s.slot : i) + '"' + (afc ? ' data-lane="' + escH(s.lane) + '"' : "") + (s && s.label ? ' data-who="' + escH(s.label) + '"' : "") + (qb ? ' data-direct="1"' : "") + (locked || !can[a] ? " disabled" : "") + '>' + (afc ? AFC_LABEL[a] : qb ? QB_LABEL[a] : LABEL[a]) + '</button>').join("") +
     '</div>';
 }
 const CONFIRM = {
@@ -602,17 +754,24 @@ const CONFIRM = {
   pickup: t => "Pick up T" + t + "?\nThe printer will park the current tool and move T" + t + " into place."
 };
 const notice = document.getElementById("notice");
-async function control(action, tool, lane) {
-  const who = lane || "T" + tool, lbl = lane ? AFC_LABEL[action] : LABEL[action];
+// show a failure in the header for a few seconds
+function flashError(text, ms) {
+  notice.className = "pill off"; notice.textContent = text;
+  setTimeout(() => { notice.textContent = ""; notice.className = ""; }, ms);
+}
+async function control(action, tool, lane, name, label, noAsk) {
+  const who = name || lane || "T" + tool, lbl = label || (lane ? AFC_LABEL[action] : LABEL[action]);
+  // Load and Unload act at once, without a question: their buttons are only live when that action is possible (and never
+  // while printing). So do all three QIDI Box buttons, as on the printer's own Box card. Buttons that move a toolhead or
+  // eject an AFC lane still ask first.
+  const direct = noAsk || lbl === "Load" || lbl === "Unload";
   const cur = lane && action === "load" ? (SLOTSNOW.find(s => s.isActive && s.lane !== lane) || {}).lane : null;
-  if (running || !confirm(lane ? (cur ? "Swap to " + lane + "?\n" + cur + " is loaded, so it is unloaded first, then " + lane + " is loaded.\nThe printer moves filament." : lbl + " " + lane + "?\nThe printer runs its AFC lane macro and moves filament.") : CONFIRM[action](tool))) return;
+  if (running || !direct && !await ask(lane ? (cur ? "Swap to " + lane + "?\n" + cur + " is loaded, so it is unloaded first, then " + lane + " is loaded.\nThe printer moves filament." : lbl + " " + lane + "?\nThe printer runs its AFC lane macro and moves filament.") : CONFIRM[action](tool))) return;
   running = true;
+  if (window.__st) render(window.__st);                       // the tool buttons go inactive at once, not at the next poll
   notice.className = "pill"; notice.textContent = lbl + " " + who + " - running...";
   try {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"},
-                                       body: JSON.stringify({action: action, tool: tool, lane: lane})});
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.status);
+    const j = await postControl({action: action, tool: tool, lane: lane});
     notice.className = "pill on"; notice.textContent = lbl + " " + who + " done";
   } catch (e) {
     notice.className = "pill off"; notice.textContent = lbl + " " + who + " failed: " + e.message;
@@ -663,11 +822,9 @@ async function tgtApply(v) {
     if (v === "" || !(n >= 0 && n <= 100)) { tgtIn.focus(); return; }
     tgtPop.hidden = true; fanHoldUntil = Date.now() + 3000;
     try {
-      const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify({action: "fan", fan: tgtFan, speed: n / 100})});
-      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+      await postControl({action: "fan", fan: tgtFan, speed: n / 100});
     } catch (e) {
-      notice.className = "pill off"; notice.textContent = tgtTitle + " failed: " + e.message;
-      setTimeout(() => { notice.textContent = ""; notice.className = ""; }, 8000);
+      flashError(tgtTitle + " failed: " + e.message, 8000);
     }
     fanHoldUntil = 0; tick();
     return;
@@ -678,14 +835,12 @@ async function tgtApply(v) {
     return mvSend({action: "goto", axis: tgtAxis, pos: n}, "Move " + tgtAxis);
   }
   if (!(n >= 0 && n <= tgtMax(tgtHeater))) { tgtIn.focus(); return; }
-  if ((printState === "printing" || printState === "paused") && !confirm("A print is running. Change the " + tgtTitle + " target to " + (n ? n + "°C" : "off") + "?")) return;
+  if ((printState === "printing" || printState === "paused") && !await ask("A print is running. Change the " + tgtTitle + " target to " + (n ? n + "°C" : "off") + "?")) return;
   tgtPop.hidden = true;
   try {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify({action: "temp", heater: tgtHeater, target: n})});
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+    await postControl({action: "temp", heater: tgtHeater, target: n});
   } catch (e) {
-    notice.className = "pill off"; notice.textContent = tgtTitle + " target failed: " + e.message;
-    setTimeout(() => { notice.textContent = ""; notice.className = ""; }, 8000);
+    flashError(tgtTitle + " target failed: " + e.message, 8000);
   }
   tick();
 }
@@ -712,12 +867,10 @@ async function lightToggle() {
   lightOn = want; lightHold = Date.now() + 4000;
   lightApply();
   try {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify({action: "light", on: want})});
-    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+    await postControl({action: "light", on: want});
   } catch (e) {
     lightOn = !want; lightHold = 0;
-    notice.className = "pill off"; notice.textContent = "Light failed: " + e.message;
-    setTimeout(() => { notice.textContent = ""; notice.className = ""; }, 8000);
+    flashError("Light failed: " + e.message, 8000);
   }
   tick();
 }
@@ -746,9 +899,7 @@ async function mvSend(body, what) {
   running = true; renderMove(window.__st);
   notice.className = "pill"; notice.textContent = what + " ...";
   try {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify(body)});
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.status);
+    const j = await postControl(body);
     notice.textContent = "";
     notice.className = "";
   } catch (e) {
@@ -765,8 +916,8 @@ mvEl.addEventListener("click", ev => {
   if (!b || b.disabled) return;
   const [kind, a, d] = b.dataset.mv.split(":");
   if (kind === "jog") mvSend({action: "jog", axis: a, dist: (+d) * (a === "Z" ? Math.min(mvStep, 10) : mvStep)}, "Move " + a);
-  else if (kind === "home") { if (confirm("Home " + (a === "all" ? "all axes" : a.toUpperCase()) + "?\nThe toolhead/bed will move.")) mvSend({action: "home", axes: a}, "Homing"); }
-  else if (kind === "motors_off") { if (confirm("Turn the stepper motors off?\nThe printer will lose its homed position.")) mvSend({action: "motors_off"}, "Motors off"); }
+  else if (kind === "home") { ask("Home " + (a === "all" ? "all axes" : a.toUpperCase()) + "?\nThe toolhead/bed will move.", "Home").then(ok => { if (ok) mvSend({action: "home", axes: a}, "Homing"); }); }
+  else if (kind === "motors_off") { ask("Turn the stepper motors off?\nThe printer will lose its homed position.", "Motors off").then(ok => { if (ok) mvSend({action: "motors_off"}, "Motors off"); }); }
 });
 function renderMove(st) {
   if (!CONTROLS || !st) return;
@@ -794,12 +945,12 @@ document.getElementById("grid").addEventListener("click", ev => {
   const s = ev.target.closest(".spool");
   if (s) return openSpool(+s.dataset.spool);
   const b = ev.target.closest("button[data-act]");
-  if (b && !b.disabled) control(b.dataset.act, +b.dataset.tool, b.dataset.lane);
+  if (b && !b.disabled) control(b.dataset.act, +b.dataset.tool, b.dataset.lane, b.dataset.who, b.textContent, b.dataset.direct === "1");
 });
 
 // ---- Temperatures: every heater / temperature sensor the printer reports (discovered, like Fluidd) ----
 const TEMP_RE = /^(heater_bed|heater_generic |temperature_sensor |temperature_fan |extruder\d*$)/;
-let tempObjs = null, tmcObjs = [], afcLanes = [], afcParts = [];       // afcParts: AFC_extruder / AFC_hub / AFC_buffer objects (Turtleneck)
+let tempObjs = null, tmcObjs = [], afcLanes = [], afcParts = [], boxObjs = [];      // boxObjs: QIDI Box slots, its humidity sensor and its drying heater;       // afcParts: AFC_extruder / AFC_hub / AFC_buffer objects (Turtleneck)
 let CH = {sensor: null, fan: null};          // chamber sensor / fan: from the configuration or found by name
 const hist = {};
 const HIST_MAX = 150;      // about 5 minutes at one sample per 2 s
@@ -808,7 +959,9 @@ function tempTitle(n) {
   if (n === "extruder") return "T0 nozzle";
   const m = n.match(/^extruder(\d+)$/);
   if (m) return "T" + m[1] + " nozzle";
-  return n.replace(/^(heater_generic|temperature_sensor|temperature_fan) /, "");
+  // Klipper object names use underscores: show them as words (the raw name goes in the row's tooltip)
+  const w = n.replace(/^(heater_generic|temperature_sensor|temperature_fan) /, "").replace(/_/g, " ");
+  return w.charAt(0).toUpperCase() + w.slice(1);
 }
 function spark(arr, hot) {
   if (arr.length < 2) return '<svg viewBox="0 0 160 34"></svg>';
@@ -826,7 +979,7 @@ function renderTemps(st) {
     const hot = hasTarget && o.target > 0;
     const pw = typeof o.power === "number" ? Math.round(o.power * 100) : null;
     const tgt = /^(extruder\d*|heater_bed)$/.test(n) ? tgtSpan(n, tempTitle(n), o.target, false) : (o.target > 0 ? o.target.toFixed(0) + "°" : "off");
-    const row = '<div class="tr' + (hot ? " hot" : "") + '"><span class="nm">' + escH(tempTitle(n)) + '</span><span class="v">' + o.temperature.toFixed(1) + '°' +
+    const row = '<div class="tr' + (hot ? " hot" : "") + '"><span class="nm" title="' + escH(n) + '">' + escH(tempTitle(n)) + '</span><span class="v">' + o.temperature.toFixed(1) + '°' +
       (hasTarget ? ' <small>/ ' + tgt + '</small>' : "") + '</span>' +
       (pw !== null ? '<div class="bar" title="heater power ' + pw + '%"><i style="width:' + pw + '%"></i></div>' : "") + '</div>';
     (hasTarget ? heaters : sensors).push({n, row});
@@ -870,11 +1023,13 @@ const fgrid = document.getElementById("fgrid");
 function fanKey(n) { return n === "fan" ? "fan" : n.replace(/^fan_generic /, ""); }
 // AFC status pills: toolhead (extruder) filament sensors, the hub, and the Turtleneck buffer(s). Field names follow the AFC Klipper add-on;
 // whatever a printer does not report is simply not shown.
+// One chip of a status row: "Label: Value", lit when `on`, dimmed when there is nothing to report
+const pill = (label, text, on, dim) => '<span class="pill' + (on ? " on" : "") + (dim ? " dim" : "") + '"><i></i>' + escH(label) + ": " + escH(cap(text)) + "</span>";
 function renderAfcBar(st) {
   const bar = document.getElementById("afcbar");
+  if (CFG.provider === "qidibox" || CFG.provider === "toolchanger") return;      // the same row shows the QIDI Box / toolchanger status instead
   if (CFG.provider !== "afc") { bar.hidden = true; return; }
   const pills = [], one = pre => afcParts.filter(n => n.startsWith(pre + " ")).length < 2;
-  const pill = (label, text, on, dim) => '<span class="pill' + (on ? " on" : "") + (dim ? " dim" : "") + '"><i></i>' + escH(label) + ": " + escH(text) + "</span>";
   const sub = (n, pre, what) => one(pre) ? what : what + " (" + n.split(" ").slice(1).join(" ") + ")";
   const bool = (...vs) => vs.find(v => typeof v === "boolean");
   for (const n of afcParts) {
@@ -909,7 +1064,7 @@ function renderFans(st) {
   fgrid.innerHTML = rows.map(f => {
     const pct = Math.round(f.s * 100);
     const adjustable = CONTROLS && (f.n === "fan" || f.n.startsWith("fan_generic "));
-    return '<div class="f' + (pct > 0 ? " on" : "") + '"><div class="nm">' + escH(f.t) + '</div>' +
+    return '<div class="f' + (pct > 0 ? " on" : "") + '"><div class="nm" title="' + escH(f.t) + '">' + escH(f.t) + '</div>' +
       '<div class="v">' + pct + '%</div>' +
       '<div class="rpm">' + (typeof f.rpm === "number" && f.rpm > 0 ? Math.round(f.rpm) + ' rpm' : "") + '</div>' +
       (adjustable ? '<input type="range" min="0" max="100" step="5" value="' + pct + '" data-fan="' + escH(fanKey(f.n)) + '" aria-label="' + escH(f.t) + ' speed">'
@@ -929,10 +1084,7 @@ fgrid.addEventListener("change", async ev => {      // send on release / key pre
   if (!el.matches("input[type=range]") || !CONTROLS) return;
   fanHoldUntil = Date.now() + 3000;
   try {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"},
-                                       body: JSON.stringify({action: "fan", fan: el.dataset.fan, speed: el.value / 100})});
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.status);
+    const j = await postControl({action: "fan", fan: el.dataset.fan, speed: el.value / 100});
   } catch (e) {
     notice.className = "pill off"; notice.textContent = "Fan failed: " + e.message;
     fanHoldUntil = 0;
@@ -957,14 +1109,11 @@ function renderPrintCtl(state) {
   document.getElementById("ebtn").disabled = false;                      // never locked by another command that is running
 }
 async function printControl(action) {
-  if (pbusy || !confirm(PCONFIRM[action])) return;
+  if (pbusy || !await ask(PCONFIRM[action])) return;
   pbusy = true; renderPrintCtl(printState);
   notice.className = "pill"; notice.textContent = PLABEL[action] + " - sending...";
   try {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"},
-                                       body: JSON.stringify({action: action})});
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.status);
+    const j = await postControl({action: action});
     notice.className = "pill on"; notice.textContent = PLABEL[action] + " sent";
   } catch (e) {
     notice.className = "pill off"; notice.textContent = PLABEL[action] + " failed: " + e.message;
@@ -982,7 +1131,7 @@ document.getElementById("ebtn").addEventListener("click", () => { if (CONTROLS) 
 // ---- Live console: Moonraker's recent console history, polled (read-only) ----
 const conlog = document.getElementById("conlog"), constat = document.getElementById("constat");
 let conSig = "", conFirst = true;
-const escHtml = s => String(s).replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"}[c]));
+const escHtml = escH;
 async function conPoll() {
   if (!document.hidden) {
     try {
@@ -999,8 +1148,8 @@ async function conPoll() {
         if (atBottom) conlog.scrollTop = conlog.scrollHeight;
         conFirst = false;
       }
-      constat.textContent = "live";
-    } catch (e) { constat.textContent = "offline"; }
+      constat.textContent = "Live";
+    } catch (e) { constat.textContent = "Offline"; }
   }
   setTimeout(conPoll, 2000);
 }
@@ -1028,7 +1177,7 @@ function screenLoop() {
     const im = new Image();
     im.onload = () => { el.setAttribute("href", im.src); screenBusy = false; };
     im.onerror = () => { screenBusy = false; };
-    im.src = "/screen/snapshot?ts=" + Date.now();
+    im.src = withP("/screen/snapshot?ts=" + Date.now());
   };
   tick();
   screenTimer = setInterval(tick, 1000);
@@ -1038,6 +1187,218 @@ const fanSvg = (id, cx, cy, r) => '<circle cx="' + cx + '" cy="' + cy + '" r="' 
     '<g id="' + id + '">' + [0, 72, 144, 216, 288].map(a => '<path d="M' + cx + ' ' + cy + ' q' + (r * .55) + ' ' + (-r * .15) + ' ' + (r * .8) + ' ' + (-r * .75) + ' q' + (-r * .6) + ' ' + (r * .1) + ' ' + (-r * .8) + ' ' + (r * .75) + 'z" fill="#8f8bd8" opacity=".9" transform="rotate(' + a + ' ' + cx + ' ' + cy + ')"/>').join("") + '</g>' +
     '<circle cx="' + cx + '" cy="' + cy + '" r="' + (r * .24) + '" fill="#2d2a5a" stroke="#6a66b0" stroke-width=".8"/>';
 // ---- Printer graphic from a picture (built-in "generic" or an uploaded pack): overlays placed at the pack's anchors ----
+// ---- Drawn printer models: one simplified front view per printer shape, colored per model; the toolhead and the bed
+// (or the gantry) follow the printer's real position. The server picks the model (guess_model); Settings can override it.
+//   f     family: "box" enclosed cube, bed moves in Z   "gantry" cube with a flying gantry, bed fixed
+//                 "sling" open frame, bed moves in Y, gantry in Z   "delta" three towers
+//   b     body colors [top, bottom]   acc accent color   sc size   frame: built from extrusions   open: no panels
+//   scr   where the screen is: "tr" top right, "tc" top centre, "base" in the base, "none"
+const MODELS = {
+  "qidi-plus4": {f: "box", b: ["#454851", "#27292e"], acc: "#3d8bfd", scr: "tc"},
+  "qidi-xmax3": {f: "box", b: ["#34363c", "#1c1d21"], acc: "#3d8bfd", scr: "tr", top: 74},
+  "qidi-xplus3": {f: "box", b: ["#34363c", "#1c1d21"], acc: "#3d8bfd", scr: "tr", sc: .93},
+  "qidi-q1pro": {f: "box", b: ["#50535c", "#2c2e34"], acc: "#3d8bfd", scr: "tr", sc: .86},
+  "qidi-q2": {f: "box", b: ["#5a5d66", "#33353b"], acc: "#3d8bfd", scr: "tr", sc: .9},
+  "qidi-xsmart3": {f: "box", b: ["#34363c", "#1c1d21"], acc: "#3d8bfd", scr: "tr", sc: .74},
+  "creality-k1": {f: "box", b: ["#5b5f69", "#30333a"], acc: "#19b5c9", scr: "tr", sc: .84, top: 58},
+  "creality-k1max": {f: "box", b: ["#5b5f69", "#30333a"], acc: "#19b5c9", scr: "tr", top: 58},
+  "creality-k2plus": {f: "box", b: ["#3a3d44", "#1f2125"], acc: "#19b5c9", scr: "tr", top: 80},
+  "creality-ender3": {f: "sling", b: ["#2b2d33", "#17181c"], acc: "#19b5c9", scr: "base"},
+  "voron-24": {f: "gantry", frame: true, b: ["#1d1d22", "#101013"], acc: "#e03a3a", scr: "base"},
+  "voron-trident": {f: "box", frame: true, b: ["#1d1d22", "#101013"], acc: "#e03a3a", scr: "base"},
+  "voron-v0": {f: "box", frame: true, b: ["#1d1d22", "#101013"], acc: "#e03a3a", scr: "none", sc: .66},
+  "voron-switchwire": {f: "sling", b: ["#1d1d22", "#101013"], acc: "#e03a3a", scr: "base", sc: .92},
+  "ratrig-vcore": {f: "box", frame: true, open: true, b: ["#2a2c31", "#16171a"], acc: "#35c46a", scr: "none"},
+  "sovol-sv08": {f: "gantry", frame: true, open: true, b: ["#232429", "#121316"], acc: "#6a7dff", scr: "base"},
+  "sovol-sv06": {f: "sling", b: ["#232429", "#121316"], acc: "#6a7dff", scr: "base"},
+  "elegoo-neptune4": {f: "sling", b: ["#33415a", "#1b2334"], acc: "#4f8dff", scr: "base"},
+  "anycubic-kobra-s1": {f: "box", b: ["#4b4f58", "#292b31"], acc: "#2aa1ff", scr: "tr", sc: .88},
+  "anycubic-kobra": {f: "sling", b: ["#40444c", "#22242a"], acc: "#2aa1ff", scr: "base"},
+  "flashforge-ad5m": {f: "box", b: ["#2c2e33", "#151619"], acc: "#e2453a", scr: "tr", sc: .82, top: 56},
+  "prusa-mk": {f: "sling", b: ["#222327", "#111214"], acc: "#fa6831", scr: "base", sc: .94},
+  "flsun-delta": {f: "delta", b: ["#2f3238", "#17181c"], acc: "#00a0e9", scr: "base"},
+  "corexy-box": {f: "box", b: ["#f1f1f5", "#d3d3dc"], acc: "#7A63F2", scr: "tr"},
+  "corexy-frame": {f: "box", frame: true, open: true, b: ["#2a2c31", "#16171a"], acc: "#7A63F2", scr: "none"},
+  "bedslinger": {f: "sling", b: ["#e9e9ee", "#c9c9d3"], acc: "#7A63F2", scr: "base"},
+  "delta": {f: "delta", b: ["#e9e9ee", "#c9c9d3"], acc: "#7A63F2", scr: "base"}
+};
+// Build one model: {body (SVG markup on a 600 x 520 canvas), width, height, anchors, motion}. `sfx` is added to every id
+// (a second copy, e.g. the Settings preview, must not share ids with the live scene). `noHead` leaves the toolhead out
+// (printers with several tools show one marker per tool instead, as on a picture).
+// Toolhead looks, each drawn in a 42 x 50 box above the nozzle tip at (0, 0). Simplified shapes in the spirit of each
+// design (the toolheads StealthChanger lists as supported), not drawings of the real parts.
+const HEADS = {
+  generic: {label: "Generic", d: "M-21 -45 q0 -5 5 -5 h32 q5 0 5 5 v24 q0 5 -5 5 h-32 q-5 0 -5 -5 z", fan: [0, -30, 9], band: 1},
+  stealthburner: {label: "Stealth Burner", d: "M-19 -50 h38 l3 10 v18 l-9 8 h-26 l-9 -8 v-18 z", fan: [0, -34, 8], leds: 1},
+  ministealthburner: {label: "Mini Stealth Burner", d: "M-15 -44 h30 l3 8 v14 l-7 7 h-22 l-7 -7 v-14 z", fan: [0, -31, 6.5], leds: 1},
+  dragonburner: {label: "Dragon Burner", d: "M-21 -42 l6 -6 h30 l6 6 v20 l-6 6 h-30 l-6 -6 z", fan: [0, -30, 10]},
+  rapidburner: {label: "Rapid Burner", d: "M-17 -50 h34 q4 0 4 4 v24 l-6 6 h-30 l-6 -6 v-24 q0 -4 4 -4 z", fan: [0, -31, 9], band: 1},
+  anthead: {label: "AntHead", d: "M-20 -30 q0 -20 20 -20 q20 0 20 20 v8 q0 6 -6 6 h-28 q-6 0 -6 -6 z", fan: [0, -29, 7], eyes: 1, feelers: 1},
+  yavoth: {label: "Yavoth", d: "M-21 -50 h42 v30 l-8 4 h-26 l-8 -4 z", fan: [-9, -34, 6], fan2: [9, -34, 6]},
+  a4t: {label: "A4T", d: "M-12 -50 h24 l9 9 v19 l-6 6 h-30 l-6 -6 v-19 z", fan: [-8, -30, 5.5], fan2: [8, -30, 5.5]},
+  xol: {label: "XOL", d: "M-21 -48 h42 v22 q0 10 -10 10 h-22 q-10 0 -10 -10 z", fan: [0, -34, 9]},
+  jabberwocky: {label: "Jabberwocky", d: "M-20 -50 h40 v34 h-40 z", fan: [0, -33, 11]},
+  blackbird: {label: "Archetype BlackBird", d: "M-21 -40 l10 -10 h22 l10 10 l-4 20 l-6 4 h-22 l-6 -4 z", fan: [0, -32, 8], wing: 1}
+};
+function headArt(style, body, acc, nozId) {
+  const h = HEADS[style] || HEADS.generic;
+  const c = (p, r, fill, more) => '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + r + '" fill="' + fill + '"' + (more || "") + "/>";
+  const fan = f => c(f, f[2], "#0d0d14", ' opacity=".6"') + c(f, (f[2] * .36).toFixed(1), acc);
+  return '<path d="' + h.d + '" fill="' + body + '" stroke="#0b0b10" stroke-width="1.2" stroke-linejoin="round"/>' +
+    (h.band ? '<rect x="-17" y="-50" width="34" height="6" rx="3" fill="' + acc + '"/>' : '<path d="' + h.d + '" fill="' + acc + '" opacity=".22"/>') +
+    fan(h.fan) + (h.fan2 ? fan(h.fan2) : "") +
+    (h.leds ? '<rect x="-7" y="-22" width="5" height="3" rx="1" fill="#fff"/><rect x="2" y="-22" width="5" height="3" rx="1" fill="#fff"/>' : "") +
+    (h.eyes ? c([-9, -41], 2.2, "#fff") + c([9, -41], 2.2, "#fff") : "") +
+    (h.feelers ? '<path d="M-8 -49 q-4 -8 -11 -7 M8 -49 q4 -8 11 -7" fill="none" stroke="' + acc + '" stroke-width="1.6" stroke-linecap="round"/>' : "") +
+    (h.wing ? '<path d="M-21 -40 l10 -10 h22 l10 10" fill="none" stroke="' + acc + '" stroke-width="2" stroke-linejoin="round"/>' : "") +
+    '<rect x="-8" y="-16" width="16" height="9" rx="1.5" fill="#8d8d99"/><polygon' + (nozId ? ' id="' + nozId + '"' : "") + ' points="-5,-7 5,-7 1.5,0 -1.5,0" fill="#c9a66b"/>';
+}
+// opt: {tools, docks, style}. With several tools on a cube-shaped printer the tools hang in a row of docks at the top
+// (docks >= tools; the spare ones are drawn empty) and the one in use rides the gantry. Other shapes with several tools
+// show one marker per tool and no head, as before.
+function modelPack(id, sfx, opt) {
+  const s = MODELS[id]; if (!s) return null;
+  sfx = sfx || "";
+  opt = opt || {};
+  const nt = Math.max(1, opt.tools | 0), docks = nt > 1 && (s.f === "box" || s.f === "gantry") ? Math.max(nt, Math.min(12, opt.docks | 0)) : 0, noHead = nt > 1 && !docks;
+  const I = n => n + sfx, sc = s.sc || 1, b = s.b, acc = s.acc, light = parseInt(b[0].slice(1, 3), 16) > 128;
+  const trim = shade(b[1], light ? .78 : 1.6), dark = "#0a0818", plate = "#3b3a4a";
+  const o = ['<defs><linearGradient id="' + I("mb") + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + b[0] + '"/><stop offset="1" stop-color="' + b[1] + '"/></linearGradient>' +
+    '<linearGradient id="' + I("mr") + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b9b9c6"/><stop offset="1" stop-color="#5c5c6c"/></linearGradient></defs>'];
+  const R = (x, y, w, h, fill, more) => '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="' + fill + '"' + (more ? " " + more : "") + "/>";
+  const fillB = "url(#" + I("mb") + ")", fillR = "url(#" + I("mr") + ")", edge = 'stroke="' + trim + '" stroke-width="1.5"';
+  const screen = (x, y, w, h) => { A.screen = {x, y, w, h}; return R(x, y, w, h, "#0d0d14", 'rx="4" stroke="#2b2b36" stroke-width="2"'); };
+  const headCol = light ? "#33353c" : shade(b[0], 1.35);
+  const head = (x, y) => '<g transform="translate(' + x + " " + y + ')"><g id="' + I("mvhead") + '">' + (noHead ? "" : headArt(opt.style, headCol, acc, I(docks ? "snzA" : "snz0"))) + "</g></g>";
+  const bedG = (y, x0, x1, more) => '<g id="' + I("mvbed") + '">' + (more || "") +
+    '<polygon points="' + (x0 + 25) + "," + y + " " + (x1 - 25) + "," + y + " " + x1 + "," + (y + 26) + " " + x0 + "," + (y + 26) + '" fill="' + plate + '" stroke="#6a66b0" stroke-width="1.5"/>' +
+    R(x0, y + 26, x1 - x0, 8, "#1b1838", 'rx="2" stroke="#352F6B"') + "</g>";
+  const A = {}, M = {type: s.f === "box" ? "bedz" : s.f === "delta" ? "delta" : "gantryz"};
+  o.push('<ellipse cx="300" cy="494" rx="' + (s.f === "delta" ? 200 : 235) + '" ry="10" fill="#000" opacity=".4"/>');
+  let nozY, toolX = 300;
+  if (s.f === "box" || s.f === "gantry") {
+    const fr = !!s.frame, tb = fr ? 24 : (s.top || 66), bb = fr ? 52 : 42, sd = fr ? 24 : 34;
+    const wx = 70 + sd, ww = 460 - 2 * sd, wy = 40 + tb + (fr ? 0 : 6), wyb = 480 - bb - (fr ? 0 : 4), wh = wyb - wy;
+    if (!s.open) {                                            // the chamber: back wall, side walls, floor
+      o.push(R(wx, wy, ww, wh, dark, 'rx="6"') + R(wx + 12, wy + 12, ww - 24, wh - 44, fr ? "#1c1a30" : "#2a2748") +
+        '<polygon points="' + wx + "," + wy + " " + (wx + 12) + "," + (wy + 12) + " " + (wx + 12) + "," + (wyb - 32) + " " + wx + "," + wyb + '" fill="#1f1c3a"/>' +
+        '<polygon points="' + (wx + ww) + "," + wy + " " + (wx + ww - 12) + "," + (wy + 12) + " " + (wx + ww - 12) + "," + (wyb - 32) + " " + (wx + ww) + "," + wyb + '" fill="#1f1c3a"/>' +
+        '<polygon points="' + wx + "," + wyb + " " + (wx + ww) + "," + wyb + " " + (wx + ww - 12) + "," + (wyb - 32) + " " + (wx + 12) + "," + (wyb - 32) + '" fill="#15122b"/>');
+      A.chamber = {x: wx + 12, y: wy + 12, w: ww - 24, h: wh - 24};
+      // fans on the back wall, out of the way of what moves: low when the bed starts at the top, high when the gantry starts at the bottom
+      A.chamberTemp = {x: wx + ww - 74, y: wy + wh * .5}; A.partFan = {x: wx + 38, y: s.f === "box" ? wyb - 74 : wy + 74}; A.chamberFan = {x: wx + ww - 38, y: s.f === "box" ? wyb - 52 : wy + 52};
+    } else {                                                  // open frame: the rear posts show through
+      o.push(R(wx + 26, wy + 4, 12, wh - 4, b[1], 'opacity=".55"') + R(wx + ww - 38, wy + 4, 12, wh - 4, b[1], 'opacity=".55"') + R(wx + 26, wy + 4, ww - 52, 10, b[1], 'opacity=".55"'));
+    }
+    const dkH = docks ? 52 : 0;                               // room under the top of the frame for the row of docks
+    const bedz = s.f === "box", railY = bedz ? wy + 30 + dkH : wyb - 40 + 13 - 48;
+    nozY = railY + 48;
+    const bedY = nozY - 13;                                   // at Z = 0 the nozzle stands on the middle of the plate
+    M.z = bedz ? wyb - 44 - bedY : railY - (wy + 26 + dkH); M.x = ww - 20 - 64;
+    if (bedz) o.push(R(wx + 44, wy + 16, 5, wh - 30, fillR, 'opacity=".7"') + R(wx + ww - 49, wy + 16, 5, wh - 30, fillR, 'opacity=".7"'));     // Z lead screws
+    const gantry = '<g id="' + I("mvgan") + '">' + R(wx + 10, railY - 3, ww - 20, 7, fillR, 'rx="3"') + R(wx + 4, railY - 9, 18, 19, trim, 'rx="3"') + R(wx + ww - 22, railY - 9, 18, 19, trim, 'rx="3"') + head(300, nozY) + "</g>";
+    const bed = bedG(bedY, 140, 460, bedz ? R(170, bedY + 30, 260, 9, "#15122b", 'rx="2"') : "");
+    o.push(bedz ? gantry + bed : bed + gantry);               // the bed passes in front of a fixed gantry; a flying gantry passes in front of the bed
+    A.bed = {x: 150, y: bedY, w: 300, h: 28};
+    if (docks) {                                              // one dock per tool across the top; a docked tool hangs in it, a spare dock is an outline
+      A.tools = []; M.docks = docks;
+      for (let i = 0; i < docks; i++) {
+        const x = +(wx + 34 + (ww - 68) * (i + .5) / docks).toFixed(1);
+        o.push(R(x - 12, wy + 3, 24, 7, trim, 'rx="2"') + R(x - 2, wy + 10, 4, 7, trim) + (i < nt ?
+          '<g id="' + I("dkh" + i) + '" transform="translate(' + x + " " + (wy + 50) + ') scale(.62)">' + headArt(opt.style, headCol, acc, I("snz" + i)) + "</g>" :
+          '<rect x="' + (x - 11) + '" y="' + (wy + 19) + '" width="22" height="28" rx="4" fill="none" stroke="' + trim + '" stroke-dasharray="3 3" opacity=".6"/>'));
+        if (i < nt) A.tools.push({x, y: wy + 30});
+      }
+    }
+    if (fr) {                                                 // extrusion frame with a skirt
+      o.push(R(70, 40, sd, 440 - bb, fillB, edge) + R(530 - sd, 40, sd, 440 - bb, fillB, edge) + R(70, 40, 460, tb, fillB, edge) + R(70, 480 - bb, 460, bb, fillB, 'rx="4" ' + edge));
+      for (const [cx, cy] of [[70, 40], [530 - sd, 40]]) o.push(R(cx, cy, sd, tb, acc, 'opacity=".9"'));
+      for (let k2 = 0; k2 < 7; k2++) o.push('<polygon points="' + [0, 60, 120, 180, 240, 300].map(a => (128 + k2 * 30 + 9 * Math.cos(a * Math.PI / 180)).toFixed(1) + "," + (480 - bb / 2 + 9 * Math.sin(a * Math.PI / 180)).toFixed(1)).join(" ") + '" fill="' + acc + '" opacity=".55"/>');
+      if (s.scr === "base") o.push(screen(372, 480 - bb + 10, 92, bb - 20));
+      if (!s.open) o.push('<polygon points="' + (wx + 8) + "," + (wy + 4) + " " + (wx + 74) + "," + (wy + 4) + " " + (wx + 40) + "," + (wyb - 4) + " " + (wx + 8) + "," + (wyb - 4) + '" fill="#fff" opacity=".05"/>');
+      A.light = {x: 530 - sd / 2, y: wy + 40};
+    } else {                                                  // panel body around the window, with a door
+      o.push('<path fill-rule="evenodd" d="M86 40 H514 Q530 40 530 56 V464 Q530 480 514 480 H86 Q70 480 70 464 V56 Q70 40 86 40 Z M' + wx + " " + wy + " V" + wyb + " H" + (wx + ww) + " V" + wy + ' Z" fill="' + fillB + '" ' + edge + "/>" +
+        R(wx, wy, ww, wh, "none", 'rx="6" stroke="' + (light ? "#1b1b22" : "#08080b") + '" stroke-width="5"') + R(70, 40 + tb - 3, 460, 3, acc, 'opacity=".85"') +
+        '<polygon points="' + (wx + 8) + "," + (wy + 4) + " " + (wx + 74) + "," + (wy + 4) + " " + (wx + 40) + "," + (wyb - 4) + " " + (wx + 8) + "," + (wyb - 4) + '" fill="#fff" opacity=".05"/>' +
+        R(wx + ww + 10, wy + wh * .42, 8, 66, light ? "#1b1b22" : "#08080b", 'rx="3"') + R(96, 480, 46, 7, "#101014", 'rx="2"') + R(458, 480, 46, 7, "#101014", 'rx="2"'));
+      if (s.scr === "tr" || s.scr === "tc") o.push(screen(s.scr === "tc" ? 252 : 404, 40 + (tb - Math.min(48, tb - 14)) / 2, 96, Math.min(48, tb - 14)));
+      A.light = {x: 513, y: wy + 26};
+    }
+  } else if (s.f === "sling") {
+    const bedY = 392, railY = bedY + 13 - 48;
+    nozY = railY + 48; M.z = railY - 104; M.x = 250; M.y = 12;
+    o.push(R(118, 62, 24, 372, fillB, edge) + R(458, 62, 24, 372, fillB, edge) + R(106, 52, 388, 24, fillB, 'rx="4" ' + edge) + R(106, 52, 30, 24, acc, 'rx="4"') + R(464, 52, 30, 24, acc, 'rx="4"') +
+      R(148, 76, 5, 352, fillR, 'opacity=".7"') + R(447, 76, 5, 352, fillR, 'opacity=".7"'));
+    o.push(R(84, 430, 432, 50, fillB, 'rx="8" ' + edge) + R(84, 430, 432, 4, acc, 'opacity=".85"') + R(100, 480, 46, 7, "#101014", 'rx="2"') + R(454, 480, 46, 7, "#101014", 'rx="2"'));
+    if (s.scr === "base") o.push(screen(396, 440, 92, 30));
+    o.push(bedG(bedY, 140, 460, R(190, bedY + 30, 220, 10, "#15122b", 'rx="2"')));
+    o.push('<g id="' + I("mvgan") + '">' + R(104, railY - 8, 392, 16, fillB, 'rx="3" ' + edge) + R(108, railY - 16, 44, 32, acc, 'rx="4"') + R(448, railY - 16, 44, 32, acc, 'rx="4"') + R(160, railY - 2, 280, 4, fillR) + head(300, nozY) + "</g>");
+    A.bed = {x: 150, y: bedY, w: 300, h: 28}; A.light = {x: 300, y: 64};
+  } else {                                                    // delta: the three arms are redrawn every frame (motionApply)
+    const bedY = 404;
+    nozY = bedY + 13; M.z = 170; M.x = 120;
+    M.towers = [[150, 0], [300, 140], [450, 0]]; M.arm = 215; M.ay = nozY - 30;      // [x, extra reach of the rear tower]
+    o.push(R(290, 56, 20, 380, b[1], 'opacity=".8"') + R(140, 56, 20, 380, fillB, edge) + R(440, 56, 20, 380, fillB, edge) + R(118, 36, 364, 28, fillB, 'rx="8" ' + edge) + R(118, 60, 364, 4, acc, 'opacity=".85"'));
+    o.push(R(112, 432, 376, 48, fillB, 'rx="10" ' + edge) + R(112, 432, 376, 4, acc, 'opacity=".85"'));
+    if (s.scr === "base") o.push(screen(254, 442, 92, 30));
+    o.push('<g id="' + I("mvbed") + '"><ellipse cx="300" cy="' + (bedY + 13) + '" rx="132" ry="17" fill="' + plate + '" stroke="#6a66b0" stroke-width="1.5"/></g>');
+    M.towers.forEach((t, i) => o.push('<line id="' + I("mva" + i) + '" x1="' + t[0] + '" y1="200" x2="300" y2="' + M.ay + '" stroke="' + (i === 1 ? "#5c5c6c" : "#b9b9c6") + '" stroke-width="4" stroke-linecap="round"/>' +
+      '<rect id="' + I("mvc" + i) + '" x="' + (t[0] - 15) + '" y="188" width="30" height="24" rx="4" fill="' + acc + '"' + (i === 1 ? ' opacity=".7"' : "") + "/>"));
+    o.push('<g id="' + I("mvgan") + '">' + head(300, nozY) + "</g>");
+    A.bed = {x: 170, y: bedY, w: 260, h: 26}; A.light = {x: 300, y: 50};
+  }
+  if (!noHead) { if (!docks) A.tools = [{x: toolX, y: nozY - 33}]; M.head = true; }
+  // smaller machines are drawn smaller, standing on the same floor
+  const T = (x, y) => [300 + (x - 300) * sc, 490 + (y - 490) * sc];
+  for (const k in A) for (const p of (k === "tools" ? A.tools : [A[k]])) {
+    const [x, y] = T(p.x, p.y);
+    p.x = x; p.y = y; if (p.w) { p.w *= sc; p.h *= sc; }
+  }
+  for (const k of ["x", "y", "z", "arm"]) if (M[k]) M[k] *= sc;
+  M.sc = sc;
+  return {body: '<g transform="translate(300 490) scale(' + sc + ') translate(-300 -490)">' + o.join("") + "</g>", width: 600, height: 520, anchors: A, motion: M};
+}
+// Where the toolhead and bed are, as fractions of their travel; the scene eases towards the target every frame.
+const MO = {x: .5, y: .5, z: 0, tx: .5, ty: .5, tz: 0, done: false, last: 0};
+function motionTarget(st, grownPx) {
+  const m = PK.motion; if (!m) return;
+  if (CFG && CFG.motion === false) {                          // turned off in Settings: a fixed pose, head in the middle and clear of the part (fans still spin)
+    MO.tx = MO.ty = .5; MO.tz = m.type === "bedz" ? .5 : .75;
+    return;
+  }
+  const th = st.toolhead || {}, lo = th.axis_minimum || [], hi = th.axis_maximum || [], homed = th.homed_axes || "";
+  const p = (st.motion_report || {}).live_position || th.position || [];
+  const fr = (i, d) => hi[i] > lo[i] && typeof p[i] === "number" && homed.includes("xyz"[i]) ? clamp((p[i] - lo[i]) / (hi[i] - lo[i]), 0, 1) : d;
+  MO.tx = fr(0, .5); MO.ty = fr(1, .5);
+  // while a print with a preview is shown the nozzle rides on top of the growing part; otherwise it is the real Z height
+  MO.tz = grownPx != null ? clamp(grownPx / (m.z * m.k), 0, 1) : fr(2, .12);
+}
+function motionApply(dt) {
+  const m = PK.motion; if (!m || !sceneReady) return;
+  let moved = !MO.done;
+  for (const a of "xyz") { const d = MO["t" + a] - MO[a]; if (Math.abs(d) > .0004) { MO[a] += d * Math.min(1, dt * 3); moved = true; } }
+  if (!moved) return;
+  MO.done = true;
+  const dx = (MO.x - .5) * m.x, dz = MO.z * m.z, k = m.k, bedz = m.type === "bedz";
+  const set = (id, x, y) => { S(id).setAttribute("transform", "translate(" + x.toFixed(2) + " " + y.toFixed(2) + ")"); S(id + "o").setAttribute("transform", "translate(" + (x * k).toFixed(2) + " " + (y * k).toFixed(2) + ")"); };
+  set("mvhead", dx / m.sc, 0); S("mvheado").setAttribute("transform", "translate(" + (dx * k).toFixed(2) + " 0)");
+  set("mvgan", 0, bedz ? 0 : -dz / m.sc); S("mvgano").setAttribute("transform", "translate(0 " + (bedz ? 0 : -dz * k).toFixed(2) + ")");
+  const by = bedz ? dz : m.y ? (MO.y - .5) * m.y : 0;
+  set("mvbed", 0, by / m.sc); S("mvbedo").setAttribute("transform", "translate(0 " + (by * k).toFixed(2) + ")");
+  if (m.towers) m.towers.forEach((t, i) => {                 // delta arms: each carriage sits where its arm reaches the effector
+    const ex = 300 + dx / m.sc, ey = m.ay - dz / m.sc, d = Math.abs(t[0] - ex) + t[1], cy = ey - Math.sqrt(Math.max(0, (m.arm / m.sc) ** 2 - d * d));
+    const ln = S("mva" + i); ln.setAttribute("x1", t[0]); ln.setAttribute("y1", cy.toFixed(1)); ln.setAttribute("x2", ex.toFixed(1)); ln.setAttribute("y2", ey.toFixed(1));
+    S("mvc" + i).setAttribute("y", (cy - 12).toFixed(1));
+  });
+  if (m.at) {                                                 // the lines from the cards follow the head
+    const x = m.at.x + dx * k, y = m.at.y - (bedz ? 0 : dz * k);
+    if (m.ta) { m.ta.x = x; m.ta.y = y - 28; }
+    if (m.tp) { m.tp.x = x; m.tp.y = y - 10; }
+    const now = performance.now();
+    if (now - MO.last > 90) { MO.last = now; drawConnectors(); }
+  }
+}
 function previewSvg() {
   const {cx, base, maxH, maxW} = PV;
   return '<g id="sthg" style="display:none" pointer-events="none"><clipPath id="sthclip"><rect id="sthrect" x="' + (cx - 400) + '" y="' + (base - maxH - 10) + '" width="800" height="' + (maxH + 10) + '"/></clipPath>' +
@@ -1054,12 +1415,16 @@ function sceneInitImage(st) {
   const o = [];
   if (afc) o.push('<g id="btg"></g>');
   o.push('<ellipse cx="260" cy="' + (Y0 + H * k + 8) + '" rx="' + (W * k * .42) + '" ry="8" fill="#000" opacity=".35"/>');
-  o.push('<image href="' + escH(PK.url) + '" x="' + X0.toFixed(1) + '" y="' + Y0 + '" width="' + (W * k).toFixed(1) + '" height="' + (H * k).toFixed(1) + '" preserveAspectRatio="none"/>');
+  const mo = PK.motion || null;                               // a drawn model: its toolhead and bed move
+  if (PK.body) o.push('<g transform="translate(' + X0.toFixed(1) + " " + Y0 + ") scale(" + k.toFixed(4) + ')">' + PK.body + "</g>");
+  else o.push('<image href="' + escH(PK.url) + '" x="' + X0.toFixed(1) + '" y="' + Y0 + '" width="' + (W * k).toFixed(1) + '" height="' + (H * k).toFixed(1) + '" preserveAspectRatio="none"/>');
+  if (mo) { mo.k = k; MO.done = false; }
   const bed = a.bed, ch = a.chamber;
   if (ch) o.push('<rect id="cavglow" x="' + X(ch.x) + '" y="' + Y(ch.y) + '" width="' + (ch.w * k).toFixed(1) + '" height="' + (ch.h * k).toFixed(1) + '" fill="#ff8a3a" opacity="0" pointer-events="none"/>');
   if (ch && CFG.light) o.push('<rect id="chdark" x="' + X(ch.x) + '" y="' + Y(ch.y) + '" width="' + (ch.w * k).toFixed(1) + '" height="' + (ch.h * k).toFixed(1) + '" fill="#000" opacity="0" pointer-events="none"/>');
   if (bed) {
     const bx = X(bed.x), by = Y(bed.y), bw = bed.w * k, bh = bed.h * k;
+    o.push('<g id="mvbedo">');                                 // everything that lies on the plate moves with it
     o.push('<ellipse id="bedglow" cx="' + (bx + bw / 2).toFixed(1) + '" cy="' + (by + bh / 2).toFixed(1) + '" rx="' + (bw / 2).toFixed(1) + '" ry="' + Math.max(6, bh).toFixed(1) + '" fill="#ff7a2a" opacity="0" pointer-events="none"/>');
     const wave = (x, y, w, d) => '<path class="wv" style="animation-delay:' + d + 's" d="M' + x + ' ' + y + ' q' + (w / 8) + ' -6 ' + (w / 4) + ' 0 t' + (w / 4) + ' 0 t' + (w / 4) + ' 0 t' + (w / 4) + ' 0"/>';
     o.push('<g id="bedwaves" style="display:none" pointer-events="none">' + wave((bx + bw * .1).toFixed(1), by, (bw * .8).toFixed(1), 0) + wave((bx + bw * .14).toFixed(1), by, (bw * .72).toFixed(1), .7) + wave((bx + bw * .18).toFixed(1), by, (bw * .64).toFixed(1), 1.4) + '</g>');
@@ -1067,6 +1432,7 @@ function sceneInitImage(st) {
     Object.assign(PV, {cx: +(bx + bw / 2).toFixed(1), base: +(by + bh * .45).toFixed(1), maxH: ch ? ch.h * k * .55 : 80, maxW: bw * .5});
     o.push(previewSvg());
     o.push('<text id="sbedt" x="' + (bx + bw / 2).toFixed(1) + '" y="' + (by + bh * .8).toFixed(1) + '" text-anchor="middle" font-size="' + clamp(bw / 17, 7, 12) + '" font-weight="700" fill="#fff" stroke="#000" stroke-opacity=".5" stroke-width=".4" paint-order="stroke">BED --</text>');
+    o.push("</g>");
   }
   if (a.chamberTemp && CH.sensor) o.push('<text id="scavt" x="' + X(a.chamberTemp.x) + '" y="' + Y(a.chamberTemp.y) + '" text-anchor="middle" font-size="' + clamp(W * k * .04, 9, 17) + '" font-weight="700" fill="#fff" stroke="#000" stroke-opacity=".5" stroke-width=".4" paint-order="stroke">--</text>');
   if (a.partFan && PK.partFan) {
@@ -1088,13 +1454,17 @@ function sceneInitImage(st) {
     const p = tl[i] || {x: W * (NT === 1 ? .5 : .28 + .44 * i / (NT - 1)), y: H * .27};
     const x = X(p.x), y = Y(p.y);
     TA[i] = {x, y: y - 28}; TOOLPT[i] = {x, y: y - 10};
+    const dk = !!(mo && mo.docks);                             // toolchanger: the markers sit on the docked tools and are smaller
+    const ride = mo && mo.head && i === 0 && !dk;              // this marker sits on the moving toolhead: its labels go above the head
+    if (ride) { Object.assign(mo, {at: {x, y}, ta: TA[i], tp: TOOLPT[i]}); o.push('<g id="mvgano"><g id="mvheado">'); }
     if (UNITSEL === "u1") o.push('<g transform="translate(' + x + ',' + y + ')" pointer-events="none">' + u1Head(i) + "</g>");
     o.push('<circle id="sgl' + i + '" cx="' + x + '" cy="' + y + '" r="15" fill="#ff8a3a" opacity="0" pointer-events="none"/>' +
-      '<circle id="sdk' + i + '" cx="' + x + '" cy="' + y + '" r="9" fill="#101016" stroke="#352F6B" stroke-width="1"/>' +
-      '<circle id="stip' + i + '" cx="' + x + '" cy="' + y + '" r="5.5" fill="#2A2750"/>' +
-      '<text id="slb' + i + '" x="' + x + '" y="' + (y - 14) + '" text-anchor="middle" font-size="11" font-weight="600" fill="#6B66A5">' + (NT > 1 ? "T" + i : "") + '</text>' +
-      '<text id="sfh' + i + '" x="' + x + '" y="' + (y + 21) + '" text-anchor="middle" font-size="8" font-weight="700" fill="#8a8a96" stroke="#000" stroke-opacity=".45" stroke-width=".3" paint-order="stroke">' + (i < N ? "--" : "") + '</text>' +
-      '<text id="sfp' + i + '" x="' + x + '" y="' + (y + 30) + '" text-anchor="middle" font-size="6.5" font-weight="700" fill="#8a8a96" stroke="#000" stroke-opacity=".45" stroke-width=".3" paint-order="stroke"></text>');
+      '<circle id="sdk' + i + '" cx="' + x + '" cy="' + y + '" r="' + (ride ? 7 : dk ? 5 : 9) + '" fill="#101016" stroke="#352F6B" stroke-width="1"/>' +
+      '<circle id="stip' + i + '" cx="' + x + '" cy="' + y + '" r="' + (ride ? 4.2 : dk ? 3 : 5.5) + '" fill="#2A2750"/>' +
+      '<text id="slb' + i + '" x="' + x + '" y="' + (y - (dk ? 22 : 14)) + '" text-anchor="middle" font-size="' + (dk ? 9 : 11) + '" font-weight="600" fill="#6B66A5">' + (NT > 1 ? "T" + i : "") + '</text>' +
+      '<text id="sfh' + i + '" x="' + x + '" y="' + (ride ? y - 17 : dk ? y + 24 : y + 21) + '" text-anchor="middle" font-size="8" font-weight="700" fill="#8a8a96" stroke="#000" stroke-opacity=".45" stroke-width=".3" paint-order="stroke">' + (i < N ? "--" : "") + '</text>' +
+      '<text id="sfp' + i + '" x="' + x + '" y="' + (ride ? y - 26 : dk ? y + 32 : y + 30) + '" text-anchor="middle" font-size="6.5" font-weight="700" fill="#8a8a96" stroke="#000" stroke-opacity=".45" stroke-width=".3" paint-order="stroke"></text>');
+    if (ride) o.push("</g></g>");
   }
   if (a.light && CFG.light) {
     const x = X(a.light.x), y = Y(a.light.y);
@@ -1134,6 +1504,15 @@ function drawConnectors() {
       const ln = '<line x1="' + outX(p[0]).toFixed(1) + '" y1="' + (POFF + (p[1] - TOP) * PSCALE).toFixed(1) + '" x2="' + outX(t.x).toFixed(1) + '" y2="' + (POFF + (t.y - TOP) * PSCALE).toFixed(1) + '" stroke-linecap="round" fill="none" ';
       h += ln + 'stroke="#000" stroke-opacity=".55" stroke-width="' + (act ? 5.5 : 4.5) + '" stroke-dasharray="0.1 8"/>' + ln + 'stroke="' + col + '" stroke-opacity="' + (act ? 1 : .65) + '" stroke-width="' + (act ? 3.4 : 2.6) + '" stroke-dasharray="0.1 8"/>';
     });
+  }
+  if (r.width && !AFCS && TA.length === 1 && cards.length > 1) {      // several slots feeding one toolhead (QIDI Box): one line, from the slot in use
+    const ai = SLOTSNOW.findIndex(s => s.isActive && s.loaded), c = cards[ai], t = TA[0];
+    if (c) {
+      const cr = c.getBoundingClientRect(), col = btLift(SLOTSNOW[ai].col);
+      const ln = '<line x1="' + ((cr.left + cr.width / 2 - r.left) * 1000 / r.width).toFixed(1) + '" y1="0" x2="' + outX(t.x).toFixed(1) + '" y2="' + (POFF + (t.y - TOP) * PSCALE).toFixed(1) + '" stroke-linecap="round" stroke-dasharray="0.1 8" ';
+      h += ln + 'stroke="#000" stroke-opacity=".5" stroke-width="5.5"/>' + ln + 'stroke="' + col + '" stroke-width="3.4"/>';
+    }
+    g.innerHTML = h; return;
   }
   if (!r.width || TA.length > 4 || cards.length !== TA.length) { g.innerHTML = h; return; }
   cards.forEach((c, i) => {
@@ -1319,19 +1698,27 @@ function sceneUpdate(st, cols, loaded) {
       e.innerHTML = tgtSpan(exName(i), "T" + i + " nozzle", ex.target || 0, true, ct); e.setAttribute("fill", tc > 50 ? "#d9582b" : "#8a8a96"); }
     setFan("sfp" + i, "P", ppv);
   }
+  if (PK.motion && PK.motion.docks) {                         // toolchanger: the tool in use rides the gantry, the others hang in their docks
+    const ai = st.toolchanger && st.toolchanger.tool_number === -1 ? -1 : Array.from({length: N}, (_, i) => exName(i)).indexOf(act);
+    for (let i = 0; i < N; i++) $("dkh" + i).style.display = i === ai ? "none" : "";
+    $("mvhead").style.display = ai < 0 ? "none" : "";
+  }
   const lo = CFG.light && CFG.light.object, lj = lo ? st[lo] : null;
   if (lj && Date.now() > lightHold) lightOn = lj.color_data ? (lj.color_data[0] || []).some(v => v > 0) : (typeof lj.value === "number" ? lj.value > 0 : lightOn);
   lightApply();
   {   // part preview on the plate
     const ps = st.print_stats || {}, vs = st.virtual_sdcard || {}, act = ps.state === "printing" || ps.state === "paused";
     const g = $("sthg"), show = act && !!thumbUrl;
+    let grown = null;
     g.style.display = show ? "" : "none";
     if (show) {
       if ($("sth").getAttribute("href") !== thumbUrl) { $("sth").setAttribute("href", thumbUrl); $("sth0").setAttribute("href", thumbUrl); thumbFit(thumbUrl); }
       const tl = ps.info && ps.info.total_layer, p = tl && ps.info.current_layer != null ? ps.info.current_layer / tl : (vs.progress || 0);
       const hh = thumbGeo.bot - thumbGeo.top, h = hh * clamp(p, 0, 1);       // the part grows from the plate upwards
       $("sthrect").setAttribute("y", (thumbGeo.bot - h).toFixed(1)); $("sthrect").setAttribute("height", (h + 4).toFixed(1));
+      if (g !== DUMMY) grown = h;
     }
+    motionTarget(st, grown);                                  // drawn models: the toolhead and bed follow the printer
   }
   const yb = 380;   // static build plate (only its color reflects the bed temperature)
   $("bedtop").setAttribute("points", "168," + yb + " 352," + yb + " 376," + (yb + 40) + " 144," + (yb + 40));
@@ -1381,19 +1768,75 @@ function sceneFeed() {
   }
 }
 
+// ---- Print tuning: Z-offset baby-stepping, speed and flow factors, pressure advance. The server checks every value and
+// keeps the total Z offset inside a limit; nothing here is free-form G-code. Unlike moves, these are meant for use during a print.
+const PTSTEPS = [0.005, 0.01, 0.025, 0.05];
+let ptStep = 0.01, ptHold = 0, ptBusy = false;      // ptHold: leave the controls alone while one is being used
+const ptEl = id => document.getElementById(id);
+ptEl("ptzsteps").innerHTML = PTSTEPS.map(v => '<button data-zstep="' + v + '" class="' + (v === ptStep ? "on" : "") + '" title="Step of ' + v + ' mm">' + v + "</button>").join("");
+function renderTune(st) {
+  ptEl("ptune").hidden = !CONTROLS;
+  if (!CONTROLS || Date.now() < ptHold) return;
+  const gm = st.gcode_move || {}, ex = st[(st.toolhead || {}).extruder] || st.extruder || {}, z = +((gm.homing_origin || [])[2]) || 0;
+  ptEl("ptz").textContent = (z > 0 ? "+" : "") + z.toFixed(3) + " mm";
+  const put = (id, v) => { const e = ptEl(id); if (document.activeElement !== e) e.value = v; };
+  for (const [id, f] of [["ptspeed", gm.speed_factor], ["ptflow", gm.extrude_factor]]) if (typeof f === "number") { put(id, Math.round(f * 100)); ptEl(id + "v").textContent = Math.round(f * 100) + "%"; }
+  if (typeof ex.pressure_advance === "number") put("ptpa", +ex.pressure_advance.toFixed(4));
+  if (typeof ex.smooth_time === "number") put("ptsm", +ex.smooth_time.toFixed(4));
+  ptEl("ptune").querySelectorAll("button[data-tune]").forEach(b => { b.disabled = ptBusy; });
+}
+async function tuneSend(what, value, label) {
+  if (ptBusy) return;
+  ptBusy = true; ptHold = Date.now() + 4000;
+  try {
+    await postControl({action: "tune", what, value});
+  } catch (e) {
+    flashError(label + " failed: " + e.message, 8000);
+  }
+  ptBusy = false; ptHold = 0; tick();
+}
+ptEl("ptune").addEventListener("click", ev => {
+  const s = ev.target.closest("button[data-zstep]");
+  if (s) { ptStep = +s.dataset.zstep; ptEl("ptzsteps").querySelectorAll("button").forEach(b => b.classList.toggle("on", b === s)); return; }
+  const b = ev.target.closest("button[data-tune]"); if (!b || b.disabled || !CONTROLS) return;
+  const t = b.dataset.tune, num = id => { const v = ptEl(id).value; return v === "" ? NaN : +v; };
+  if (t === "zdown") tuneSend("z_adjust", -ptStep, "Z offset");
+  else if (t === "zup") tuneSend("z_adjust", ptStep, "Z offset");
+  else if (t === "zreset") { ask("Set the Z offset back to 0?\nThe nozzle moves by the current offset straight away.", "Reset").then(ok => { if (ok) tuneSend("z_reset", 0, "Z offset"); }); }
+  else if (t === "speed100") tuneSend("speed", 100, "Speed");
+  else if (t === "flow100") tuneSend("flow", 100, "Flow");
+  else if (t === "pa") tuneSend("pa", num("ptpa"), "Pressure advance");
+  else if (t === "smooth") tuneSend("smooth", num("ptsm"), "Smooth time");
+});
+ptEl("ptune").addEventListener("input", ev => {            // live readout while a slider is dragged
+  const e = ev.target; if (!e.matches("input[type=range]")) return;
+  ptHold = Date.now() + 60000; ptEl(e.id + "v").textContent = Math.max(10, +e.value) + "%";      // the speed slider starts at 0 so that 100 % sits in the middle; the lowest speed is 10 %
+});
+ptEl("ptune").addEventListener("change", ev => {           // sent when the slider is released
+  const e = ev.target; if (!e.matches("input[type=range]") || !CONTROLS) return;
+  tuneSend(e.id === "ptspeed" ? "speed" : "flow", Math.max(10, +e.value), e.id === "ptspeed" ? "Speed" : "Flow");
+});
 // ---- Print info: ETA, speed, flow, filament used, slicer estimate (metadata of the current file) ----
 let meta = null, metaFile = "", thumbUrl = "";
+// Slicer thumbnail of a G-code file, as a path under /server/files/gcodes/ ("" = none). Moonraker lists thumbnails relative
+// to the file's folder. Some firmware (QIDI) also lists one with an absolute path on the printer's own disk; that one cannot
+// be fetched this way and is skipped. Only PNGs are used: that is what the dashboard server forwards.
+function thumbPath(fn, thumbs, biggest) {
+  const th = (thumbs || []).filter(t => t && typeof t.relative_path === "string" && /\.png$/.test(t.relative_path) &&
+      !/^[\/\\]/.test(t.relative_path) && !t.relative_path.split(/[\/\\]/).includes(".."))
+    .sort((a, b) => biggest ? b.width - a.width : a.width - b.width)[0];
+  if (!th) return "";
+  const dir = fn.includes("/") ? fn.slice(0, fn.lastIndexOf("/") + 1) : "";
+  return "/server/files/gcodes/" + (dir + th.relative_path).split("/").map(encodeURIComponent).join("/");
+}
 async function loadMeta(fn) {
   metaFile = fn; meta = null; thumbUrl = "";
   try {
     const m = (await jget(MR + "/server/files/metadata?filename=" + encodeURIComponent(fn))).result;
     if (metaFile !== fn) return;
     meta = m;
-    const th = (m.thumbnails || []).slice().sort((a, b) => b.width - a.width)[0];
-    if (th) {
-      const dir = fn.includes("/") ? fn.slice(0, fn.lastIndexOf("/") + 1) : "";
-      thumbUrl = MR + "/server/files/gcodes/" + (dir + th.relative_path).split("/").map(encodeURIComponent).join("/");
-    }
+    const tp = thumbPath(fn, m.thumbnails, true);
+    if (tp) thumbUrl = HOSTED ? withP(tp) : MR + tp;
   } catch (e) { /* no metadata: the card just shows what the live data gives */ }
 }
 const fmtDur = s => {
@@ -1432,6 +1875,14 @@ function renderPrintInfo(st) {
     tile("Flow", active && flow != null ? flow.toFixed(1) + sm("mm³/s") : "-", typeof gm.extrude_factor === "number" ? "flow factor " + Math.round(gm.extrude_factor * 100) + "%" : "") +
     tile("Filament used", used != null && active ? (used / 1000).toFixed(2) + " m" + sm(g != null ? "≈" + g.toFixed(0) + " g" : "") : "-", g != null ? "about " + g.toFixed(1) + " g of " + wt.toFixed(1) + " g total" : "");
 }
+// Spokes that turn with the spool (data-spin): six, so the group's centre is the spool's centre. Light with a dark edge,
+// so they stand out on white filament as well as on black.
+function spinMarks(cx, cy, r0, r1) {
+  if (!(r1 > r0 + 3)) return "";
+  const ln = (a, w, col, op) => { const c = Math.cos(a * Math.PI / 180), q = Math.sin(a * Math.PI / 180);
+    return '<line x1="' + (cx + r0 * c).toFixed(1) + '" y1="' + (cy + r0 * q).toFixed(1) + '" x2="' + (cx + r1 * c).toFixed(1) + '" y2="' + (cy + r1 * q).toFixed(1) + '" stroke="' + col + '" stroke-opacity="' + op + '" stroke-width="' + w + '" stroke-linecap="round"/>'; };
+  return '<g data-spin="1" pointer-events="none">' + [0, 60, 120, 180, 240, 300].map(a => ln(a, 5.5, "#000", .4) + ln(a, 3, "#fff", .85)).join("") + "</g>";
+}
 // ---- Toolchanger graphics: built-in "reel" and uploaded SVG templates ----
 function reelSvg(s) {
   const c = s.loaded ? s.col : "#2A2750", temp = s.ex.temperature || 0, tgt = s.ex.target || 0, heat = tgt > 0 || temp > 60;
@@ -1439,7 +1890,7 @@ function reelSvg(s) {
   return '<svg class="slotsvg" viewBox="0 0 200 150" role="img">' +
     '<g class="spool" data-spool="' + s.i + '" tabindex="0" role="button" aria-label="Spool details for T' + s.i + '">' +
     '<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="#14122b" stroke="#4b4690" stroke-width="4"/>' +
-    (s.loaded ? '<circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="' + c + '"/><circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="none" stroke="' + shade(c, .6) + '" stroke-dasharray="2 4" opacity=".6"/>' : "") +
+    (s.loaded ? '<circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="' + c + '"/><circle cx="' + cx + '" cy="' + cy + '" r="' + rf + '" fill="none" stroke="' + shade(c, .6) + '" stroke-dasharray="2 4" opacity=".6" data-spin="1"/>' + spinMarks(cx, cy, 19, rf - 3) : "") +
     '<circle cx="' + cx + '" cy="' + cy + '" r="15" fill="#0F0D24" stroke="#4b4690" stroke-width="3"/><circle cx="' + cx + '" cy="' + cy + '" r="4" fill="#4b4690"/></g>' +
     '<text x="100" y="142" text-anchor="middle" fill="' + (heat ? "#E8B04F" : "#A29EDB") + '" font-size="15" font-weight="600">' +
     tgtSpan(exName(s.i), "T" + s.i + " nozzle", tgt, true, Math.round(temp) + '°' + (tgt > 0 || CONTROLS ? ' / ' + (tgt > 0 ? Math.round(tgt) + "°" : "off") : "")) + '</text></svg>';
@@ -1448,8 +1899,17 @@ function reelSvg(s) {
 // Uploaded slot graphics are untrusted: scripts, event handlers, external references and page-wide CSS are removed, ids are
 // prefixed so they can never collide with the page's own, and CSS rules are scoped to the slot graphic.
 function sanitizeSlotSvg(text) {
-  const doc = new DOMParser().parseFromString(text, "image/svg+xml"), root = doc.documentElement;
-  if (!root || root.localName !== "svg" || doc.querySelector("parsererror")) return null;
+  let doc = new DOMParser().parseFromString(text, "image/svg+xml"), root = doc.documentElement;
+  if (root && root.localName === "svg" && !root.namespaceURI) {       // an <svg> without xmlns: parse it again as real SVG
+    doc = new DOMParser().parseFromString(String(text).replace(/<svg(?=[\s>\/])/, '<svg xmlns="' + SVGNS + '"'), "image/svg+xml"); root = doc.documentElement;
+  }
+  if (!root || root.localName !== "svg" || root.namespaceURI !== SVGNS || doc.querySelector("parsererror")) return null;
+  // The result is put back into the page as HTML text, and the HTML parser reads some things differently from the XML
+  // parser used here (a CDATA block inside a non-SVG element becomes live markup). So: CDATA becomes plain text,
+  // comments and processing instructions go, and only elements in the SVG namespace are kept.
+  const odd = [], tw = doc.createTreeWalker(root, NodeFilter.SHOW_ALL);
+  while (tw.nextNode()) { const t = tw.currentNode.nodeType; if (t === 4 || t === 7 || t === 8 || (t === 1 && tw.currentNode.namespaceURI !== SVGNS)) odd.push(tw.currentNode); }
+  for (const n of odd) { if (n.nodeType === 4) n.replaceWith(doc.createTextNode(n.data)); else n.remove(); }
   const bad = new Set(["script", "foreignobject", "iframe", "object", "embed", "audio", "video", "animate", "set", "animatetransform", "animatemotion", "a", "image"]);
   const ids = new Set();
   for (const el of [root, ...root.querySelectorAll("*")]) if (el.getAttribute("id")) ids.add(el.getAttribute("id"));
@@ -1481,11 +1941,19 @@ function sanitizeSlotSvg(text) {
     root.setAttribute("viewBox", "0 0 " + (w > 0 ? w : 200) + " " + (h > 0 ? h : 150));
   }
   root.removeAttribute("width"); root.removeAttribute("height");
-  return {tpl: new XMLSerializer().serializeToString(root), css: scoped};
+  const tpl = new XMLSerializer().serializeToString(root);
+  // last check, on what the HTML parser really makes of it (a <template> never runs or loads anything):
+  // every element must still be SVG and none may carry an event handler
+  const probe = document.createElement("template");
+  probe.innerHTML = tpl;
+  const els = [...probe.content.querySelectorAll("*")];
+  if (probe.content.childElementCount !== 1 || els.some(e => e.namespaceURI !== SVGNS || [...e.attributes].some(a => /^on/i.test(a.name)))) return null;
+  return {tpl, css: scoped.replace(/</g, "\\3C ")};      // "<" as a CSS escape: the rules can never close a <style> element
 }
 // Template hooks (all optional):  data-fill="filament" / data-stroke="filament"  color from the loaded filament
 //   data-heat  fill follows the nozzle temperature    data-level="scale|height|width"  scaled by the filament left
 //   data-text="temp|target|tool|material|name|remaining|fan"    data-show="loaded|empty|active|idle|heating"
+//   data-spin="1"  turns about its own centre while that slot feeds filament
 function customSlot(s) {
   if (!TC.tpl) return "";
   const root = new DOMParser().parseFromString(TC.tpl, "image/svg+xml").documentElement;
@@ -1522,6 +1990,8 @@ async function applyGraphics() {
   if (pp.custom) {
     const a = pp.anchors || {};
     PK = {id: pp.id, kind: "image", url: "/packs/printer/" + encodeURIComponent(pp.id) + "/" + encodeURIComponent(pp.file), width: pp.width, height: pp.height, anchors: a};
+  } else if (MODELS[pp.id]) {
+    PK = Object.assign({id: pp.id, kind: "image"}, modelPack(pp.id, "", {tools: N, docks: CFG.docks, style: CFG.toolhead}));
   } else if (BUILTIN_IMAGES[pp.id]) {
     PK = Object.assign({id: pp.id, kind: "image"}, BUILTIN_IMAGES[pp.id]);
   } else PK = {id: "u1", kind: "u1"};
@@ -1549,7 +2019,7 @@ async function applyGraphics() {
 
 // ---- ArmoredTurtle AFC / BoxTurtle: one slot per lane ----
 const AFC_LABEL = {load: "Load", park: "Unload", unload: "Eject", pickup: "Change to"};      // Load = TOOL_LOAD, Unload = TOOL_UNLOAD, Eject = LANE_UNLOAD (pickup/CHANGE_TOOL is not shown)
-const AFC_LED = {"Tooled": "#4ade80", "Tool Loaded": "#4ade80", "Loaded": "#9580FF", "Error": "#ff5a5a", "Tool Loading": "#E8B04F", "Tool Unloading": "#E8B04F", "HUB Loading": "#E8B04F",
+const AFC_LED = {"In use": "#4ade80", "Ready": "#9580FF", "Tooled": "#4ade80", "Tool Loaded": "#4ade80", "Loaded": "#9580FF", "Error": "#ff5a5a", "Tool Loading": "#E8B04F", "Tool Unloading": "#E8B04F", "HUB Loading": "#E8B04F",
   "Ejecting": "#E8B04F", "Calibrating": "#E8B04F", "Infinite Runout": "#ff9a4a"};
 const afcColor = c => { c = String(c || "").replace(/^#/, ""); return /^[0-9a-fA-F]{6}/.test(c) ? "#" + c.slice(0, 6).toUpperCase() : "#808080"; };
 function slotsAFC(st) {
@@ -1693,7 +2163,8 @@ function afcSvg(s) {
       '<ellipse cx="' + cx + '" cy="' + cy + '" rx="' + rfx.toFixed(1) + '" ry="' + rf.toFixed(1) + '" fill="' + dark + '"/>' : "") +
     '<ellipse cx="' + fx + '" cy="' + cy + '" rx="' + RX + '" ry="' + RY + '" fill="url(#aff' + id + ')" stroke="#6a66b0" stroke-width="1.5"/>' +
     (s.loaded ? '<ellipse cx="' + fx + '" cy="' + cy + '" rx="' + rfx.toFixed(1) + '" ry="' + rf.toFixed(1) + '" fill="' + c + '" stroke="' + dark + '"/>' +
-      '<ellipse cx="' + fx + '" cy="' + cy + '" rx="' + rfx.toFixed(1) + '" ry="' + rf.toFixed(1) + '" fill="none" stroke="' + light + '" stroke-opacity=".35" stroke-dasharray="2 4"/>' : "") +
+      '<ellipse cx="' + fx + '" cy="' + cy + '" rx="' + rfx.toFixed(1) + '" ry="' + rf.toFixed(1) + '" fill="none" stroke="' + light + '" stroke-opacity=".5" stroke-dasharray="2 4" data-spin-dash="1"/>' +
+      '<g transform="translate(' + fx + " " + cy + ") scale(" + (RX / RY).toFixed(3) + ' 1)">' + spinMarks(0, 0, 23, rf - 3) + "</g>" : "") +
     // hub, axle stub
     '<ellipse cx="' + fx + '" cy="' + cy + '" rx="9" ry="20" fill="#0f0d24" stroke="#6a66b0"/>' +
     '<rect x="' + fx + '" y="' + (cy - 5) + '" width="16" height="10" rx="3" fill="#8a86c8"/><ellipse cx="' + (fx + 16) + '" cy="' + cy + '" rx="3" ry="5" fill="#b3b0e6"/></g>' +
@@ -1733,6 +2204,83 @@ function slotsU1(st) {                       // Snapmaker U1: RFID tags (filamen
   }
   return out;
 }
+// QIDI Box: one slot per spool bay (four per Box), all feeding the one toolhead. The Box's controller reports each slot's
+// state (0 empty, 1 filament waiting in the Box, 2 loaded into the toolhead) and what was set for it on the printer
+// (material, color, vendor); firmware without that object still gives the states through the saved variables.
+// Slots are named as on the printer's screen: Box number + bay letter (slot0 = 1A, slot5 = 2B).
+// The last card, "External" (slot16 on the printer), is the spool that bypasses the Box and is loaded by hand. Nothing
+// senses that spool itself: it counts as in use when the toolhead has filament and no Box slot is loaded into it.
+const BOX_EXT = "slot16";
+let boxTable = null, boxTableAsked = false;      // QIDI's filament table: names for the numbers kept in the saved variables
+async function loadBoxTable() {                  // only needed when the Box controller does not report the materials itself
+  if (boxTableAsked || !HOSTED) return;
+  boxTableAsked = true;
+  try {
+    const d = {}; let sec = null;
+    for (const line of (await jget("/config/read?path=officiall_filas_list.cfg")).content.split(/\r?\n/)) {
+      const s = /^\[([^\]]+)\]/.exec(line), kv = /^\s*([^#;=\s\[][^=]*?)\s*=\s*(.*?)\s*$/.exec(line);
+      if (s) sec = d[s[1]] = {}; else if (kv && sec) sec[kv[1]] = kv[2];
+    }
+    boxTable = d;
+  } catch (e) { /* no table on this printer: slots show their state without material names */ }
+}
+function slotsQidi(st) {
+  const M = st.multi_color_controller || {}, V = (st.save_variables || {}).variables || {}, sl = M.slots || {}, out = [];
+  window.__fd = [];
+  loadBoxTable();                                             // also needed for the lists in the slot editor
+  const T = boxTable || {};
+  const material = name => (sl.materials || {})[name] || (boxTable ? {filament: T["fila" + V["filament_" + name]] || {}, color: (T.colordict || {})[V["color_" + name]], vendor: (T.vendor_list || {})[V["vendor_" + name]]} : {});
+  const names = CFG.lanes || [], boxLoaded = names.some(nm => nm !== BOX_EXT && +(((sl.states || {})[nm]) != null ? sl.states[nm] : V[nm]) === 2);
+  const ex = M.extruder || {}, be = st.box_extras || {}, sw = st["filament_switch_sensor fila"] || {};
+  const atHead = typeof ex.filament_detected === "boolean" ? ex.filament_detected : typeof be.e_endstop_state === "number" ? be.e_endstop_state === 1 : !!sw.filament_detected;
+  names.forEach((name, i) => {
+    const ext = name === BOX_EXT, n = +name.replace(/\D/g, "") || 0;
+    const m = material(name), f = m.filament || {};
+    const state = ext ? (atHead && !boxLoaded ? 2 : f.filament || f.type ? 1 : 0) : +(((sl.states || {})[name]) != null ? sl.states[name] : V[name]) || 0;
+    const loaded = state > 0, isActive = state === 2;
+    let tool = ext ? null : n;                                 // the T number this slot answers to (value_t3 = "slot0" means T3 prints from slot0)
+    if (!ext) for (let t = 0; t < 16; t++) if (V["value_t" + t] === name) { tool = t; break; }
+    const mat = String(f.type || ""), title = String(f.filament || mat || "Filament"), temps = f.min_temp && f.max_temp ? f.min_temp + " - " + f.max_temp + " °C" : "";
+    out.push({i, ex: isActive ? (st[exName(0)] || {}) : {}, info: {}, loaded, uid: "", sp: null, col: m.color ? afcColor(m.color) : "#808080", mat, rem: null, total: 0, isActive, ext,
+      ids: {filament: V["filament_" + name], color: V["color_" + name], vendor: V["vendor_" + name]},
+      lane: name, tool, slot: n, label: ext ? "External" : (Math.floor(n / 4) + 1) + "ABCD"[n % 4], status: isActive ? "In use" : ext ? (loaded ? "Standby" : "Not set") : loaded ? "Ready" : "Empty",
+      map: ext ? "by hand" : "T" + tool, unit: ext ? "External spool, not through the Box" : "Box " + (Math.floor(n / 4) + 1),
+      frac: loaded ? .7 : .05, spool: "left", remTxt: "-", title: loaded ? title : ext ? "Not set" : "Empty", brand: loaded ? String(m.vendor || "") : ext ? "no material chosen" : "no filament",
+      vendor: String(m.vendor || ""), temps, boxTemp: +f.box_max_temp > 0 ? "up to " + f.box_max_temp + " °C" : ""});
+  });
+  return out;
+}
+// QIDI Box status row (shares the AFC row): connection, what is loaded, each Box's temperature and humidity, drying
+// Toolchanger status row (klipper-toolchanger, as used by StealthChanger and ktc-easy); shares the AFC row
+function renderTcBar(st) {
+  if (CFG.provider !== "toolchanger") return;
+  const bar = document.getElementById("afcbar"), T = st.toolchanger || {}, pills = [];
+  const tn = n => typeof n === "number" && n >= 0 ? "T" + n : "none";
+  if (T.status === "error") pills.push('<span class="pill off"><i></i>Toolchanger: Error</span>');
+  else if (T.status) pills.push(pill("Toolchanger", T.status, T.status === "ready", T.status === "uninitialized"));
+  pills.push(pill("Tool in use", tn(T.tool_number), T.tool_number >= 0, !(T.tool_number >= 0)));
+  if (T.has_detection) pills.push(pill("Tool detected", tn(T.detected_tool_number), T.detected_tool_number >= 0 && T.detected_tool_number === T.tool_number, !(T.detected_tool_number >= 0)));
+  bar.innerHTML = pills.join("");
+  bar.hidden = !pills.length;
+}
+function renderBoxBar(st) {
+  if (CFG.provider !== "qidibox") return;
+  const bar = document.getElementById("afcbar"), M = st.multi_color_controller || {}, pills = [];
+  const hw = M.hardware || {}, ex = M.extruder || {}, op = M.operation || {}, last = (M.slots || {}).last_loaded;
+  if (M.hardware) pills.push(pill("QIDI Box", hw.connected ? (hw.box_count > 1 ? hw.box_count + " connected" : "connected") : "not connected", !!hw.connected, !hw.connected));
+  const act = (SLOTSNOW || []).find(s => s.isActive);
+  pills.push(pill("Loaded", act ? act.label + " · " + act.title : "none", !!act, !act));
+  if (((st.save_variables || {}).variables || {}).enable_box === 0) pills.push(pill("Box", "switched off for printing (external spool)", false, true));
+  if (typeof ex.filament_detected === "boolean") pills.push(pill("Toolhead sensor", ex.filament_detected ? "filament present" : "clear", ex.filament_detected));
+  for (const n of boxObjs.filter(o => o.startsWith("aht20_f "))) {
+    const o = st[n] || {}, h = st["heater_generic " + n.split(" ")[1]] || {};
+    if (typeof o.temperature !== "number") continue;
+    pills.push(pill("Box air", o.temperature.toFixed(0) + "°" + (typeof o.humidity === "number" ? " · " + Math.round(o.humidity) + "% Humidity" : "") + (h.target > 0 ? " · Drying to " + Math.round(h.target) + "°" : ""), h.target > 0));
+  }
+  if (op.error) pills.push('<span class="pill off"><i></i>Box error: ' + escH(String(typeof op.error === "string" ? op.error : JSON.stringify(op.error)).slice(0, 80)) + "</span>");
+  bar.innerHTML = pills.join("");
+  bar.hidden = !pills.length;
+}
 function slotsExtruders(st) {                // any Klipper printer: one slot per extruder, spool from config or Moonraker's active Spoolman spool
   const act = st.toolhead.extruder, out = [], fixed = (CFG && CFG.toolSpools) || {};
   window.__fd = [];
@@ -1751,26 +2299,34 @@ function slotsExtruders(st) {                // any Klipper printer: one slot pe
 function render(st) {
   printState = st.print_stats.state;
   renderPrintInfo(st);
+  renderTune(st);
   renderPrintCtl(printState);
   renderTemps(st);
   renderFans(st);
   renderAfcBar(st);
   window.__st = st;
   renderMove(st);
-  const afc = CFG.provider === "afc", slots = CFG.provider === "u1" ? slotsU1(st) : afc ? slotsAFC(st) : slotsExtruders(st), ts = st.toolhead.extruder;
+  const qb = CFG.provider === "qidibox", afc = CFG.provider === "afc" || qb;      // both have one card per lane / slot feeding a single toolhead
+  const slots = CFG.provider === "u1" ? slotsU1(st) : qb ? slotsQidi(st) : afc ? slotsAFC(st) : slotsExtruders(st), ts = st.toolhead.extruder;
+  renderBoxBar(st); renderTcBar(st);
   let out = "";
   const sceneCols = [], sceneLoaded = [];
   for (const s of slots) {
     const i = s.i, ex = s.ex;
-    const isActive = afc ? s.isActive : ts === exName(i), heating = ex.target > 0;
-    const state = afc ? (isActive ? "ACTIVE" : s.status) : isActive ? "ACTIVE" : (ex.state === "PARKED" ? "Parked" : (ex.state || "").toLowerCase());
+    const tcp = CFG.provider === "toolchanger", noTool = !!(st.toolchanger && st.toolchanger.tool_number === -1);      // toolchanger with every tool docked
+    const isActive = afc ? s.isActive : ts === exName(i) && !noTool, heating = ex.target > 0;
+    const state = afc ? (isActive ? "ACTIVE" : s.status) : isActive ? "ACTIVE" : tcp ? "Docked" : (ex.state === "PARKED" ? "Parked" : (ex.state || "").toLowerCase());
     if (afc) { if (isActive) { const k = Math.min(N - 1, s.tool || 0); sceneCols[k] = s.col; sceneLoaded[k] = true; } }
     else { sceneCols[i] = s.col; sceneLoaded[i] = s.loaded; }
-    spoolInfo[i] = {sp: s.sp, info: s.info, loaded: s.loaded, col: s.col, uid: s.uid, lane: afc ? s.lane : null, mat: s.mat, rem: s.rem, total: s.total};
+    spoolInfo[i] = {sp: s.sp, info: s.info, loaded: s.loaded, col: s.col, uid: s.uid, lane: afc && !qb ? s.lane : null, box: qb ? s : null, mat: s.mat, rem: s.rem, total: s.total};
     // hotend fan for this head: drives the label and the spin speed of the orange knob
     const hf = afc ? null : st[slotFan(i).hotend];
     let fanLabel = "";
     if (!afc) spinSpeed[i] = 0;
+    {   // the spool turns with the filament: forwards while printing, backwards on a retract. Much faster than a real spool, so it can be seen
+      const ev = (st.motion_report || {}).live_extruder_velocity;
+      spoolSpd[i] = isActive && s.loaded && typeof ev === "number" && Math.abs(ev) > .05 ? Math.sign(ev) * clamp(Math.abs(ev) * 30, 70, 420) : 0;
+    }
     if (hf && typeof hf.speed === "number") {
       const rpm = typeof hf.rpm === "number" && hf.rpm > 0 ? hf.rpm : hf.speed * 17000;
       spinSpeed[i] = hf.speed > 0 ? Math.min(SPIN_MAX, rpm / 17000 * SPIN_MAX) : 0;
@@ -1779,12 +2335,12 @@ function render(st) {
     Object.assign(s, {isActive, fanLabel});
     out += '<div class="tool' + (isActive ? " active" : "") + (s.loaded ? "" : " empty") + '">' +
       '<div class="top"><span class="tn">' + escH(s.label || "T" + i) + '</span>' +
-      '<span class="badge' + (isActive ? " active" : heating ? " heat" : "") + '">' + (heating && !isActive ? "Heating" : state) + '</span></div>' +
+      '<span class="badge' + (isActive ? " active" : heating ? " heat" : "") + '">' + (heating && !isActive ? "Heating" : escH(cap(state))) + '</span></div>' +
       slotGraphic(s) +
       '<div class="mat">' + escH(s.title) + '</div>' +
       '<div class="brand">' + escH(s.brand) + '</div>' +
-      '<div class="stats"><div><b>' + (s.loaded && s.col ? s.col.slice(1) : "-") + '</b>color</div>' +
-      '<div><b>' + s.remTxt + '</b>' + s.spool + '</div>' +
+      '<div class="stats"><div><b>' + (s.loaded && s.col ? '<i class="sw" style="background:' + escH(s.col) + '"></i>' + escH(s.col.slice(1)) : "-") + '</b>Color</div>' +
+      (s.remTxt !== "-" ? '<div><b>' + s.remTxt + '</b>' + escH(String(s.spool || "").replace(/^./, c => c.toUpperCase())) + '</div>' : "") +
       (CFG.spoolman ? '<div><b>' + (s.sp ? "#" + s.sp.id : "-") + '</b>Spoolman</div>' : "") + '</div>' + actions(i, s.loaded, isActive, ex, s) + '</div>';
   }
   document.getElementById("grid").innerHTML = out;
@@ -1798,7 +2354,13 @@ function render(st) {
 // (capped so it never strobes). Driven from requestAnimationFrame so the 2 s re-render doesn't restart it.
 const SPIN_MAX = 540;                 // degrees per second at full speed
 const spinSpeed = new Array(16).fill(0), spinAngle = new Array(16).fill(0);
+const spoolSpd = new Array(32).fill(0), spoolAng = new Array(32).fill(0);      // per card: degrees per second, and the angle it has reached
 function spinApply() {
+  document.querySelectorAll("#grid .tool").forEach((card, i) => {      // the cards are redrawn every poll, so the angle is put back each time
+    if (!spoolAng[i]) return;
+    card.querySelectorAll("[data-spin]").forEach(e => { e.style.transform = "rotate(" + spoolAng[i].toFixed(1) + "deg)"; });
+    card.querySelectorAll("[data-spin-dash]").forEach(e => e.setAttribute("stroke-dashoffset", (-spoolAng[i] * .3).toFixed(1)));
+  });
   for (let i = 0; i < N; i++) {
     const g = document.getElementById("knob" + i);
     if (g) g.setAttribute("transform", "rotate(" + spinAngle[i].toFixed(1) + " 110 214)");
@@ -1818,7 +2380,9 @@ function spinFrame(t) {
   let moved = false;
   for (let i = 0; i < N; i++) if (spinSpeed[i] > 0) { spinAngle[i] = (spinAngle[i] + spinSpeed[i] * dt) % 360; moved = true; }
   for (const k in FANPOS) if (fanSpd[k] > 0) { fanAng[k] = (fanAng[k] + fanSpd[k] * dt) % 360; moved = true; }
+  for (let i = 0; i < spoolSpd.length; i++) if (spoolSpd[i]) { spoolAng[i] = (spoolAng[i] + spoolSpd[i] * dt + 360) % 360 || .01; moved = true; }
   if (moved) spinApply();
+  motionApply(dt);
   requestAnimationFrame(spinFrame);
 }
 requestAnimationFrame(spinFrame);
@@ -1871,6 +2435,7 @@ async function tick() {
       tmcObjs = l.result.objects.filter(n => /^tmc\d+ /.test(n));
       afcParts = l.result.objects.includes("AFC") ? l.result.objects.filter(n => /^AFC_(extruder|hub|buffer) \S/.test(n)) : [];
       afcLanes = l.result.objects.includes("AFC") ? l.result.objects.filter(n => /^AFC_(stepper|lane) \S/.test(n)) : [];
+      boxObjs = l.result.objects.filter(n => /^(box_stepper slot\d+|aht20_f \S+|heater_generic heater_box\d*)$/.test(n));
       CH = {sensor: (CFG.chamber && CFG.chamber.sensor) || tempObjs.find(n => /^(temperature_sensor|temperature_fan|heater_generic) .*(chamber|cavity|enclosure)/i.test(n)) || null,
             fan: (CFG.chamber && CFG.chamber.fan) || fanObjs.find(n => /^fan_generic .*(chamber|cavity)/i.test(n)) || null};
       if (!CFG.fromServer && !CFG.discovered) {          // opened as a file: work out what this printer is from Klipper itself
@@ -1886,54 +2451,84 @@ async function tick() {
     const base = ["toolhead", "print_stats", "virtual_sdcard", "gcode_move", "motion_report"].concat(Array.from({length: N}, (_, i) => exName(i)), tmcObjs);
     if (CFG.provider === "u1") base.push("filament_detect", "filament_feed left", "filament_feed right");
     if (CFG.provider === "afc") base.push("AFC", ...afcLanes, ...afcParts);
+    if (CFG.provider === "toolchanger") base.push("toolchanger");
+    if (CFG.provider === "qidibox") base.push("multi_color_controller", "save_variables", "box_extras", "filament_switch_sensor fila", ...boxObjs);
     if (CFG.light && CFG.light.object) base.push(CFG.light.object);
     const objs = base.map(n => encodeURIComponent(n)).join("&") + extra;
     const j = await jget(MR + "/printer/objects/query?" + objs);
     if (CFG.spoolman && Date.now() - spoolsAt > 15000) await loadSpools();
     const st = j.result.status;
     render(st);
-    conn.textContent = "connected";
+    conn.textContent = "Connected";
     conn.className = "pill on";
     const p = st.print_stats;
     document.getElementById("job").textContent = p.state === "printing" || p.state === "paused"
-      ? p.state + (st.virtual_sdcard ? " " + Math.round(st.virtual_sdcard.progress * 100) + "%" : "") + ": " + p.filename + (p.info && p.info.total_layer ? "  (layer " + p.info.current_layer + "/" + p.info.total_layer + ")" : "")
-      : "state: " + p.state;
+      ? cap(p.state) + (st.virtual_sdcard ? " " + Math.round(st.virtual_sdcard.progress * 100) + "%" : "") + ": " + p.filename + (p.info && p.info.total_layer ? "  (layer " + p.info.current_layer + "/" + p.info.total_layer + ")" : "")
+      : "State: " + cap(p.state);
     document.getElementById("foot").textContent = "updated " + new Date().toLocaleTimeString() + "  -  " + CFG.name + " (" + PRINTER + ")";
   } catch (e) {
-    conn.textContent = "offline";
+    conn.textContent = "Offline";
     conn.className = "pill off";
   }
 }
 // Camera: one JPEG frame at a time (the printer offers WebRTC only, no MJPEG), about once a second.
 const camimg = document.getElementById("camimg"), camstat = document.getElementById("camstat");
-// Live mode embeds the printer's own WebRTC player page (/webcam/webrtc); snapshot mode is the fallback.
+// Live mode: a WebRTC camera is the printer's own player page (/webcam/webrtc) in a frame. An MJPEG camera is a plain
+// picture stream, so it is shown in an <img>, which scales it to the box (in a frame the browser shows it at full size
+// and only the top-left corner is visible). Snapshot mode is the fallback.
 let CAM_PAGE = "";
-const camframe = document.getElementById("camframe"), cambtn = document.getElementById("cammode");
+const camframe = document.getElementById("camframe"), camlive = document.getElementById("camlive"), cambtn = document.getElementById("cammode");
 let camMode = "live";
 try { camMode = localStorage.getItem("camMode") || "live"; } catch (e) {}
 function setCam(m) {
   camMode = m;
   try { localStorage.setItem("camMode", m); } catch (e) {}
-  const live = m === "live";
-  camframe.hidden = !live; camimg.hidden = live;
-  camframe.src = live ? CAM_PAGE : "about:blank";   // blank frame closes the WebRTC session
+  const live = m === "live", mjpeg = !!(CFG && CFG.camera && CFG.camera.mode === "mjpeg");
+  camframe.hidden = !live || mjpeg; camlive.hidden = !live || !mjpeg; camimg.hidden = live;
+  const fsrc = live && !mjpeg ? CAM_PAGE : "about:blank";       // blank frame closes the WebRTC session
+  if (camframe.getAttribute("src") !== fsrc) camframe.src = fsrc;
+  if (live && mjpeg) { if (camlive.getAttribute("src") !== CAM_PAGE) camlive.src = CAM_PAGE; }
+  else camlive.removeAttribute("src");                           // no src: the browser stops reading the stream
   cambtn.textContent = live ? "Use snapshots" : "Use live video";
-  camstat.textContent = live ? "live (WebRTC)" : "loading";
+  camstat.textContent = live ? (mjpeg ? "Connecting" : "Live (WebRTC)") : "Loading";
+  camLayout();
 }
+// The camera view. The box keeps the picture's own shape (4:3, 16:9, ...) so it fills it without bars, and the picture is
+// turned as configured: rotation in quarter turns clockwise, then mirrored left-right / top-bottom as seen on screen (the
+// same order Mainsail uses, so Moonraker's webcam settings look the same here). After a quarter turn the box is the
+// picture's shape on its side, and never taller than most of the window.
+let camNat = [16, 9];
+function camLayout() {
+  const c = (CFG && CFG.camera) || {}, rot = [0, 90, 180, 270].includes(+c.rotation) ? +c.rotation : 0, side = rot === 90 || rot === 270;
+  const [w, h] = camNat, view = document.getElementById("camview"), vw = side ? h : w, vh = side ? w : h;
+  view.style.aspectRatio = vw + " / " + vh;
+  view.style.width = "min(100%, calc(72vh * " + (vw / vh).toFixed(4) + "))";
+  const turn = "translate(-50%,-50%)" + (c.flipH ? " scaleX(-1)" : "") + (c.flipV ? " scaleY(-1)" : "") + (rot ? " rotate(" + rot + "deg)" : "");
+  for (const e of [camframe, camlive, camimg]) {             // on its side the picture is as wide as the box is tall
+    e.style.width = side ? (w / h * 100).toFixed(3) + "%" : ""; e.style.height = side ? (h / w * 100).toFixed(3) + "%" : "";
+    e.style.transform = turn;
+  }
+}
+const camShape = im => { if (im.naturalWidth && im.naturalHeight) { camNat = [im.naturalWidth, im.naturalHeight]; camLayout(); } };
+camlive.addEventListener("load", () => { camShape(camlive); if (camMode === "live") camstat.textContent = "Live (MJPEG)"; });
+camlive.addEventListener("error", () => { if (camMode === "live" && camlive.getAttribute("src")) camstat.textContent = "Unavailable"; });
 cambtn.onclick = () => setCam(camMode === "live" ? "snap" : "live");
 function camNext() {
   if (document.hidden || camMode !== "snap") return setTimeout(camNext, 1000);
   const im = new Image();
-  im.onload = () => { camimg.src = im.src; camstat.textContent = "live"; setTimeout(camNext, 800); };
-  im.onerror = () => { camstat.textContent = "unavailable"; setTimeout(camNext, 4000); };
-  im.src = (HOSTED ? "/cam/snapshot" : MR_HTTP + "/webcam/snapshot.jpg") + "?t=" + Date.now();
+  im.onload = () => { camimg.src = im.src; camShape(im); camstat.textContent = "Live"; setTimeout(camNext, 800); };
+  im.onerror = () => { camstat.textContent = "Unavailable"; setTimeout(camNext, 4000); };
+  im.src = HOSTED ? withP("/cam/snapshot?t=" + Date.now()) : MR_HTTP + "/webcam/snapshot.jpg?t=" + Date.now();
 }
 let MR_HTTP = HOSTED ? "" : "http://" + PRINTER;
 // ---- Configuration + several printers ----
 // The page talks to one printer at a time; the server picks it from the X-Printer header (or the "printer" cookie for
 // images and iframes). Switching printers reloads the page.
 const cookieGet = k => (document.cookie.match(new RegExp("(?:^|; )" + k + "=([^;]*)")) || [])[1] || "";
-const PID = decodeURIComponent(cookieGet("printer"));
+// Which printer this tab shows: ?p=<id> in the address (so two tabs, or two cards on a Home Assistant dashboard, can show
+// different printers), else the one picked last in this browser, else the main one. It is fixed for the life of the page.
+const PID = q.get("p") || decodeURIComponent(cookieGet("printer")) || "main";
+const withP = u => u + (u.includes("?") ? "&" : "?") + "p=" + encodeURIComponent(PID);      // for pictures and downloads, which cannot send the header
 if (HOSTED) {
   const rawFetch = window.fetch.bind(window);
   window.fetch = (u, o) => {
@@ -1941,15 +2536,20 @@ if (HOSTED) {
     return rawFetch(u, o);
   };
 }
-function selectPrinter(id) {
+function selectPrinter(id, home) {                           // home: open that printer's Home page instead of staying on the current section
   document.cookie = "printer=" + encodeURIComponent(id) + "; path=/; max-age=31536000; samesite=lax";
-  location.reload();
+  const u = new URL(location.href);
+  if (home) u.hash = "";
+  u.searchParams.set("p", id || "main");
+  if (u.toString() === location.href) location.reload(); else location.href = u.toString();
 }
 let PRINTERS = [];
 async function loadPrinters() {
   try { PRINTERS = (await jget("/api/printers")).printers || []; } catch (e) { PRINTERS = []; }
   const sel = document.getElementById("psel");
   sel.hidden = PRINTERS.length < 2;
+  document.getElementById("navprinters").hidden = PRINTERS.length < 2;      // the overview is only worth a page with two or more printers
+  document.getElementById("pname").classList.toggle("vh", !sel.hidden);
   sel.innerHTML = PRINTERS.map(p => '<option value="' + escH(p.id) + '"' + (p.active ? " selected" : "") + ">" + escH(p.name) + "</option>").join("");
 }
 document.getElementById("psel").addEventListener("change", e => selectPrinter(e.target.value));
@@ -1966,8 +2566,8 @@ async function applyConfig(c) {
   document.getElementById("pname").textContent = c.name;
   document.title = c.name + " · Feedline";
   const stage = document.getElementById("stage");
-  const slotsN = c.provider === "afc" && c.lanes && c.lanes.length ? c.lanes.length : N;
-  stage.style.setProperty("--n", slotsN); stage.style.setProperty("--cols", Math.min(slotsN, 4));
+  const slotsN = (c.provider === "afc" || c.provider === "qidibox") && c.lanes && c.lanes.length ? c.lanes.length : N;
+  stage.style.setProperty("--n", slotsN); stage.style.setProperty("--cols", Math.min(slotsN, c.provider === "qidibox" ? 5 : 4));      // one QIDI Box and its external spool share a row
   mvEl.hidden = !CONTROLS;
   document.getElementById("navsettings").hidden = !CONTROLS;
   document.getElementById("navmacros").hidden = !HOSTED;
@@ -1984,7 +2584,7 @@ async function bootstrap() {
   if (HOSTED) for (let k = 0; k < 3 && !c; k++) {
     try { c = await jget("/api/config"); c.fromServer = true; } catch (e) { await new Promise(r => setTimeout(r, 1500)); }
   }
-  if (HOSTED) loadPrinters();
+  if (HOSTED) { loadPrinters(); document.querySelectorAll('a[href^="/logs/export"]').forEach(a => a.setAttribute("href", withP(a.getAttribute("href")))); }
   await applyConfig(c || Object.assign({}, FALLBACK_CFG));
   if (window.routeHash && /^#(settings|macros)$/.test(location.hash)) window.routeHash();
   try { const f = sessionStorage.getItem("flash"); if (f) { sessionStorage.removeItem("flash"); notice.className = "pill on"; notice.textContent = f; setTimeout(() => { notice.textContent = ""; notice.className = ""; }, 12000); } } catch (e) {}
@@ -1996,7 +2596,7 @@ bootstrap();
 // ---- Left navigation: Home / Jobs / History / Tune ----
 (() => {
   const $ = id => document.getElementById(id), MRB = (typeof MR === "string") ? MR : "";
-  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+  const esc = escH;      // the one HTML escaper, defined with the Home code
   const dur = s => { s = Math.max(0, Math.round(s || 0)); const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return (d ? d + "d " : "") + (h || d ? h + "h " : "") + m + "m"; };
   const get = async p => { const r = await fetch(MRB + p, {cache: "no-store"}); if (!r.ok) throw new Error(p + " " + r.status); return r.json(); };
   let view = "home", filter = "all", jobs = [], timer = null;
@@ -2010,37 +2610,42 @@ bootstrap();
   }
   const spoolIds = j => { const a = (j.auxiliary_data || []).find(x => x.provider === "spoolman" && x.name === "spool_ids"); return [...new Set(((a && a.value) || []).filter(v => v != null))]; };
   function thumbOf(j) {
-    const m = j.metadata || {}, t = (m.thumbnails || []).slice().sort((a, b) => a.width - b.width)[0];
-    if (!j.exists || !t) return "";
-    const dir = (j.filename.includes("/") ? j.filename.replace(/\/[^/]*$/, "/") : "");
-    return MRB + "/server/files/gcodes/" + (dir + t.relative_path).split("/").map(encodeURIComponent).join("/");
+    const tp = j.exists ? thumbPath(j.filename, (j.metadata || {}).thumbnails, false) : "";
+    return tp ? (typeof HOSTED !== "undefined" && HOSTED ? withP(tp) : MRB + tp) : "";
   }
-  function jobsHtml() {
-    const rows = jobs.filter(j => filter === "all" || j.status === filter);
+  function jobsHtml(lim) {
+    const all = jobs.filter(j => filter === "all" || j.status === filter), rows = lim ? all.slice(0, lim) : all;
     const counts = {all: jobs.length}; jobs.forEach(j => counts[j.status] = (counts[j.status] || 0) + 1);
     let h = '<div class="seg">' + ["all", ...Object.keys(counts).filter(k => k !== "all")].map(k =>
-      '<button data-f="' + esc(k) + '" class="' + (k === filter ? "on" : "") + '">' + esc(k === "all" ? "All" : k.replace(/_/g, " ")) + " (" + counts[k] + ")</button>").join("") + "</div>";
-    h += '<div class="vcard" style="padding:6px 8px"><table class="jobtbl"><thead><tr><th></th><th>File</th><th>Status</th><th>Started</th><th>Print time</th><th>Filament</th><th>Materials (click for Spoolman info)</th></tr></thead><tbody>';
-    h += rows.map(j => {
-      const m = j.metadata || {}, th = thumbOf(j), ids = spoolIds(j), used = m.filament_used_mm || [], cols = m.filament_colors || [];
+      '<button data-f="' + esc(k) + '" class="' + (k === filter ? "on" : "") + '">' + esc(k === "all" ? "All" : cap(k.replace(/_/g, " "))) + " (" + counts[k] + ")</button>").join("") + "</div>";
+    // leave out the thumbnail and materials columns when no listed row has anything to show in them
+    const info = rows.map(j => {
+      const m = j.metadata || {}, used = m.filament_used_mm || [], cols = (m.filament_colors || []).filter((c, i) => (used[i] || 0) > 0);
+      return {j, m, th: thumbOf(j), ids: spoolIds(j), cols};
+    });
+    const hasTh = info.some(r => r.th), hasMat = info.some(r => r.ids.length || r.cols.length);
+    h += '<div class="vcard" style="padding:6px 8px;overflow-x:auto"><table class="jobtbl"><thead><tr>' + (hasTh ? "<th></th>" : "") + '<th>File</th><th>Status</th><th>Started</th><th>Print time</th><th>Filament</th>' + (hasMat ? "<th>Materials (click for Spoolman info)</th>" : "") + "</tr></thead><tbody>";
+    h += info.map(({j, m, th, ids, cols}) => {
       let mats = ids.map(id => { const s = spoolMap && spoolMap[id], f = s && s.filament;
         return '<button class="chip" data-spool-id="' + id + '" title="Spool #' + id + (f ? " - " + esc((f.vendor ? f.vendor.name + " " : "") + f.name) : " (not found in Spoolman)") + '"><i style="background:' + (f && f.color_hex ? "#" + esc(f.color_hex.slice(0, 6)) : "#555") + '"></i>#' + id + (f ? " " + esc(f.material || "") : "") + "</button>"; }).join("");
-      if (!mats) mats = '<span class="dots">' + cols.filter((c, i) => (used[i] || 0) > 0).map(c => '<i style="background:' + esc(c) + '"></i>').join("") + "</span>";
-      return "<tr><td>" + (th ? '<img src="' + esc(th) + '" alt="" onerror="this.style.visibility=\'hidden\'">' : '<div style="width:44px;height:44px"></div>') + "</td>" +
-        '<td class="fn" title="' + esc(j.filename) + '">' + esc(j.filename) + "</td>" +
-        '<td><span class="st ' + esc(j.status) + '">' + esc(String(j.status).replace(/_/g, " ")) + "</span></td>" +
+      if (!mats) mats = '<span class="dots">' + cols.map(c => '<i style="background:' + esc(c) + '"></i>').join("") + "</span>";
+      return "<tr>" + (hasTh ? "<td>" + (th ? '<img src="' + esc(th) + '" alt="" onerror="this.style.visibility=\'hidden\'">' : '<div style="width:44px;height:44px"></div>') + "</td>" : "") +
+        '<td class="fn" title="' + esc(j.filename) + '">' + esc(String(j.filename).split("/").pop()) + "</td>" +      // base name only; the full path is in the tooltip
+        '<td><span class="st ' + esc(j.status) + '">' + esc(cap(String(j.status).replace(/_/g, " "))) + "</span></td>" +
         "<td>" + (j.start_time ? new Date(j.start_time * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"}) : "-") + "</td>" +
         "<td>" + (j.print_duration ? dur(j.print_duration) : "-") + (m.estimated_time ? ' <span style="color:var(--sub)">/ ' + dur(m.estimated_time) + "</span>" : "") + "</td>" +
         "<td>" + (j.filament_used ? (j.filament_used / 1000).toFixed(2) + " m" : "-") + (m.filament_weight_total ? ' <span style="color:var(--sub)">(' + m.filament_weight_total.toFixed(0) + " g est.)</span>" : "") + "</td>" +
-        "<td>" + mats + "</td></tr>";
+        (hasMat ? "<td>" + mats + "</td>" : "") + "</tr>";
     }).join("") + "</tbody></table>" + (rows.length ? "" : '<div style="padding:14px;color:var(--sub)">No jobs recorded.</div>') + "</div>";
+    if (lim && all.length > lim) h += '<div style="margin:-6px 0 16px"><button class="seg-b" data-goto="jobs">All jobs (' + all.length + ')</button></div>';
     return h;
   }
-  function renderJobs() { const h = jobsHtml(); document.querySelectorAll(".jobsmount").forEach(e => e.innerHTML = h); }
+  function renderJobs() { document.querySelectorAll(".jobsmount").forEach(e => e.innerHTML = jobsHtml(+e.dataset.limit || 0)); }   // the History page mounts a short list (data-limit)
   async function loadJobs() { const [l] = await Promise.all([get("/server/history/list?limit=200&order=desc"), loadSpoolMap()]); jobs = l.result.jobs; renderJobs(); }
   document.addEventListener("click", e => {
     const b = e.target.closest("button[data-f]"); if (b) { filter = b.dataset.f; renderJobs(); return; }
-    const c = e.target.closest("button[data-spool-id]"); if (c) showSpool(+c.dataset.spoolId);
+    const c = e.target.closest("button[data-spool-id]"); if (c) { showSpool(+c.dataset.spoolId); return; }
+    const g = e.target.closest("button[data-goto]"); if (g) setView(g.dataset.goto, true);
   });
   function showSpool(id) {      // same popup as the filament cards, filled from Spoolman by spool id
     const sp = spoolMap && spoolMap[id], f = sp && sp.filament, rows = [], sw = c => '<i class="sw" style="background:#' + esc((c || "808080").slice(0, 6)) + '"></i>';
@@ -2072,13 +2677,13 @@ bootstrap();
       stat("Average per print", n ? dur(t.total_print_time / n) : "-", "total print time / jobs") +
       stat("Longest print", dur(t.longest_print)) +
       stat("Total job time", dur(t.total_time), "including heating and pauses") +
-      stat("Filament used", (t.total_filament_used / 1000).toFixed(1) + " m");
+      stat("Filament used", (t.total_filament_used || 0) >= 1e6 ? (t.total_filament_used / 1e6).toFixed(2) + " km" : ((t.total_filament_used || 0) / 1000).toFixed(1) + " m");
     const c = {}; lst.result.jobs.forEach(j => { if (j.status !== "in_progress") c[j.status] = (c[j.status] || 0) + 1; });
     const tot2 = Object.values(c).reduce((a, b) => a + b, 0), col = {completed: "#4ADE80", cancelled: "#F0577A", interrupted: "#E8B04F"};
     $("histbreak").innerHTML = tot2 ? '<div style="display:flex;height:14px;border-radius:7px;overflow:hidden;background:#1D1A42">' +
       Object.entries(c).map(([k, v]) => '<div title="' + esc(k) + ": " + v + '" style="width:' + (v / tot2 * 100) + "%;background:" + (col[k] || "#7A63F2") + '"></div>').join("") + "</div>" +
       '<div style="display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;color:var(--muted)">' + Object.entries(c).map(([k, v]) =>
-        '<span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + (col[k] || "#7A63F2") + ';margin-right:6px"></i>' + esc(k.replace(/_/g, " ")) + " " + v + " (" + Math.round(v / tot2 * 100) + "%)</span>").join("") + "</div>" : '<span style="color:var(--sub)">No finished jobs yet.</span>';
+        '<span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + (col[k] || "#7A63F2") + ';margin-right:6px"></i>' + esc(cap(k.replace(/_/g, " "))) + " " + v + " (" + Math.round(v / tot2 * 100) + "%)</span>").join("") + "</div>" : '<span style="color:var(--sub)">No finished jobs yet.</span>';
   }
 
   // ---------- Tune: bed mesh ----------
@@ -2131,7 +2736,9 @@ bootstrap();
     const pts = a => a.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
     // axes: X and Y ticks along the outline edges nearest the viewer, Z scale on the left-most corner
     const cen = [0, 1].reduce((s, k) => s, 0) || outline.reduce((s, p) => [s[0] + p[0] / 4, s[1] + p[1] / 4], [0, 0]);
-    const lab = (x, y, s, anc, col) => '<text x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" font-size="10.5" text-anchor="' + (anc || "middle") + '" fill="' + (col || "#a29edb") + '">' + s + "</text>";
+    const lab = (x, y, s, anc, col) => { const hw = String(s).length * 6;      // keep labels inside the viewBox
+      x = anc === "end" ? Math.max(hw + 2, Math.min(W - 2, x)) : Math.max(hw / 2 + 2, Math.min(W - hw / 2 - 2, x)); y = Math.max(12, Math.min(H - 4, y));
+      return '<text x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" font-size="10.5" text-anchor="' + (anc || "middle") + '" fill="' + (col || "#a29edb") + '">' + s + "</text>"; };
     const ticks = (A, B, v0, v1, title) => {       // A->B edge in screen space, value runs v0..v1 along it
       const mx_ = (A[0] + B[0]) / 2, my_ = (A[1] + B[1]) / 2; let dx = mx_ - cen[0], dy = my_ - cen[1]; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
       let s = '<line x1="' + A[0].toFixed(1) + '" y1="' + A[1].toFixed(1) + '" x2="' + B[0].toFixed(1) + '" y2="' + B[1].toFixed(1) + '" stroke="#8b87c4" stroke-width="1.4"/>';
@@ -2169,11 +2776,12 @@ bootstrap();
       stat("Std deviation", sd.toFixed(3) + " mm", "mean " + f3(mean) + " mm") +
       stat("Mesh area", Math.round(x1 - x0) + " x " + Math.round(y1 - y0) + " mm", "X " + x0.toFixed(0) + "-" + x1.toFixed(0) + ", Y " + y0.toFixed(0) + "-" + y1.toFixed(0));
     // heatmap (row 0 = front, drawn at the bottom)
-    const cw = 46, ch = 36, ml = 44, mt = 8, W = ml + nx * cw + 8, H = mt + ny * ch + 30; let s = '<svg viewBox="0 0 ' + W + " " + H + '" font-family="inherit">';
+    const cw = Math.min(46, Math.floor(560 / nx)), ch = Math.min(36, Math.floor(400 / ny)), ml = 44, mt = 8, nums = cw >= 28 && ch >= 16,   // numbers only when the cells are big enough to read
+       W = ml + nx * cw + 8, H = mt + ny * ch + 30; let s = '<svg viewBox="0 0 ' + W + " " + H + '" font-family="inherit">';
     for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
       const v = M[j][i], x = ml + i * cw, y = mt + (ny - 1 - j) * ch;
       s += '<rect x="' + x + '" y="' + y + '" width="' + cw + '" height="' + ch + '" fill="' + ramp((v - mn) / range) + '"><title>X ' + (x0 + (x1 - x0) * i / (nx - 1)).toFixed(1) + ", Y " + (y0 + (y1 - y0) * j / (ny - 1)).toFixed(1) + ": " + f3(v) + " mm</title></rect>" +
-        '<text x="' + (x + cw / 2) + '" y="' + (y + ch / 2 + 3) + '" text-anchor="middle" font-size="9.5" fill="#0a0818" fill-opacity=".72" pointer-events="none">' + v.toFixed(3) + "</text>";
+        (nums ? '<text x="' + (x + cw / 2) + '" y="' + (y + ch / 2 + 3) + '" text-anchor="middle" font-size="9.5" fill="#0a0818" fill-opacity=".72" pointer-events="none">' + v.toFixed(3) + "</text>" : "");
     }
     for (let i = 0; i < nx; i += Math.max(1, Math.round(nx / 5))) s += '<text x="' + (ml + i * cw + cw / 2) + '" y="' + (H - 12) + '" text-anchor="middle" font-size="10" fill="#8b87c4">' + (x0 + (x1 - x0) * i / (nx - 1)).toFixed(0) + "</text>";
     for (let j = 0; j < ny; j += Math.max(1, Math.round(ny / 6))) s += '<text x="' + (ml - 6) + '" y="' + (mt + (ny - 1 - j) * ch + ch / 2 + 3) + '" text-anchor="end" font-size="10" fill="#8b87c4">' + (y0 + (y1 - y0) * j / (ny - 1)).toFixed(0) + "</text>";
@@ -2196,8 +2804,8 @@ bootstrap();
     if (atBottom) box.scrollTop = box.scrollHeight;
   }
   async function loadConsole() {
-    try { conItems = (await get("/server/gcode_store?count=1000")).result.gcode_store; $("fconstat").textContent = "live"; renderFullCon(); }
-    catch (e) { $("fconstat").textContent = "offline"; throw e; }
+    try { conItems = (await get("/server/gcode_store?count=1000")).result.gcode_store; $("fconstat").textContent = "Live"; renderFullCon(); }
+    catch (e) { $("fconstat").textContent = "Offline"; throw e; }
   }
   $("confilter").addEventListener("input", renderFullCon); $("conhidetemp").addEventListener("change", renderFullCon);
   // ---------- Files: config browser + editor ----------
@@ -2219,7 +2827,7 @@ bootstrap();
   }
   async function loadFiles() { fs_.list = await get("/config/list").then(r => r.result); renderTree(); }
   // ---- syntax highlighting: a colored copy of the text sits behind the transparent textarea ----
-  const hesc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const hesc = escH;
   const wrap = (c, s) => '<span class="' + c + '">' + hesc(s) + "</span>";
   const TOK = /(\{%.*?%\}|\{\{.*?\}\}|\{#.*?#\})|((?:^|\s)[#;].*$)|("(?:[^"\\]|\\.)*")|((?<![\w.])-?\d+(?:\.\d+)?(?![\w.]))/g;
   function tokenise(s) {          // numbers, strings, jinja and trailing comments inside a value / gcode line
@@ -2263,11 +2871,11 @@ bootstrap();
   function edState() {
     const ro = !fs_.cur || !fs_.editable || !canWrite(), d = edDirty();
     $("edta").readOnly = ro; $("fdirty").hidden = !d; $("fsave").disabled = ro || !d; $("frevert").disabled = !d; $("freload").disabled = !fs_.cur;
-    const b = $("fbadge"); b.hidden = !fs_.cur; b.textContent = !fs_.editable ? "view-only" : canWrite() ? "editable" : "controls disabled"; 
+    const b = $("fbadge"); b.hidden = !fs_.cur; b.textContent = !fs_.editable ? "View-only" : canWrite() ? "Editable" : "Controls disabled";
   }
   function setNote(msg, bad) { const n = $("fnote"); n.textContent = msg; n.style.color = bad ? "var(--bad)" : "var(--sub)"; }
   async function openFile(p, force) {
-    if (!force && edDirty() && !confirm("Discard unsaved changes to " + fs_.cur + "?")) return;
+    if (!force && edDirty() && !await ask("Discard unsaved changes to " + fs_.cur + "?")) return;
     try {
       const r = await get("/config/read?path=" + encodeURIComponent(p));
       Object.assign(fs_, {cur: r.path, base: r.content, mod: r.modified, editable: r.editable});
@@ -2277,13 +2885,11 @@ bootstrap();
   }
   async function saveFile() {
     if (!fs_.cur || !fs_.editable || !edDirty()) return;
-    const printing = /printing|paused/.test(($("job") || {}).textContent || "");
-    if (!confirm("Save changes to " + fs_.cur + "?" + (printing ? "\n\nA print is running. The file is only read on restart, so the print is not affected." : "") + "\n\nThe previous version is backed up on the dashboard server first.")) return;
+    const printing = /printing|paused/i.test(($("job") || {}).textContent || "");
+    if (!await ask("Save changes to " + fs_.cur + "?" + (printing ? "\n\nA print is running. The file is only read on restart, so the print is not affected." : "") + "\n\nThe previous version is backed up on the dashboard server first.")) return;
     $("fsave").disabled = true; setNote("Saving...");
     try {
-      const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify({action: "save_config", path: fs_.cur, content: $("edta").value, modified: fs_.mod})});
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+      const j = await postControl({action: "save_config", path: fs_.cur, content: $("edta").value, modified: fs_.mod});
       fs_.base = $("edta").value; fs_.mod = j.modified; edState(); setNote("Saved " + fs_.cur + ". Previous version kept as " + j.backup + ". Restart Klipper/Moonraker for it to take effect.");
       loadFiles().catch(() => {});
     } catch (e) { setNote("Save failed: " + e.message, true); edState(); }
@@ -2299,22 +2905,70 @@ bootstrap();
   });
   $("fsave").onclick = saveFile;
   $("frevert").onclick = () => { $("edta").value = fs_.base; gutter(); edState(); };
-  $("freload").onclick = () => { if (fs_.cur && (!edDirty() || confirm("Discard unsaved changes and reload from the printer?"))) openFile(fs_.cur, true); };
+  $("freload").onclick = async () => { if (fs_.cur && (!edDirty() || await ask("Discard unsaved changes and reload from the printer?", "Discard"))) openFile(fs_.cur, true); };
   window.addEventListener("beforeunload", e => { if (edDirty()) { e.preventDefault(); e.returnValue = ""; } });
+  // ---------- Printers: every printer at a glance (status only; a click opens that printer) ----------
+  let ovSig = "";
+  const ovTemp = (label, t) => t && typeof t[0] === "number" ? "<span>" + label + " <b>" + Math.round(t[0]) + "°</b>" + (t[1] > 0 ? " / " + Math.round(t[1]) + "°" : "") + "</span>" : "<span></span>";
+  function ovBody(p) {
+    if (!p.online) return '<div class="ovfile">Not reachable</div><div class="ovsub">' + esc((p.model && p.model.label ? p.model.label + " · " : "") + p.host) + "</div>";
+    const act = p.state === "printing" || p.state === "paused", pr = typeof p.progress === "number" ? Math.max(0, Math.min(1, p.progress)) : 0;
+    let left = null;
+    if (act) { const a = p.estimate && p.elapsed != null ? Math.max(0, p.estimate - p.elapsed) : null, b = pr > .02 && p.elapsed ? p.elapsed / pr - p.elapsed : null; left = a != null && b != null ? (a + b) / 2 : a != null ? a : b; }
+    const eta = left != null ? new Date(Date.now() + left * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}) : "";
+    return '<div class="ovfile" title="' + esc(p.file) + '">' + (act ? esc(p.file.split("/").pop()) : p.klippy && p.klippy !== "ready" ? "Klipper is " + esc(p.klippy) : "Idle") + "</div>" +
+      (act ? '<div class="ovbar"><i style="width:' + (pr * 100).toFixed(1) + '%"></i></div><div class="ovrow"><span><b>' + Math.round(pr * 100) + "%</b>" + (p.layer ? " · layer " + (+p.layer[0] || 0) + "/" + (+p.layer[1] || 0) : "") + "</span><span>" +
+        (left != null ? dur(left) + " left · " + esc(eta) : "") + "</span></div>" : "") +
+      '<div class="ovrow">' + ovTemp("Nozzle", p.nozzle) + ovTemp("Bed", p.bed) + "</div>" +
+      '<div class="ovsub">' + esc((p.model && p.model.label ? p.model.label + " · " : "") + p.host) + (p.active ? " · shown in this tab" : "") + "</div>";
+  }
+  const ovTurn = v => !v ? "" : (v.flipH ? " scaleX(-1)" : "") + (v.flipV ? " scaleY(-1)" : "") + (v.rotation ? " rotate(" + (+v.rotation || 0) + "deg)" + (v.rotation % 180 ? " scale(.5625)" : "") : "");
+  async function loadOverview() {
+    let list;
+    try { list = (await get("/api/overview")).printers || []; $("ovstat").textContent = ""; } catch (e) { $("ovstat").textContent = "Offline"; throw e; }
+    const grid = $("ovgrid"), sig = list.map(p => p.id + ":" + (p.online && p.camera ? "c" : (p.model && p.model.id) || "-")).join("|");
+    if (sig !== ovSig) {                                       // build the cards once; after that only their contents change (no flicker)
+      ovSig = sig;
+      grid.innerHTML = list.map((p, n) => {
+        const mp = !(p.online && p.camera) && p.model && typeof modelPack === "function" ? modelPack(p.model.id, "ov" + n) : null;
+        return '<div class="ovcard" role="button" tabindex="0" data-id="' + esc(p.id) + '"><div class="ovhd"><b>' + esc(p.name) + '</b><span class="ovst"></span></div>' +
+          '<div class="ovpic">' + (p.online && p.camera ? '<img class="ovcam" alt="Camera of ' + esc(p.name) + '">' : mp ? '<svg viewBox="0 0 600 520" role="img" aria-label="' + esc(p.model.label || "Printer") + '">' + mp.body + "</svg>" : "") +
+          '<img class="ovthumb" alt="" hidden></div><div class="ovbody"></div></div>';
+      }).join("");
+    }
+    list.forEach(p => {
+      const c = [...grid.querySelectorAll(".ovcard")].find(e => e.dataset.id === p.id); if (!c) return;
+      const state = !p.online ? "offline" : p.klippy && p.klippy !== "ready" ? p.klippy : p.state;
+      c.classList.toggle("off", !p.online); c.classList.toggle("here", !!p.active);
+      const st = c.querySelector(".ovst"); st.textContent = cap(String(state).replace(/_/g, " ")); st.className = "ovst " + String(state).replace(/[^a-z]/gi, "");
+      c.querySelector(".ovbody").innerHTML = ovBody(p);
+      const cam = c.querySelector(".ovcam"), th = c.querySelector(".ovthumb"), q2 = "p=" + encodeURIComponent(p.id);
+      if (cam && !document.hidden) { const im = new Image(); im.onload = () => { cam.src = im.src; cam.style.transform = ovTurn(p.camera).trim(); }; im.src = "/cam/snapshot?" + q2 + "&t=" + Date.now(); }
+      const want = p.online && p.thumb && (p.state === "printing" || p.state === "paused") ? p.thumb + "?" + q2 : "";
+      th.hidden = !want; if (want && th.getAttribute("src") !== want) th.src = want;
+    });
+  }
+  $("ovgrid").addEventListener("click", e => { const c = e.target.closest(".ovcard"); if (c) selectPrinter(c.dataset.id, true); });
+  $("ovgrid").addEventListener("keydown", e => { const c = e.target.closest(".ovcard"); if (c && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); selectPrinter(c.dataset.id, true); } });
   // ---------- routing ----------
-  const loaders = {files: loadFiles, console: loadConsole, jobs: loadJobs, history: () => Promise.all([loadHistory(), loadJobs()]), tune: loadMesh, settings: () => (window.settingsLoad ? window.settingsLoad() : Promise.resolve()), macros: () => (window.macrosLoad ? window.macrosLoad() : Promise.resolve())};
-  function setView(v) {
-    if (!["home", "jobs", "history", "tune", "console", "files", "settings", "macros"].includes(v) || (v === "settings" && $("navsettings").hidden) || (v === "macros" && $("navmacros").hidden)) v = "home";
+  const loaders = {printers: loadOverview, files: loadFiles, console: loadConsole, jobs: loadJobs, history: () => Promise.all([loadHistory(), loadJobs()]), tune: loadMesh, settings: () => (window.settingsLoad ? window.settingsLoad() : Promise.resolve()), macros: () => (window.macrosLoad ? window.macrosLoad() : Promise.resolve())};
+  function setView(v, push) {
+    if (!["home", "printers", "jobs", "history", "tune", "console", "files", "settings", "macros"].includes(v) || (v === "settings" && $("navsettings").hidden) || (v === "macros" && $("navmacros").hidden)) v = "home";
     view = v;
     $("layout").style.display = v === "home" ? "" : "none"; $("foot").hidden = v !== "home";
-    for (const k of ["jobs", "history", "tune", "console", "files", "settings", "macros"]) $("v-" + k).hidden = v !== k;
+    for (const k of ["printers", "jobs", "history", "tune", "console", "files", "settings", "macros"]) $("v-" + k).hidden = v !== k;
     document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.view === v));
-    try { history.replaceState(null, "", v === "home" ? location.pathname + location.search : "#" + v); } catch (e) { /* ignore */ }
+    try {      // push when the user navigates so Back/Forward work; replace on first load and on hash changes (which are already in the history)
+      const base = location.pathname + location.search, url = v === "home" ? base : base + "#" + v;
+      if (push && url !== base + location.hash) history.pushState(null, "", url); else history.replaceState(null, "", url);
+    } catch (e) { /* ignore */ }
     clearInterval(timer); timer = null;
-    if (loaders[v]) { const run = () => loaders[v]().catch(e => console.warn("view", v, e)); run(); if (v !== "settings" && v !== "macros") timer = setInterval(run, v === "console" ? 2000 : v === "tune" ? 15000 : 20000); }
+    if (loaders[v]) { const run = () => loaders[v]().catch(e => console.warn("view", v, e)); run(); if (v !== "settings" && v !== "macros") timer = setInterval(run, v === "console" ? 2000 : v === "printers" ? 4000 : v === "tune" ? 15000 : 20000); }
     window.scrollTo(0, 0);
   }
-  $("nav").addEventListener("click", e => { const b = e.target.closest("button[data-view]"); if (b) setView(b.dataset.view); });
+  $("nav").addEventListener("click", e => { const b = e.target.closest("button[data-view]"); if (b) setView(b.dataset.view, true); });
+  const syncHash = () => { const v = location.hash.slice(1) || "home"; if (v !== view) setView(v); };      // Back/Forward or a typed hash
+  window.addEventListener("hashchange", syncHash); window.addEventListener("popstate", syncHash);
   window.routeHash = () => setView(location.hash.slice(1));
   if (!/^#(settings|macros)$/.test(location.hash)) setView(location.hash.slice(1));   // those two need the configuration first (bootstrap routes them)
 })();
@@ -2323,17 +2977,13 @@ bootstrap();
 // ---- Settings: printer name, printers, and the two graphics (chosen independently) ----
 (() => {
   const $ = id => document.getElementById(id), root = $("v-settings");
-  const post = async body => {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify(body)});
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.status);
-    return j;
-  };
+  const post = postControl;
   const msg = (t, bad) => { const m = $("setmsg"); if (m) { m.textContent = t; m.className = "badge" + (bad ? " bad" : ""); clearTimeout(msg.t); msg.t = setTimeout(() => { m.textContent = ""; }, 6000); } };
   const fakeSlot = (loaded, active) => ({i: loaded ? 90 : 91, ex: {temperature: loaded ? 215 : 28, target: active ? 215 : 0}, col: "#3b82f6", loaded, isActive: active, frac: .6, mat: "PLA", title: loaded ? "Blue PLA" : "Empty", remTxt: "600 g", fanLabel: "fan 80%", sp: null});
   const FIELDS = [["bed", "rect", "Bed (plate area)"], ["chamber", "rect", "Chamber / enclosure window"], ["screen", "rect", "Touchscreen"],
     ["chamberTemp", "pt", "Chamber temperature text"], ["partFan", "pt", "Part-cooling fan"], ["chamberFan", "pt", "Chamber fan"], ["light", "pt", "Light button"], ["tools", "tools", "Tools (click once per tool, in order)"]];
   let ED = null, tool = "bed", drag = null;
+  const JUMPS = [["set-this", "This printer"], ["set-printers", "Printers"], ["set-fs", "Filament system"], ["set-opts", "Printer options"], ["set-ha", "Home Assistant"], ["set-sm", "Spoolman"], ["set-gfx", "Graphics"], ["set-upl", "Uploads"]];   // chips scroll to the card; no URL hash because the hash routes views
 
   function unitPreview() {                     // the BoxTurtle unit with sample spools
     const cols = ["#e8594f", "#a24fc4", "#9a9aa0", "#3b82f6"], lanes = cols.map((col, i) => ({i, col, loaded: i < 3, isActive: i === 1, frac: [.8, .6, .45, .3][i], label: "Lane " + (i + 1)}));
@@ -2385,44 +3035,53 @@ bootstrap();
   async function previews() {
     const ps = $("setpp"), ts = $("settp");
     if (!ps || !ts) return;
-    const pp = (CFG.packs.printer || []).find(p => p.id === ps.value);
-    $("setppv").innerHTML = pp && packUrl(pp) ? '<img src="' + escH(packUrl(pp)) + '" alt="">' : ps.value === "u1" ? u1PrinterPreview() : "<i>no preview</i>";
+    const pid = ps.value || (CFG.model && CFG.model.id) || "generic";      // "" = automatic: the detected model
+    const pp = (CFG.packs.printer || []).find(p => p.id === pid), mp = modelPack(pid, "pv", {tools: N, docks: CFG.docks, style: CFG.toolhead});
+    $("setppv").innerHTML = mp ? '<svg viewBox="0 0 600 520" style="width:100%;max-height:220px" role="img" aria-label="Printer preview">' + mp.body + "</svg>" :
+      pp && packUrl(pp) ? '<img src="' + escH(packUrl(pp)) + '" alt="">' : pid === "u1" ? u1PrinterPreview() : "<i>no preview</i>";
     $("settpv").innerHTML = await slotPreview(ts.value);
     const uv = $("setun").value;
     $("setunv").innerHTML = uv === "afc" ? unitPreview() : uv === "u1" ? '<svg viewBox="-110 -62 220 70" style="width:80%;max-height:140px" role="img" aria-label="U1 toolheads">' + [0, 1, 2, 3].map(i => '<g transform="translate(' + (-82 + i * 55) + ',0)">' + u1Head("p" + i) + "</g>").join("") + "</svg>" : "<i>no toolchanger graphic</i>";
   }
 
   const fsOptions = () => {
-    const fs = CFG.filamentSystems || {selected: "auto", available: {}}, av = fs.available || {}, name = {u1: "Snapmaker U1 (RFID tags)", afc: "AFC / BoxTurtle (ArmoredTurtle)", extruders: "Standard (one filament per extruder)"};
-    return [["auto", "Auto-detect (now: " + (name[CFG.provider] || CFG.provider) + ")", true], ["extruders", name.extruders, true], ["afc", name.afc + (av.afc ? "" : " - not detected"), !!av.afc], ["u1", name.u1 + (av.u1 ? "" : " - not detected"), !!av.u1]]
+    const fs = CFG.filamentSystems || {selected: "auto", available: {}}, av = fs.available || {}, name = {u1: "Snapmaker U1 (RFID tags)", afc: "AFC / BoxTurtle (ArmoredTurtle)", qidibox: "QIDI Box", toolchanger: "Toolchanger (StealthChanger / klipper-toolchanger)", extruders: "Standard (one filament per extruder)"};
+    return [["auto", "Auto-detect (now: " + (name[CFG.provider] || CFG.provider) + ")", true], ["extruders", name.extruders, true], ["afc", name.afc + (av.afc ? "" : " - not detected"), !!av.afc], ["qidibox", name.qidibox + (av.qidibox ? "" : " - not detected"), !!av.qidibox], ["toolchanger", name.toolchanger + (av.toolchanger ? "" : " - not detected"), !!av.toolchanger], ["u1", name.u1 + (av.u1 ? "" : " - not detected"), !!av.u1]]
       .map(([id, label, ok]) => '<option value="' + id + '"' + (id === fs.selected ? " selected" : "") + (ok ? "" : " disabled") + ">" + escH(label) + "</option>").join("");
   };
   function render() {
-    const g = CFG.graphics, pk = CFG.packs;
+    const g = CFG.graphics, pk = CFG.packs, md = CFG.model || {};
     const opts = (kind, sel) => (pk[kind] || []).map(p => '<option value="' + escH(p.id) + '"' + (p.id === sel ? " selected" : "") + ">" + escH(p.label || p.id) + (p.custom ? " (custom)" : "") + "</option>").join("");
     const plist = PRINTERS.map(p => '<div class="prow"><b>' + escH(p.active ? CFG.name : p.name) + '</b><span>' + escH(p.host) + (p.active ? " &middot; shown now" : "") + '</span>' +
       (p.active ? "" : '<button data-sw="' + escH(p.id) + '">Switch</button>') + (p.main ? '<span class="sub">set in config.json</span>' : '<button class="danger" data-rm="' + escH(p.id) + '">Remove</button>') + '</div>').join("");
     const customs = kind => (pk[kind] || []).filter(p => p.custom).map(p => '<div class="prow"><b>' + escH(p.label || p.id) + '</b><span>' + escH(p.id) + '</span>' +
       (kind === "printer" ? '<button data-edit="' + escH(p.id) + '">Edit anchors</button>' : "") + '<button class="danger" data-del="' + kind + ":" + escH(p.id) + '">Delete</button></div>').join("") || '<div class="sub">None yet.</div>';
     root.innerHTML = '<h2>Settings <span id="setmsg" class="badge"></span></h2>' +
-      '<div class="vcard"><h3>This printer</h3><div class="srow"><label>Name shown at the top</label><input id="setname" maxlength="60" value="' + escH(CFG.name) + '"><button id="setnamebtn">Save name</button></div>' +
+      '<div class="jump" role="group" aria-label="Jump to">' + JUMPS.map(([id, l]) => '<button type="button" data-jump="' + id + '">' + l + '</button>').join("") + '</div>' +
+      '<div class="vcard" id="set-this"><h3>This printer</h3><div class="srow"><label>Name shown at the top</label><input id="setname" maxlength="60" value="' + escH(CFG.name) + '"><button id="setnamebtn">Save name</button></div>' +
       '<div class="sub">Host and G-code macros are set in config.json on the server, not here.</div></div>' +
-      '<div class="vcard"><h3>Printers</h3>' + plist +
+      '<div class="vcard" id="set-printers"><h3>Printers</h3>' + plist +
       '<div class="srow" style="margin-top:12px"><label>Add a printer</label><input id="addname" placeholder="Name" maxlength="60"><input id="addhost" placeholder="IP or hostname (Moonraker on port 7125)"><button id="addbtn">Add</button></div>' +
       '<div class="sub">New printers get the generic setup: temperatures, fans, jobs, console, files, camera (if Moonraker has one) and one pickup button per tool. Anyone who can open this page can add one, so keep the dashboard on a trusted network.</div></div>' +
-      '<div class="vcard"><h3>Filament system</h3><div class="srow"><select id="setfs">' + fsOptions() + '</select><span class="sub">Decides how filament is read and which filament graphic is used. ' +
+      '<div class="vcard" id="set-fs"><h3>Filament system</h3><div class="srow"><select id="setfs">' + fsOptions() + '</select><span class="sub">Decides how filament is read and which filament graphic is used. ' +
       'AFC / BoxTurtle (ArmoredTurtle) shows one 3D card per lane; it is detected automatically when a printer is added.</span></div></div>' +
       optionsCard() + embedCard() +
-      '<div class="vcard"><h3>Spoolman</h3><div class="srow"><label>Spoolman address</label><input id="smurl" placeholder="http://192.168.1.20:7912" spellcheck="false" value="' + escH(CFG.spoolmanServer || "") + '"' + (CONTROLS ? "" : " disabled") + '>' +
+      '<div class="vcard" id="set-sm"><h3>Spoolman</h3><div class="srow"><label>Spoolman address</label><input id="smurl" placeholder="http://192.168.1.20:7912" spellcheck="false" value="' + escH(CFG.spoolmanServer || "") + '"' + (CONTROLS ? "" : " disabled") + '>' +
       '<button id="smsave"' + (CONTROLS ? "" : " disabled") + '>Save</button><button id="smreset"' + (CONTROLS ? "" : " disabled") + ' title="Go back to the value in config.json">Use config.json</button></div>' +
       '<div class="sub">' + (CFG.spoolmanServer ? "Connected to " + escH(CFG.spoolmanServer) + (CFG.spoolmanFromUi ? " (set here)" : " (from config.json)") : "No Spoolman configured.") +
       ' Enter where this dashboard\'s server reaches Spoolman, for example when Spoolman runs on another machine. It is checked before it is saved and applies to every printer. The link in spool details uses this address unless <code>spoolman_url</code> is set in config.json.</div></div>' +
-      '<div class="vcard"><h3>Graphics</h3><div class="gcols">' +
-      '<div><label>Printer graphic</label><select id="setpp">' + opts("printer", g.printer) + '</select><div id="setppv" class="gprev"></div></div>' +
+      '<div class="vcard" id="set-gfx"><h3>Graphics</h3><div class="gcols">' +
+      '<div><label>Printer graphic</label><select id="setpp">' + (md.id ? '<option value=""' + (md.auto ? " selected" : "") + ">Automatic: " + escH(md.label || md.id) + "</option>" : "") + opts("printer", md.id && md.auto ? null : g.printer) + '</select><div id="setppv" class="gprev"></div></div>' +
       '<div><label>Toolchanger graphic</label><select id="setun">' + [["u1", "Snapmaker U1 toolchanger"], ["afc", "BoxTurtle unit (3D)"], ["none", "None"]].map(([v, l]) => '<option value="' + v + '"' + (v === (g.unit || "none") ? " selected" : "") + ">" + l + "</option>").join("") + '</select><div id="setunv" class="gprev tprev"></div></div>' +
       '<div><label>Spool graphic</label><select id="settp">' + opts("toolchanger", g.toolchanger) + '</select><div id="settpv" class="gprev tprev"></div></div></div>' +
-      '<button id="setgbtn">Apply graphics</button> <span class="sub">All three are independent: any printer picture, any toolchanger graphic and any spool style. The spool graphic is the filament roll on each tool / lane card.</span></div>' +
-      '<div class="vcard"><h3>Upload a printer graphic</h3>' +
+      '<div class="sub gnote">' + (md.id ? "Detected: " + escH(md.label || md.id) + " (" + escH(md.why || "") + "). Automatic follows the printer; pick another if it guessed wrong." : "The model could not be detected (" + escH(md.why || "no answer") + "); pick a graphic.") + '</div>' +
+      '<div class="gopt"><label>Toolhead</label><select id="sethead"' + (CONTROLS ? "" : " disabled") + '>' + Object.keys(HEADS).map(k => '<option value="' + k + '"' + (k === (CFG.toolhead || "generic") ? " selected" : "") + ">" + escH(HEADS[k].label) + "</option>").join("") + "</select>" +
+      (N > 1 ? '<label>Docks</label><select id="setdocks"' + (CONTROLS ? "" : " disabled") + '><option value="">Automatic (' + N + ', one per tool)</option>' + Array.from({length: 13 - N}, (_, i) => N + i).map(d => '<option value="' + d + '"' + (d === CFG.docks ? " selected" : "") + ">" + d + "</option>").join("") + "</select>" : "") +
+      '<span class="sub">The look of the toolhead on a drawn printer' + (N > 1 ? ", and how many docks the toolchanger has (spare docks are drawn empty)" : "") + '.</span></div>' +
+      '<div class="gopt"><label class="rad"><input type="checkbox" id="setmotion"' + (CFG.motion !== false ? " checked" : "") + (CONTROLS ? "" : " disabled") + '> Moving toolhead and bed</label>' +
+      '<span class="sub">On a drawn printer the toolhead and the bed follow the printer\'s real position. Turn it off for a still picture; the fans keep spinning either way.</span></div>' +
+      '<div class="gopt"><button id="setgbtn">Apply graphics</button><span class="sub">The three choices are independent: any printer picture with any toolchanger graphic and any spool style. The spool graphic is the filament roll on each tool / lane card.</span></div></div>' +
+      '<div class="vcard" id="set-upl"><h3>Upload a printer graphic</h3>' +
       '<div class="srow"><label>Name</label><input id="pkname" maxlength="60" placeholder="My printer"><label>Id</label><input id="pkid" maxlength="40" placeholder="my-printer"><input id="pkfile" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml"></div>' +
       '<div id="pked" hidden><div class="srow" id="pktools"></div><div id="pkstage"><img id="pkimg" alt=""><svg id="pkov"></svg></div><div class="srow"><button id="pksave">Save printer graphic</button><button id="pkcancel">Cancel</button></div>' +
       '<div class="sub">Pick an item above, then click (points) or drag (areas) on the picture. Everything is optional: add only what your printer has. Tools: click each toolhead in order.</div></div>' +
@@ -2431,11 +3090,11 @@ bootstrap();
       '<div class="srow"><label>Name</label><input id="tcname" maxlength="60" placeholder="My spool"><label>Id</label><input id="tcid" maxlength="40" placeholder="my-spool"><input id="tcfile" type="file" accept="image/svg+xml"></div>' +
       '<div id="tcprev" class="gprev tprev" hidden></div><button id="tcsave" hidden>Save slot graphic</button>' +
       '<div class="sub">One SVG per tool slot. Optional hooks on any element: <code>data-fill="filament"</code> / <code>data-stroke="filament"</code> (filament color), <code>data-heat="1"</code> (nozzle temperature color), ' +
-      '<code>data-level="scale|height|width"</code> (grows with filament left), <code>data-text="temp|target|tool|material|name|remaining|fan"</code>, <code>data-show="loaded|empty|active|idle|heating"</code>. Scripts, external links and global CSS are stripped.</div>' +
+      '<code>data-level="scale|height|width"</code> (grows with filament left), <code>data-text="temp|target|tool|material|name|remaining|fan"</code>, <code>data-show="loaded|empty|active|idle|heating"</code>, <code>data-spin="1"</code> (turns while that slot feeds filament). Scripts, external links and global CSS are stripped.</div>' +
       '<h4>Your slot graphics</h4>' + customs("toolchanger") + '</div>';
     $("setpp").onchange = $("settp").onchange = $("setun").onchange = previews;
     previews();
-    probeScreen();
+    probeScreen(true);
   }
   // printer options that used to need config.json: remote touchscreen and the light button
   function optionsCard() {
@@ -2443,7 +3102,7 @@ bootstrap();
     const lopts = [["", "Automatic" + (ls.mode === "auto" && ls.active ? " (" + ls.active + ")" : ls.mode === "auto" ? " (none found)" : "")], ["__none", "No light button"]]
       .concat((ls.choices || []).map(c => [c, c]));
     const cur = ls.mode === "none" ? "__none" : ls.mode === "pick" ? ls.active : "";
-    return '<div class="vcard"><h3>Printer options</h3>' +
+    return '<div class="vcard" id="set-opts"><h3>Printer options</h3>' +
       '<div class="srow"><label class="rad"><input type="checkbox" id="setscr"' + (o.screen.on ? " checked" : "") + lock + '> Remote touchscreen</label>' +
       '<button id="scrprobebtn" type="button">Check the printer</button><span id="scrprobe" class="sub"></span></div>' +
       '<div class="sub">Shows the printer\'s own touchscreen on the picture and lets you click it to open the live, interactive screen. Needs a printer that serves it at <code>/screen/</code>, for example the Snapmaker U1 with the Paxx firmware\'s Remote Screen option turned on.' +
@@ -2451,14 +3110,28 @@ bootstrap();
       (o.screen.source === "ui" ? ' <button id="scrreset" type="button">Reset</button>' : "") + '</div>' +
       '<div class="srow" style="margin-top:12px"><label>Light button</label><select id="setlight"' + lock + '>' +
       lopts.map(([v, l]) => '<option value="' + escH(v) + '"' + (v === cur ? " selected" : "") + ">" + escH(l) + "</option>").join("") + '</select></div>' +
-      '<div class="sub">The button that switches the chamber / case light on the printer picture. Automatic picks the LED or light pin that looks like one; choose another from the list if it picked wrong, or hide the button.</div></div>';
+      '<div class="sub">The button that switches the chamber / case light on the printer picture. Automatic picks the LED or light pin that looks like one; choose another from the list if it picked wrong, or hide the button.</div>' +
+      cameraRow(lock) + '</div>';
+  }
+  // camera picture: rotation and mirroring. Starts from what the printer says (Moonraker's webcam settings); a change here is kept per printer
+  function cameraRow(lock) {
+    const c = CFG.camera || {}, pv = c.printerView || {};
+    if (!c.live && !c.snapshot) return "";
+    const say = v => (v.rotation ? v.rotation + "° clockwise" : "not rotated") + (v.flipH ? ", mirrored left-right" : "") + (v.flipV ? ", flipped top-bottom" : "");
+    return '<div class="srow" style="margin-top:12px"><label>Camera picture</label><select id="setcamrot"' + lock + '>' +
+      [0, 90, 180, 270].map(r => '<option value="' + r + '"' + (r === (c.rotation || 0) ? " selected" : "") + ">" + (r ? "Rotate " + r + "° clockwise" : "No rotation") + "</option>").join("") + "</select>" +
+      '<label class="rad"><input type="checkbox" id="setcamfh"' + (c.flipH ? " checked" : "") + lock + '> Mirror left-right</label>' +
+      '<label class="rad"><input type="checkbox" id="setcamfv"' + (c.flipV ? " checked" : "") + lock + '> Flip top-bottom</label>' +
+      (c.viewFromUi ? '<button id="camreset" type="button">Reset</button>' : "") + '</div>' +
+      '<div class="sub">Turns the camera picture the right way up, for live video and snapshots. The printer says: ' + escH(say(pv)) + " (its webcam settings in Moonraker). " +
+      (c.viewFromUi ? "Set here instead; Reset goes back to the printer's setting." : "A change here applies to this dashboard only and does not change the printer.") + '</div>';
   }
   // show the dashboard inside Home Assistant (or any page): allow framing + a ready-made card
   const haUrl = () => { try { return localStorage.getItem("fl_ha") || ""; } catch (e) { return ""; } };
   const haCard = () => "type: iframe\nurl: " + location.origin + "/\naspect_ratio: 75%";
   function embedCard() {
     const e = (CFG.options || {}).embed || {}, lock = CONTROLS ? "" : " disabled";
-    return '<div class="vcard"><h3>Home Assistant and other pages</h3>' +
+    return '<div class="vcard" id="set-ha"><h3>Home Assistant and other pages</h3>' +
       '<div class="srow"><label class="rad"><input type="checkbox" id="setembed"' + (e.on ? " checked" : "") + lock + '> Allow this dashboard to be shown inside another page</label></div>' +
       '<div class="sub">Needed to put Feedline in a Home Assistant dashboard card. When it is off, browsers refuse to show Feedline in a frame. ' +
       (e.source === "config" ? "Currently on because of config.json; unticking here overrides it. " : "") +
@@ -2476,12 +3149,13 @@ bootstrap();
     ta.focus(); ta.select();
     return document.execCommand("copy") ? Promise.resolve() : Promise.reject(new Error("select the text and press Ctrl+C"));
   }
-  async function probeScreen() {
+  async function probeScreen(quiet) {          // quiet = automatic check: only a positive result is shown, a printer without the screen is normal
     const el = $("scrprobe"); if (!el) return;
-    el.textContent = "checking...";
+    el.textContent = quiet ? "" : "checking...";
     try {
       const j = await (await fetch("/api/screen/probe")).json();
-      el.textContent = j.ok ? "The printer serves a touchscreen picture." : j.reason === "not-found" ? "The printer answers but has no /screen/ page (is Remote Screen enabled?)." : "Could not reach the printer's web page.";
+      if (quiet && !j.ok) { el.textContent = ""; return; }
+      el.textContent = j.ok ? (quiet ? "Found on this printer" : "The printer serves a touchscreen picture.") : j.reason === "not-found" ? "The printer answers but has no /screen/ page (is Remote Screen enabled?)." : "Could not reach the printer's web page.";
       el.style.color = j.ok ? "#4ade80" : "#f0b35a";
     } catch (e) { el.textContent = ""; }
   }
@@ -2541,6 +3215,12 @@ bootstrap();
       const v = ev.target.value;
       await reload((await post({action: "save_settings", light: v === "" ? null : v === "__none" ? false : v})).config); msg("Light button updated");
     });
+    if (ev.target.id === "sethead") await guard(async () => { await reload((await post({action: "save_settings", toolhead: ev.target.value})).config); msg("Toolhead changed"); });
+    if (ev.target.id === "setdocks") await guard(async () => { await reload((await post({action: "save_settings", docks: ev.target.value ? +ev.target.value : null})).config); msg("Docks changed"); });
+    if (ev.target.id === "setmotion") await guard(async () => { await reload((await post({action: "save_settings", motion: ev.target.checked})).config); msg(ev.target.checked ? "Moving toolhead on" : "Moving toolhead off"); });
+    if (["setcamrot", "setcamfh", "setcamfv"].includes(ev.target.id)) await guard(async () => {
+      await reload((await post({action: "save_settings", camera: {rotation: +$("setcamrot").value, flipH: $("setcamfh").checked, flipV: $("setcamfv").checked}})).config); msg("Camera picture updated");
+    });
     if (ev.target.id === "setfs") await guard(async () => { await reload((await post({action: "save_settings", provider: ev.target.value})).config); msg("Filament system changed"); });
     if (ev.target.id === "pkfile" && ev.target.files[0]) await guard(async () => {
       const f = ev.target.files[0], data = await readFile(f), im = new Image();
@@ -2562,7 +3242,8 @@ bootstrap();
   });
   root.addEventListener("click", ev => guard(async () => {
     const b = ev.target.closest("button"); if (!b) return;
-    if (b.id === "setnamebtn") { await reload((await post({action: "save_settings", name: $("setname").value})).config); msg("Name saved"); }
+    if (b.dataset.jump) { const c = $(b.dataset.jump); if (c) c.scrollIntoView({behavior: "smooth", block: "start"}); }
+    else if (b.id === "setnamebtn") { await reload((await post({action: "save_settings", name: $("setname").value})).config); msg("Name saved"); }
     else if (b.id === "hacopy") {
       const m = $("hamsg");
       try { await copyText($("hacard").value, $("hacard")); m.textContent = "Copied"; } catch (e) { m.textContent = String(e.message || e); }
@@ -2574,7 +3255,8 @@ bootstrap();
       try { localStorage.setItem("fl_ha", u); } catch (e) {}
       window.open(u + "/lovelace/0?edit=1", "_blank", "noopener");
     }
-    else if (b.id === "scrprobebtn") probeScreen();
+    else if (b.id === "scrprobebtn") probeScreen(false);
+    else if (b.id === "camreset") { await reload((await post({action: "save_settings", camera: null})).config); msg("Camera picture reset"); }
     else if (b.id === "scrreset") { await reload((await post({action: "save_settings", screen: null})).config); msg("Touchscreen setting reset"); }
     else if (b.id === "setgbtn") { await reload((await post({action: "save_settings", graphics: {printer: $("setpp").value, toolchanger: $("settp").value, unit: $("setun").value}})).config); msg("Graphics applied"); }
     else if (b.id === "addbtn") {
@@ -2589,14 +3271,14 @@ bootstrap();
     }
     else if (b.dataset.sw) selectPrinter(b.dataset.sw);
     else if (b.dataset.rm) {
-      if (!confirm("Remove this printer from the dashboard? (The printer itself is not touched.)")) return;
+      if (!await ask("Remove this printer from the dashboard? (The printer itself is not touched.)")) return;
       const was = PRINTERS.find(p => p.id === b.dataset.rm);
       await post({action: "remove_printer", id: b.dataset.rm});
       if (was && was.active) selectPrinter("main"); else { await loadPrinters(); render(); }
     }
     else if (b.dataset.del) {
       const [kind, id] = b.dataset.del.split(":");
-      if (!confirm("Delete this custom graphic?")) return;
+      if (!await ask("Delete this custom graphic?")) return;
       await reload((await post({action: "delete_pack", kind, id})).config); msg("Deleted");
     }
     else if (b.dataset.edit) {
@@ -2630,17 +3312,14 @@ bootstrap();
 // ---- Macros tab: tool-button macros (detected, customizable) and every user-facing macro with a Run button ----
 (() => {
   const $ = id => document.getElementById(id), root = $("v-macros");
-  const post = async body => {
-    const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1"}, body: JSON.stringify(body)});
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || r.status);
-    return j;
-  };
+  const post = postControl;
   const ACT = [["load", "Load filament"], ["unload", "Unload filament"], ["park", "Park tool"], ["pickup", "Pick up tool"]];
   const SRC = {detected: "auto-detected", config: "config.json", custom: "custom"};
   let data = null, filter = "", cards = 0;
   const msg = (t, bad) => { const m = $("macmsg"); if (m) { m.textContent = t; m.className = "badge" + (bad ? " bad" : ""); clearTimeout(msg.t); msg.t = setTimeout(() => { m.textContent = ""; }, 8000); } };
   const locked = () => !CONTROLS || running || printState === "printing" || printState === "paused";
+  const hint = () => locked() ? (CONTROLS ? "Run is disabled while a command or print is active." : "Run needs the dashboard server.") : "";
+  let wasLocked = null;
 
   function toolTable() {
     return ACT.map(([a, label]) => {
@@ -2656,8 +3335,8 @@ bootstrap();
     const f = filter.toLowerCase();
     const list = data.macros.filter(m => !f || m.name.toLowerCase().includes(f) || m.description.toLowerCase().includes(f));
     cards = list.length;
-    return list.map(m => '<div class="mcard" data-m="' + escH(m.name) + '"><div class="mh"><b>' + escH(m.name) + '</b><button data-run="' + escH(m.name) + '"' + (locked() || m.blocked ? " disabled" : "") + '>Run</button></div>' +
-      (m.description ? '<div class="sub">' + escH(m.description) + '</div>' : "") +
+    return list.map(m => '<div class="mcard" data-m="' + escH(m.name) + '"><div class="mh"><b>' + escH(m.name) + '</b><button data-run="' + escH(m.name) + '"' + (m.blocked ? ' data-blocked="1"' : "") + (locked() || m.blocked ? " disabled" : "") + '>Run</button></div>' +
+      (m.description && m.description.trim().toLowerCase() !== "g-code macro" ? '<div class="sub">' + escH(m.description) + '</div>' : "") +
       (m.params.length ? '<div class="mp">' + m.params.map(p => '<label>' + escH(p.name) + '<input data-p="' + escH(p.name) + '" placeholder="' + escH(p.default || "") + '" spellcheck="false"></label>').join("") + '</div>' : "") + '</div>').join("") ||
       '<div class="sub">No macros match.</div>';
   }
@@ -2666,10 +3345,19 @@ bootstrap();
       '<div class="vcard"><h3>Tool buttons</h3><div class="sub" style="margin:0 0 8px">What the Load / Unload / Park / Pickup buttons on each tool run. <code>{n}</code> = tool number, <code>{nz}</code> = number, or nothing for tool 0. ' +
       'Only commands this printer reports are accepted, as <code>NAME KEY=value ...</code>. They never run while printing.</div>' + toolTable() + '<datalist id="maccmds">' + data.commands.map(c => '<option value="' + escH(c) + '">').join("") + '</datalist></div>' +
       '<div class="vcard"><h3>All macros <span id="maccount" class="sub"></span></h3><div class="srow" style="margin-bottom:10px"><input id="macfilter" type="search" placeholder="Search macros..." value="' + escH(filter) + '">' +
-      '<button id="macreload">Refresh</button><span class="sub">Macros starting with _ are internal and hidden. ' + (locked() ? (CONTROLS ? "Run is disabled while a command or print is active." : "Run needs the dashboard server.") : "") + '</span></div>' +
+      '<button id="macreload">Refresh</button><span class="sub">Macros starting with _ are internal and hidden. <span id="machint">' + hint() + '</span></span></div>' +
       '<div id="macgrid" class="mgrid">' + macroCards() + '</div></div>';
     $("maccount").textContent = cards + " of " + data.macros.length;
+    wasLocked = locked();
   }
+  // the print state arrives from the Home poll after the cards are drawn, so re-apply it when it changes (blocked macros stay disabled)
+  setInterval(() => {
+    if (root.hidden || !data) return;
+    const l = locked(); if (l === wasLocked) return;
+    wasLocked = l;
+    root.querySelectorAll("[data-run]").forEach(b => { b.disabled = l || !!b.dataset.blocked; });
+    const t = $("machint"); if (t) t.textContent = hint();
+  }, 1500);
   async function load() {
     try { data = await (await fetch("/api/macros", {cache: "no-store"})).json(); } catch (e) { root.innerHTML = "<h2>Macros</h2><p>Could not load macros.</p>"; return; }
     if (!data.macros) { root.innerHTML = "<h2>Macros</h2><p>Could not load macros.</p>"; return; }
@@ -2693,10 +3381,10 @@ bootstrap();
       const card = b.closest(".mcard"), params = {};
       card.querySelectorAll("[data-p]").forEach(i => { if (i.value.trim()) params[i.dataset.p] = i.value.trim(); });
       const line = b.dataset.run + Object.entries(params).map(([k, v]) => " " + k + "=" + v).join("");
-      if (!confirm("Run this macro on " + CFG.name + "?\n\n" + line + "\n\nIt runs on the printer immediately and macros can move or heat it.")) return;
+      if (!await ask("Run this macro on " + CFG.name + "?\n\n" + line + "\n\nIt runs on the printer immediately and macros can move or heat it.")) return;
       b.disabled = true; running = true;
       try { const j = await post({action: "run_macro", name: b.dataset.run, params}); msg("Ran " + j.cmd); }
-      finally { running = false; b.disabled = false; }
+      finally { running = false; b.disabled = locked() || !!b.dataset.blocked; }
     }
   }));
   window.macrosLoad = load;
