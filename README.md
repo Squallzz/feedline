@@ -3,6 +3,16 @@
 One HTML page (`feedline.html`, installed as `index.html`) plus a stdlib-only Python proxy (`feedline_server.py`).
 Works with any Klipper + Moonraker printer; ships with a drawn Snapmaker U1 view, about 27 other drawn printer models (QIDI, Creality, Voron, RatRig, Sovol, Elegoo, Anycubic, Flashforge, Prusa, FLSUN) picked automatically, and a generic picture-based view.
 
+## Jump to
+
+| 🚀 Get started | 🧩 Connect things | 🖥️ Using it | 📚 Reference |
+| --- | --- | --- | --- |
+| [Install (Linux)](#install-linux-about-two-minutes) | [🧵 Spoolman](#spoolman-on-the-snapmaker-u1) | [Settings tab](#settings-tab) | [config.json options](#configjson-admin-only-edited-on-the-server) |
+| [Where to run it](#where-to-run-it) | [Spoolman auto-add helper](#auto-add-helper-optional) | [Filament systems](#filament-systems) | [Run by hand](#run) |
+| [📱 Android app](#android-app-apk) | [🏠 Home Assistant](#home-assistant) | [Print tuning](#print-tuning) | [Security](SECURITY.md) |
+| [Install as an app (PWA)](#install-as-an-app-android-iphone-desktop) | [📺 Remote touchscreen](#remote-touchscreen-snapmaker-u1-with-the-paxx-firmware) | [Tune tab: bed mesh](#tune-tab-bed-mesh) | [Tests](#tests) |
+| | | [Console](#console) · [Macros](#macros-tab) | [Not covered](#not-covered) |
+
 **Features at a glance**
 - Live view: camera (rotation and mirroring honored), temperatures, fans, chamber, job progress and thumbnail, moving toolhead and bed drawn from the printer's real position.
 - Filament systems: Snapmaker U1 (RFID + Spoolman), AFC / BoxTurtle, QIDI Box, toolchangers (StealthChanger, klipper-toolchanger), or plain extruders. See [Filament systems](#filament-systems).
@@ -26,6 +36,8 @@ Works with any Klipper + Moonraker printer; ships with a drawn Snapmaker U1 view
 ![Macros tab with the tool-button macros and every macro on the printer](docs/macros.png)
 
 *Macros: edit what the Load / Unload / Park / Pickup buttons run, or run any user macro.*
+
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
 ## Remote touchscreen (Snapmaker U1 with the Paxx firmware)
 
@@ -51,6 +63,8 @@ Notes:
 - The window loads `http://<printer>/screen/` straight from your browser, so the browser must be able to reach the printer, not just Feedline's server. The live picture on the drawn screen goes through Feedline.
 - The window is a real remote control: taps are sent to the printer. Like the rest of Feedline it has no login, so anyone who can open the dashboard can use it.
 - The generic printer picture has a screen area too, so any printer that serves its screen at `/screen/` can use this.
+
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
 ## Spoolman on the Snapmaker U1
 
@@ -91,6 +105,8 @@ Notes:
 - Color, material and weight come from Spoolman when the tag is matched, and from the tag otherwise.
 - This tag matching is for Snapmaker U1 printers (filament system "Snapmaker U1"). Other printers show Moonraker's active Spoolman spool on the active tool, or a fixed spool per tool set with `tool_spools` in `config.json`.
 - Spoolman has no login either, so keep both on a trusted network.
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
+
 ## Where to run it
 
 Feedline is one small Python process (it used about 20 MB of memory on the test setup) that sits between your browser and your printers. It has to be on a machine that is **always on** and can reach the printer. Recommended, best first:
@@ -115,6 +131,8 @@ Feedline is one small Python process (it used about 20 MB of memory on the test 
 - Feedline has no login, so keep the VM on your home network or put it behind a reverse proxy that handles sign-in and HTTPS (see [SECURITY.md](SECURITY.md)). If a reverse proxy runs on the same machine, start Feedline with `--bind 127.0.0.1`.
 - To show it inside Home Assistant, see [Home Assistant](#home-assistant) below (one toggle in Settings).
 - Several printers? One Feedline instance handles them all (Settings > Printers).
+
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
 ## Home Assistant
 
@@ -158,6 +176,8 @@ Notes:
 - With several printers, give each card its printer in the address: `url: http://192.168.1.60:8081/?p=<id>` (see Settings > Printers). Without `?p=` a framed Feedline shows the printer picked last in that browser, which some browsers do not remember inside a frame. Buttons that ask first (Load, Home, Pause, Emergency stop...) use an in-page dialog, so they also work inside a card.
 - The setting can also be preset with `allow_embed` in `config.json`; the toggle in Settings overrides it.
 
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
+
 ## Install as an app (Android, iPhone, desktop)
 
 Feedline is an installable web app (PWA), so it gets its own icon and a full-screen window with no browser bar:
@@ -177,6 +197,8 @@ If you do not want to set up https, build the small Android app in [`android/`](
 - Build (Windows, needs a JDK 11+ and the Android SDK with `platforms;android-34` and `build-tools;35.0.0`): `powershell -File android\build.ps1 -Sdk C:\path\to\android-sdk`. It writes `android/feedline.apk`, signed with a key it creates in `%USERPROFILE%\.android\feedline.jks` (keep that file: a new key cannot update an app installed with the old one). Copy the APK to the phone, open it, and allow installs from that source.
 - **Print notifications:** the app shows a notification when a print finishes, fails, is cancelled or pauses, for every printer Feedline knows. Tapping one opens that printer. Allow notifications when Android asks, and switch them on or off in Feedline's Settings (the **Phone notifications** card only appears inside the app). No Google services or outside server are involved: the server watches the printers (read-only) and the app keeps one small connection open to your Feedline server, so it works on your home network or over a VPN, not from the internet. Android may delay alerts while the phone sleeps; the app offers once to be excluded from battery optimization to prevent that. It restarts itself after a reboot. Set `"events": false` in `config.json` to turn the server-side watching off.
 - Tested in an Android 14 emulator (installs, address dialog, permission prompt, finished and failed notifications from a stand-in printer). Not tried on a physical phone, and the Settings switch inside the app, tapping a notification and the battery prompt have not been tried.
+
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
 ## Install (Linux, about two minutes)
 
@@ -198,12 +220,16 @@ delete `/etc/systemd/system/feedline.service`, `/opt/feedline` and `/var/lib/fee
 Troubleshooting: `journalctl -u feedline -e`. "unknown host name" (HTTP 421) means you opened the page by a DNS name the server does not know:
 add it to `allowed_hosts`. A blank printer page means Moonraker is unreachable from this machine (`curl http://192.168.1.50:7125/server/info`).
 
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
+
 ## Run
 
     python3 feedline_server.py --port 8081 --root /opt/feedline --state /var/lib/feedline [--bind 127.0.0.1]
 
 `--root` holds `index.html`, `graphics/` and `config.json`. `--state` must be writable: it holds UI settings, uploaded
 graphics, the printers added in the UI, and backups of edited config files. Never restarts Klipper or Moonraker.
+
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
 ## config.json (admin only, edited on the server)
 
@@ -227,6 +253,8 @@ See `config.example.json`. Only `printer` is required. Anything the browser coul
 | `webcam` | `{"mode","live","snapshot"}`; null = first webcam Moonraker reports |
 | `tool_fans` | per tool `{"hotend": "heater_fan ...", "part": "fan_generic ..."}` for the overlays |
 | `chamber` | `{"sensor","fan"}`; found by name when omitted |
+
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
 ## Settings tab
 
@@ -256,6 +284,8 @@ See `config.example.json`. Only `printer` is required. Anything the browser coul
 
 Feedline has no login. Anyone who can open the page can use the controls, add printers and edit config files, so run it only on a network you trust, or put it behind a reverse proxy that handles authentication and TLS. See [SECURITY.md](SECURITY.md).
 
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
+
 ## Filament systems
 
 Settings > Filament system: auto-detect, standard (one filament per extruder), Snapmaker U1 (RFID tags) or **AFC / BoxTurtle** (ArmoredTurtle). When a printer is added the server looks for the AFC objects (`AFC` plus `AFC_stepper`/`AFC_lane` lanes) and sets it up automatically. With AFC the cards are one per lane, drawn as a 3D spool, and underneath them a 3D BoxTurtle unit (black frame, gold lattice panels, one bay per lane with the spool loaded, levers, color LED bars; more than one unit is stacked), and each lane card has three buttons: Unload (`TOOL_UNLOAD`), Load (`TOOL_LOAD`; if another lane is already loaded to the toolhead it first runs the Unload macro for that lane, so Load swaps filament) and Eject (`LANE_UNLOAD`), all with `LANE={lane}` (`CHANGE_TOOL` is detected but not shown as a button) (`{lane}` is available in custom macros too). A row of status pills above the cards shows AFC's state, the toolhead/extruder filament sensor (`AFC_extruder`), the hub (`AFC_hub`) and the Turtleneck buffer (`AFC_buffer`); pills only appear for what the printer reports. Click a spool (on its card or in the BoxTurtle picture) to edit the lane's material, color and weight: the server sends `SET_MATERIAL`, `SET_COLOR` and `SET_WEIGHT` with `LANE=<lane>` (only values that pass validation, only if your AFC version reports those commands; this changes AFC's lane data, not Spoolman). Changing the system also switches the filament graphic back to that system's default. AFC support was built from the AFC source code and tested against a simulated AFC printer, not real BoxTurtle hardware.
@@ -263,6 +293,8 @@ Settings > Filament system: auto-detect, standard (one filament per extruder), S
 **QIDI Box.** A printer with a QIDI Box (`box_stepper slot0` ... objects) is detected automatically and gets one card per Box slot, named as on the printer's screen (`1A` to `1D`, `2A` ... for a second Box). Each card shows the slot's state (In use, Ready, Empty) and the material, color and vendor set for that slot on the printer, read from the `multi_color_controller` object; firmware without that object still gives the states through the saved variables, and the names are then looked up in the printer's `officiall_filas_list.cfg`. A last card, **External**, is the spool that bypasses the Box and is loaded by hand (the printer's `slot16`): it shows the material set for it on the printer and counts as in use when the toolhead has filament and no Box slot is loaded into it, since nothing senses that spool itself. It has no Load or Unload button. A status row shows the Box connection, the loaded slot, the toolhead filament sensor and the Box's temperature, humidity and drying target. A dotted line in the filament's color runs from the slot in use to the toolhead. Load and Unload send what QIDI's own Fluidd "Control Box" card sends, `E_LOAD slot=<n>` and `E_UNLOAD slot=<n>` (`<n>` is the slot number), so the Box firmware runs its whole sequence (heat, cut, retract, purge). **Eject** (Fluidd's "Uninstall", `E_BOX slot=<n>`) pulls a filament that is waiting in the Box back out of its slot. Load and Eject are live for a slot whose filament is waiting, Unload for the slot in the toolhead; all three are idle only and act without a confirmation question, as on the printer's own Box card. To use other macros instead, set them in the Macros tab or in `config.json` (`{n}` is the slot number). For a spool without an RFID tag, click the spool and use **Set this slot** to choose its filament, color and vendor from the printer's own filament table (`officiall_filas_list.cfg`); the server stores the chosen rows in the Box's saved variables (`filament_slot<n>`, `color_slot<n>`, `vendor_slot<n>`), as the printer's own Box card does, and only when no print is running. This also works for the External spool. The Box does not weigh spools, so there is no remaining amount. Read-only parts were checked against a real Plus4 with one Box; the Load and Unload buttons were not pressed on a real printer, and two or more Boxes are untested.
 
 **Toolchangers (StealthChanger, klipper-toolchanger, ktc-easy).** A printer with a `toolchanger` object and `tool T0` ... objects (viesturz's klipper-toolchanger, which StealthChanger and klipper-toolchanger-easy use) is detected automatically. Each tool gets a card showing Active or Docked; a status row shows the toolchanger's state (Ready, Changing, Error, Uninitialized), the tool in use and, with tool detection, the tool detected. Pickup runs `T{n}` (or `SELECT_TOOL T={n}` when the tools have no numbers) and Park runs `UNSELECT_TOOL`, idle only. On a cube-shaped drawn printer the tools hang in a row of docks at the top and the one in use rides the gantry. **Settings > Graphics** has the **Toolhead** look (Generic, Stealth Burner, Mini Stealth Burner, Dragon Burner, Rapid Burner, AntHead, Yavoth, A4T, XOL, Jabberwocky, Archetype BlackBird; simplified shapes, also used for a single-tool printer's head) and the number of **Docks** (one per tool by default, up to 12; spare docks are drawn empty). `toolhead` and `docks` in `config.json` preset them. This was built from the klipper-toolchanger source and documentation and checked with simulated printer state only, not on a real toolchanger; one toolhead look applies to every tool.
+
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
 ## Print tuning
 
@@ -274,23 +306,33 @@ The **Print tuning** card on Home (under Print) is for adjusting a running print
 
 Unlike moves and tool changes these are allowed while printing; that is what they are for. Each request is range-checked on the server and turned into one fixed command (`SET_GCODE_OFFSET Z_ADJUST=`, `M220`, `M221`, `SET_PRESSURE_ADVANCE`). Nothing is saved on the printer: after a restart it is back to its configured values. The commands were checked as text and the read-out against a running printer; they were not sent to a real print.
 
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
+
 ## Tune tab: bed mesh
 
 The **Tune** tab shows the loaded bed mesh as a heatmap and a 3D surface. **Calibrate bed mesh** first shows what it is about to do (it looks at the printer's current state), asks for confirmation, does the preparation and then runs `BED_MESH_CALIBRATE` and reloads the picture. The preparation is only what is missing: it homes all axes if they are not homed; levels the gantry (`QUAD_GANTRY_LEVEL`, or `Z_TILT_ADJUST` on a printer with Z tilt) when the printer has that and it is not levelled yet, followed by homing Z again; and heats a cold bed to `mesh_bed_temp` (60 C unless you set another value in `config.json`, `0` = never) and switches it off afterwards, also when a step fails. It works on every printer that has `BED_MESH_CALIBRATE`, never while a print is running or paused, and not while Klipper is not ready; the server then refuses and says why. The new mesh stays in the printer's memory only: saving it needs `SAVE_CONFIG`, which restarts Klipper, so run that on the printer (Feedline never restarts Klipper). The whole thing takes a few minutes and cannot be stopped from here. It does not cool, clean or change the nozzle, and printers that need a special preparation of their own (a custom macro) may need that run first. Checked with a stand-in printer, not on real hardware.
+
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
 ## Console
 
 The **Console** tab shows the printer's G-code log live and has an input box at the bottom: type one line of G-code (for example `M115`, `G28`, `SET_PIN PIN=led VALUE=1` or a macro name) and press Enter. Up and Down bring back earlier lines. Klipper's answer, including errors, shows up in the log. It works while a print is running too, so be careful with moves. Anything Klipper accepts is allowed except `RESTART`, `FIRMWARE_RESTART`, `SAVE_CONFIG`, `M112` (emergency stop), `SHUTDOWN`, firmware and flash commands, and `RUN_SHELL_COMMAND`; use the printer's own screen for those. Lines are limited to 500 characters and one command at a time. See [SECURITY.md](SECURITY.md): there is no login, so anyone who can open the page can send G-code.
 
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
+
 ## Macros tab
 
 Lists every user-facing macro (names not starting with `_`) with its description and parameters (read from the printer's config) and a Run button (idle only, confirmation first). The tool-button macros (load/unload/park/pickup) are auto-detected from the printer's macros and commands; in the same tab each can be changed, disabled or reset to auto-detect. Custom values are limited to `NAME KEY=value` for commands the printer reports (restart/shutdown/save-config style commands are refused), never free-form G-code. Precedence: custom (UI) > config.json > auto-detected.
+
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
 ## Tests
 
     python -m unittest discover -s tests -v
 
 `tests/test_server.py` covers the server's decisions that need no printer: model detection, filament-system detection, the command each tool button builds, print-tuning limits, heater caps, macro parameters, and the path and address checks. Standard library only; printer answers are faked and nothing opens a network connection. The page has no automated tests.
+
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
 ## Not covered
 
