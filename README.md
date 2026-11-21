@@ -246,7 +246,6 @@ See `config.example.json`. Only `printer` is required. Anything the browser coul
 | `allowed_hosts` | extra Host names the server answers to (anti DNS-rebinding). IP addresses, single-label names and `.local/.lan/.home.arpa/.internal/.ts.net` always work |
 | `allow_embed` | optional; normally use Settings > Home Assistant and other pages. `true` lets another site show the page in a frame (e.g. a Home Assistant card); default refuses framing |
 | `allow_config_edit` | `false` makes the Files tab read-only |
-| `tag_poll` | Snapmaker U1: every this many seconds (3 or more, default 10) while the printer is **not** printing, Feedline makes the printer read the RFID tag of every loaded channel again, so a swapped or rewritten tag shows up on its own. Never while printing, pausing, feeding or with a channel error. `0` = off |
 | `mesh_bed_temp` | Calibrate bed mesh heats a cold bed to this temperature (default 60 C) before probing and switches it off afterwards; `0` = never heat |
 | `events` | `false` turns off the server-side watching of print states that feeds the Android app's notifications (default on) |
 | `spoolman`, `spoolman_url` | Spoolman the server talks to (`host:port` or a URL such as `http://192.168.1.20:7912`, so it can run on any machine, not just this one), and the URL browsers open (defaults to the same address). Can also be set in Settings > Spoolman, which overrides this and is checked against Spoolman's `/api/v1/info` before saving |

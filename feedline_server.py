@@ -74,7 +74,6 @@ DEFAULT_CFG = {
     "allowed_hosts": [],             # extra Host names the dashboard answers to (IP addresses, single-label and .local/.lan/.ts.net names always work)
     "allow_embed": False,            # true = the page may be shown inside a frame on another site (e.g. a Home Assistant dashboard card)
     "mesh_bed_temp": 60,             # Calibrate bed mesh heats a cold bed to this (C) first and switches it off after; 0 = do not heat
-    "tag_poll": 10,                  # Snapmaker U1: every N seconds (3 or more) while not printing, make the printer read each loaded channel's RFID tag again; 0 = off
     "allow_config_edit": True,      # false = the Files tab is read-only (config files can then not be changed from the browser)
 }
 HOST_SUFFIXES = (".local", ".lan", ".home.arpa", ".internal", ".localdomain", ".ts.net")
@@ -1904,56 +1903,6 @@ def watch_printers(interval=5):
         time.sleep(interval)
 
 
-def tag_poll_channels(status):
-    """Channels whose RFID tag should be read again, from one Moonraker query of print_stats and the two filament_feed
-    objects (Snapmaker U1): only while the printer is not printing, only channels holding filament, and none that
-    is feeding or has an error. [] means leave the printer alone."""
-    if (status.get("print_stats") or {}).get("state") in ("printing", "paused"):
-        return []
-    out = []
-    for side in ("filament_feed left", "filament_feed right"):
-        for name, ch in sorted((status.get(side) or {}).items()):
-            m = re.fullmatch(r"extruder(\d)", name)
-            if m and isinstance(ch, dict) and ch.get("module_exist") and ch.get("filament_detected") \
-                    and ch.get("channel_action_state") == "load_finish" and ch.get("channel_error") in (None, "ok"):
-                out.append(int(m.group(1)))
-    return sorted(out)
-
-
-def poll_tags(interval):
-    """Every `interval` seconds, while a U1 is not printing, ask it to read the RFID tag of each loaded channel again, so a
-    tag that was swapped or rewritten shows up without pressing anything (the printer itself only reads on insert/remove)."""
-    h = object.__new__(Handler)
-    h.pid, h.headers = "main", {}
-    skip, has_rfid = {}, {}
-    q = "print_stats&filament_feed%20left&filament_feed%20right"
-    while True:
-        time.sleep(interval)
-        try:
-            for row in h.printer_list():
-                now = time.time()
-                if skip.get(row["id"], 0) > now:
-                    continue
-                try:
-                    if row["id"] not in has_rfid:
-                        with urllib.request.urlopen("http://%s:7125/printer/objects/list" % row["host"], timeout=4) as r:
-                            has_rfid[row["id"]] = "filament_detect" in json.load(r)["result"]["objects"]
-                    if not has_rfid[row["id"]]:
-                        skip[row["id"]] = now + 600
-                        continue
-                    with urllib.request.urlopen("http://%s:7125/printer/objects/query?%s" % (row["host"], q), timeout=4) as r:
-                        status = json.load(r)["result"]["status"]
-                    chans = tag_poll_channels(status)
-                    if chans:
-                        h.printer = row["host"]
-                        h.run_gcode("\n".join("FILAMENT_DT_UPDATE CHANNEL=%d" % c for c in chans), 15)
-                except Exception:  # noqa: BLE001
-                    has_rfid.pop(row["id"], None)
-                    skip[row["id"]] = now + 30          # printer off, busy or unreachable: try again later
-        except Exception:  # noqa: BLE001
-            logging.exception("tag poll")
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8081)
@@ -1976,12 +1925,6 @@ def main():
     Handler.backups = os.path.join(a.state, "backups")
     if cfg.get("events", True):
         threading.Thread(target=watch_printers, daemon=True).start()
-    try:
-        tp = float(cfg.get("tag_poll", 10) or 0)
-    except (TypeError, ValueError):
-        tp = 0
-    if tp >= 3:
-        threading.Thread(target=poll_tags, args=(tp,), daemon=True).start()
     logging.info("Feedline listening on %s:%d for printer %s", a.bind, a.port, Handler.printer)
     http.server.ThreadingHTTPServer((a.bind, a.port), Handler).serve_forever()
 

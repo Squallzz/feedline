@@ -364,31 +364,6 @@ class ConsoleGcode(unittest.TestCase):
         self.assertEqual(self.send(None), [400])
 
 
-class TagPoll(unittest.TestCase):
-    @staticmethod
-    def feed(**kw):
-        d = {"module_exist": True, "filament_detected": True, "channel_action_state": "load_finish", "channel_error": "ok"}
-        d.update(kw)
-        return d
-
-    def status(self, state="standby", **chans):
-        left = {k: v for k, v in chans.items() if k in ("extruder0", "extruder1")}
-        right = {k: v for k, v in chans.items() if k in ("extruder2", "extruder3")}
-        return {"print_stats": {"state": state}, "filament_feed left": left, "filament_feed right": right}
-
-    def test_reads_loaded_channels_when_idle(self):
-        st = self.status(extruder0=self.feed(), extruder1=self.feed(filament_detected=False), extruder2=self.feed(), extruder3=self.feed())
-        self.assertEqual(fs.tag_poll_channels(st), [0, 2, 3])
-
-    def test_leaves_the_printer_alone_when_busy(self):
-        for state in ("printing", "paused"):
-            self.assertEqual(fs.tag_poll_channels(self.status(state, extruder0=self.feed())), [])
-        self.assertEqual(fs.tag_poll_channels(self.status(extruder0=self.feed(channel_action_state="loading"))), [])
-        self.assertEqual(fs.tag_poll_channels(self.status(extruder0=self.feed(channel_error="jam"))), [])
-        self.assertEqual(fs.tag_poll_channels(self.status(extruder0=self.feed(module_exist=False))), [])
-        self.assertEqual(fs.tag_poll_channels({}), [])
-
-
 class TagReread(unittest.TestCase):
     def send(self, req, objs=("filament_detect",)):
         sent = []
