@@ -91,7 +91,7 @@ Feedline reads your [Spoolman](https://github.com/Donkie/Spoolman) spools and sh
 
 Install it together with Feedline (needs `"spoolman"` set in `config.json`, e.g. `"192.168.1.20:7912"`):
 
-    sudo ./install.sh --with-autoadd
+    sudo sh install.sh --with-autoadd
 
 or run it yourself on any machine that can reach the printer (port 7125) and Spoolman:
 
@@ -205,11 +205,11 @@ If you do not want to set up https, build the small Android app in [`android/`](
 Requirements: Python 3.8+ (nothing to `pip install`), and a Klipper printer whose Moonraker answers on port 7125 from this machine.
 
     git clone https://github.com/Squallzz/feedline.git && cd feedline
-    sudo ./install.sh
+    sudo sh install.sh
 
 Both lines can be pasted as they are: nothing in them needs editing. The installer asks for your printer's address (IP or host name),
 checks that Moonraker answers there, and only then saves it. It will not accept the example address from this page, and it asks on the
-terminal, so a pasted block of commands is never mistaken for an answer. To skip the question, pass the address: `sudo ./install.sh PRINTER_ADDRESS`.
+terminal, so a pasted block of commands is never mistaken for an answer. To skip the question, pass the address: `sudo sh install.sh PRINTER_ADDRESS`.
 
 The script copies the files to `/opt/feedline`, writes `config.json`, installs the hardened
 `feedline.service` (dynamic user, read-only filesystem, state in `/var/lib/feedline`) and starts it. At the end it prints the address to open in your browser (`http://<this machine's address>:8081/`).
@@ -218,7 +218,7 @@ Manual install: copy `feedline.html` to `/opt/feedline/index.html`, `feedline_se
 to `/opt/feedline/config.json` and set `printer`, then run the command below, or copy `feedline.service` to `/etc/systemd/system/`
 and `systemctl enable --now feedline`.
 
-Update: re-run `sudo ./install.sh` from a newer copy (config and settings are kept). Uninstall: `systemctl disable --now feedline`,
+Update: re-run `sudo sh install.sh` from a newer copy (config and settings are kept). Uninstall: `systemctl disable --now feedline`,
 delete `/etc/systemd/system/feedline.service`, `/opt/feedline` and `/var/lib/feedline`.
 
 Troubleshooting: `journalctl -u feedline -e`. "unknown host name" (HTTP 421) means you opened the page by a DNS name the server does not know:

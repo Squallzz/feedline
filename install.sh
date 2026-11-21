@@ -1,10 +1,10 @@
 #!/bin/sh
-# Feedline installer (Linux with systemd). Run from the folder holding these files:  sudo ./install.sh [PRINTER_HOST] [--with-autoadd]
+# Feedline installer (Linux with systemd). Run from the folder holding these files:  sudo sh install.sh [PRINTER_HOST] [--with-autoadd]
 # With no PRINTER_HOST it asks for the address, checks that Moonraker answers there, and only then saves it.
 # Needs only python3 (3.8+). Safe to re-run: an existing config.json is never overwritten.
 set -eu
 
-[ "$(id -u)" -eq 0 ] || { echo "run as root (sudo ./install.sh)"; exit 1; }
+[ "$(id -u)" -eq 0 ] || { echo "run as root (sudo sh install.sh)"; exit 1; }
 command -v python3 >/dev/null || { echo "python3 is required"; exit 1; }
 python3 -c 'import sys; sys.exit(sys.version_info < (3, 8))' || { echo "python 3.8 or newer is required"; exit 1; }
 
@@ -40,7 +40,7 @@ choose_printer() {
   while :; do
     cand="$PRINTER"; PRINTER=""
     if [ -z "$cand" ]; then
-      have_tty || { echo "No printer address given and no terminal to ask on. Run:  sudo ./install.sh PRINTER_ADDRESS"; exit 1; }
+      have_tty || { echo "No printer address given and no terminal to ask on. Run:  sudo sh install.sh PRINTER_ADDRESS"; exit 1; }
       ask "Address (IP or host name) of your printer, where Moonraker runs:"; cand="$REPLY"
     fi
     if ! printf '%s' "$cand" | grep -Eq '^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$'; then
