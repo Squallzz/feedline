@@ -1,5 +1,5 @@
 {
-  "printer": "192.168.1.50",
+  "printer": "",
   "name": "My printer",
   "allowed_hosts": [],
   "allow_embed": false,

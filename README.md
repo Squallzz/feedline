@@ -95,7 +95,7 @@ Install it together with Feedline (needs `"spoolman"` set in `config.json`, e.g.
 
 or run it yourself on any machine that can reach the printer (port 7125) and Spoolman:
 
-    python3 tools/spoolman_autoadd.py --printer 192.168.1.50 --spoolman http://192.168.1.20:7912
+    python3 tools/spoolman_autoadd.py --printer PRINTER_ADDRESS --spoolman http://SPOOLMAN_ADDRESS:7912     # fill in your own addresses
     python3 tools/spoolman_autoadd.py --config /opt/feedline/config.json --dry-run --once     # only report, change nothing
 
 The service uses the `printer` and `spoolman` from `config.json` (an address set in Settings is not used by it). It was tested against a simulated printer and Spoolman (creates vendor, filament and spool, binds the channel, adds nothing twice) and with a read-only `--dry-run` against a real U1 and Spoolman. The Spoolman side is plain REST calls (`/api/v1/vendor`, `/filament`, `/spool`).
@@ -205,10 +205,14 @@ If you do not want to set up https, build the small Android app in [`android/`](
 Requirements: Python 3.8+ (nothing to `pip install`), and a Klipper printer whose Moonraker answers on port 7125 from this machine.
 
     git clone https://github.com/Squallzz/feedline.git && cd feedline
-    sudo ./install.sh 192.168.1.50              # your printer's address
+    sudo ./install.sh
+
+Both lines can be pasted as they are: nothing in them needs editing. The installer asks for your printer's address (IP or host name),
+checks that Moonraker answers there, and only then saves it. It will not accept the example address from this page, and it asks on the
+terminal, so a pasted block of commands is never mistaken for an answer. To skip the question, pass the address: `sudo ./install.sh PRINTER_ADDRESS`.
 
 The script copies the files to `/opt/feedline`, writes `config.json`, installs the hardened
-`feedline.service` (dynamic user, read-only filesystem, state in `/var/lib/feedline`) and starts it. Open `http://192.168.1.60:8081/ (your server's address)`.
+`feedline.service` (dynamic user, read-only filesystem, state in `/var/lib/feedline`) and starts it. At the end it prints the address to open in your browser (`http://<this machine's address>:8081/`).
 
 Manual install: copy `feedline.html` to `/opt/feedline/index.html`, `feedline_server.py` and `graphics/` next to it, copy `config.example.json`
 to `/opt/feedline/config.json` and set `printer`, then run the command below, or copy `feedline.service` to `/etc/systemd/system/`
@@ -218,7 +222,7 @@ Update: re-run `sudo ./install.sh` from a newer copy (config and settings are ke
 delete `/etc/systemd/system/feedline.service`, `/opt/feedline` and `/var/lib/feedline`.
 
 Troubleshooting: `journalctl -u feedline -e`. "unknown host name" (HTTP 421) means you opened the page by a DNS name the server does not know:
-add it to `allowed_hosts`. A blank printer page means Moonraker is unreachable from this machine (`curl http://192.168.1.50:7125/server/info`).
+add it to `allowed_hosts`. A blank printer page means Moonraker is unreachable from this machine (`curl http://PRINTER_ADDRESS:7125/server/info` with your printer's address).
 
 <sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
