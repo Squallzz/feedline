@@ -74,7 +74,8 @@ chmod 644 "$DEST/config.json"
 
 install -m 644 "$SRC/feedline.service" /etc/systemd/system/feedline.service
 systemctl daemon-reload
-systemctl enable --now feedline
+systemctl enable feedline
+systemctl restart feedline      # restart, not just start: an update must replace the code of an already running server
 sleep 1
 systemctl --no-pager --lines=3 status feedline || true
 echo
