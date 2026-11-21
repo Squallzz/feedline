@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feedline: a Klipper printer dashboard</title>
+<meta name="description" content="Feedline is a one-page Klipper and Moonraker dashboard with a live drawn printer, filament and Spoolman cards, print tuning, bed mesh, console and an Android app.">
+<meta property="og:title" content="Feedline: a Klipper printer dashboard">
+<meta property="og:description" content="One HTML page and a tiny Python proxy. Live printer view, filament systems, Spoolman, tuning, console, Android app.">
+<meta property="og:image" content="dashboard.png">
+<meta name="theme-color" content="#0F0D24">
+<link rel="icon" type="image/png" href="https://raw.githubusercontent.com/Squallzz/feedline/main/graphics/feedline-192.png">
+<style>
+  :root{--bg:#0F0D24;--card:#1A1740;--card2:#221E52;--edge:#352F6B;--text:#ECEBFA;--muted:#A29EDB;--violet:#7A63F2;--violet2:#9C8BFF;--amber:#E8B04F;--ok:#4FD1A5}
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  a{color:var(--violet2)}
+  img{max-width:100%;height:auto;display:block}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+  header.top{position:sticky;top:0;z-index:5;background:rgba(15,13,36,.9);backdrop-filter:blur(8px);border-bottom:1px solid var(--edge)}
+  header.top .wrap{display:flex;align-items:center;gap:18px;height:56px}
+  .brand{font-weight:700;letter-spacing:.2px;color:var(--text);text-decoration:none;display:flex;align-items:center;gap:10px}
+  .brand img{width:26px;height:26px;border-radius:6px}
+  nav{display:flex;gap:16px;margin-left:auto;font-size:14px;flex-wrap:wrap}
+  nav a{color:var(--muted);text-decoration:none}
+  nav a:hover{color:var(--text)}
+  .hero{padding:64px 0 36px;text-align:center}
+  .hero h1{font-size:clamp(34px,6vw,56px);line-height:1.1;margin:0 0 14px;letter-spacing:-.5px}
+  .hero h1 span{background:linear-gradient(90deg,var(--violet2),var(--amber));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p{max-width:680px;margin:0 auto 26px;color:var(--muted);font-size:18px}
+  .btns{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+  .btn{display:inline-block;padding:11px 20px;border-radius:10px;border:1px solid var(--edge);background:var(--card2);color:var(--text);text-decoration:none;font-weight:600}
+  .btn:hover{border-color:var(--violet)}
+  .btn.main{background:var(--violet);border-color:var(--violet)}
+  .btn.main:hover{background:#6a52e0}
+  .shot{margin:44px auto 0;border:1px solid var(--edge);border-radius:16px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.45);max-width:980px}
+  section{padding:56px 0}
+  section h2{font-size:28px;margin:0 0 6px}
+  section .lead{color:var(--muted);margin:0 0 28px;max-width:720px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+  .card{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:18px 20px}
+  .card h3{margin:0 0 6px;font-size:17px}
+  .card p{margin:0;color:var(--muted);font-size:15px}
+  .split{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:center;margin:34px 0}
+  .split.flip .txt{order:2}
+  .split img{border:1px solid var(--edge);border-radius:12px}
+  .split h3{margin:0 0 8px;font-size:22px}
+  .split p{margin:0 0 10px;color:var(--muted)}
+  pre{background:#0A0919;border:1px solid var(--edge);border-radius:12px;padding:16px 18px;overflow:auto;font:14px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;color:#d8d5ff;margin:12px 0}
+  .steps{counter-reset:s;list-style:none;padding:0;margin:0}
+  .steps li{counter-increment:s;position:relative;padding:0 0 18px 46px}
+  .steps li::before{content:counter(s);position:absolute;left:0;top:0;width:32px;height:32px;border-radius:50%;background:var(--card2);border:1px solid var(--violet);display:grid;place-items:center;font-weight:700;color:var(--violet2)}
+  .note{border-left:3px solid var(--amber);background:var(--card);padding:12px 16px;border-radius:0 10px 10px 0;color:var(--muted);font-size:15px}
+  .pills{display:flex;flex-wrap:wrap;gap:8px}
+  .pill{border:1px solid var(--edge);background:var(--card);border-radius:999px;padding:4px 12px;font-size:14px;color:var(--muted)}
+  footer{border-top:1px solid var(--edge);padding:30px 0;color:var(--muted);font-size:14px;text-align:center}
+  @media(max-width:760px){.split{grid-template-columns:1fr}.split.flip .txt{order:0}nav{display:none}.hero{padding-top:40px}}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="#top"><img src="https://raw.githubusercontent.com/Squallzz/feedline/main/graphics/feedline-192.png" alt="">Feedline</a>
+  <nav><a href="#features">Features</a><a href="#screens">Screenshots</a><a href="#install">Install</a><a href="#android">Android</a><a href="#more">Docs</a><a href="https://github.com/Squallzz/feedline">GitHub</a></nav>
+</div></header>
+
+<main id="top">
+<div class="wrap hero">
+  <h1>A Klipper dashboard that <span>draws your printer</span></h1>
+  <p>One HTML page and a small Python proxy. Live camera, temperatures and toolhead position, filament cards that know your spools, print tuning, bed mesh and a console. Nothing to build, nothing to pip install.</p>
+  <div class="btns"><a class="btn main" href="#install">Install in two minutes</a><a class="btn" href="https://github.com/Squallzz/feedline">View on GitHub</a></div>
+  <div class="shot"><img src="dashboard.png" alt="Feedline dashboard with a drawn Snapmaker U1, live camera and filament tool cards"></div>
+</div>
+
+<section id="features"><div class="wrap">
+  <h2>What it does</h2>
+  <p class="lead">Works with any Klipper and Moonraker printer. It adapts to what the printer reports instead of asking you to configure everything.</p>
+  <div class="grid">
+    <div class="card"><h3>Live drawn printer</h3><p>The toolhead and bed move as the real ones do. A Snapmaker U1 view plus about 27 other drawn models (QIDI, Creality, Voron, RatRig, Sovol, Elegoo, Anycubic, Flashforge, Prusa, FLSUN), chosen automatically.</p></div>
+    <div class="card"><h3>Filament systems</h3><p>Snapmaker U1 RFID tags, AFC / BoxTurtle, QIDI Box, toolchangers (StealthChanger, klipper-toolchanger) or plain extruders. Load, unload, park and pick up from the cards.</p></div>
+    <div class="card"><h3>Spoolman</h3><p>Each tool shows its spool, colour and remaining weight. An optional helper adds unknown RFID tags to Spoolman by itself.</p></div>
+    <div class="card"><h3>Print tuning</h3><p>Z offset, speed, flow and pressure advance while printing, plus a bed mesh view with a one-tap Calibrate that homes and heats first when needed.</p></div>
+    <div class="card"><h3>Console and macros</h3><p>Send G-code, run any macro, edit what the tool buttons run, and browse or edit config files with automatic backups.</p></div>
+    <div class="card"><h3>Many printers</h3><p>One instance, an overview page and a per-tab address, so each Home Assistant card can show a different printer.</p></div>
+    <div class="card"><h3>Phones and tablets</h3><p>Install it as an app from the browser, or use the Android app for print finished, failed, cancelled and paused notifications.</p></div>
+    <div class="card"><h3>Home Assistant</h3><p>A helper builds the card for you. Works over https through a reverse proxy, including the iframe rules Home Assistant enforces.</p></div>
+    <div class="card"><h3>Careful by design</h3><p>Allow-listed controls, host checks, a custom header against cross-site posts and a written <a href="https://github.com/Squallzz/feedline/blob/main/SECURITY.md">security review</a>. Run it on a trusted network.</p></div>
+  </div>
+</div></section>
+
+<section id="screens"><div class="wrap">
+  <h2>A look around</h2>
+  <p class="lead">Screenshots from a Snapmaker U1 and a simulated AFC printer.</p>
+  <div class="split">
+    <div class="txt"><h3>Filament lanes</h3><p>AFC / BoxTurtle shows state pills and one card per lane, with Load, Unload and Eject buttons.</p></div>
+    <img src="afc.png" alt="AFC lanes with status pills" loading="lazy">
+  </div>
+  <div class="split flip">
+    <div class="txt"><h3>Spoolman on every tool</h3><p>Colour, material, remaining grams and the spool number, matched from the RFID tag. Tap a card for the full spool details.</p></div>
+    <img src="spoolman-cards.png" alt="Tool cards with Spoolman data" loading="lazy">
+  </div>
+  <div class="split">
+    <div class="txt"><h3>Your look, your buttons</h3><p>Pick the printer picture, toolchanger graphic and spool style independently, and edit what each tool button runs from the Macros tab.</p></div>
+    <img src="macros.png" alt="Macros tab" loading="lazy">
+  </div>
+  <div class="split flip">
+    <div class="txt"><h3>Remote touchscreen</h3><p>On a U1 with the Paxx firmware, the printer's own screen shows up in the dashboard and can be used from anywhere on your network.</p></div>
+    <img src="screen-open.png" alt="Remote touchscreen view" loading="lazy">
+  </div>
+  <div class="split">
+    <div class="txt"><h3>In Home Assistant</h3><p>Drop it into a dashboard as a card. The settings page generates the card code for you.</p></div>
+    <img src="homeassistant.png" alt="Home Assistant card helper" loading="lazy">
+  </div>
+</div></section>
+
+<section id="install"><div class="wrap">
+  <h2>Install (Linux, about two minutes)</h2>
+  <p class="lead">Any Linux machine with systemd and Python 3.8 or newer that can reach the printer: a Raspberry Pi, a small VM, the same box as Spoolman.</p>
+  <ol class="steps">
+    <li><strong>Get the files and run the installer.</strong> Nothing in these lines needs editing.
+<pre>git clone https://github.com/Squallzz/feedline.git &amp;&amp; cd feedline
+sudo sh install.sh</pre></li>
+    <li><strong>Answer one question.</strong> The installer asks for your printer's address, checks that Moonraker answers there and only then saves it. It will not accept the README's example address.</li>
+    <li><strong>Open it.</strong> The installer prints the address at the end: <code>http://&lt;this machine&gt;:8081/</code>. Settings live in <code>/opt/feedline/config.json</code>.</li>
+  </ol>
+  <p class="note">There is no login. Run Feedline on a trusted network, or put it behind a reverse proxy that does authentication and https. To update later, pull the repository and run <code>sudo sh install.sh</code> again; your config is kept.</p>
+</div></section>
+
+<section id="android"><div class="wrap">
+  <h2>Android app</h2>
+  <p class="lead">A small wrapper around the dashboard that asks for your Feedline address the first time, keeps a connection for notifications and can start after a reboot.</p>
+  <div class="pills"><span class="pill">Print finished</span><span class="pill">Print failed</span><span class="pill">Print cancelled</span><span class="pill">Print paused</span><span class="pill">File uploads</span><span class="pill">Install as PWA instead</span></div>
+  <p style="margin-top:18px">The project is in the <a href="https://github.com/Squallzz/feedline/tree/main/android">android folder</a> and builds without Gradle (<code>build.ps1</code>). See the <a href="https://github.com/Squallzz/feedline#android-app-apk">README</a> for the steps.</p>
+</div></section>
+
+<section id="more"><div class="wrap">
+  <h2>Read more</h2>
+  <div class="grid">
+    <div class="card"><h3><a href="https://github.com/Squallzz/feedline#readme">Full README</a></h3><p>Every setting, filament system, Spoolman, Home Assistant, reverse proxy and troubleshooting.</p></div>
+    <div class="card"><h3><a href="https://github.com/Squallzz/feedline/blob/main/SECURITY.md">Security review</a></h3><p>What is protected, what is accepted by design and what to do about it.</p></div>
+    <div class="card"><h3><a href="https://github.com/Squallzz/feedline/issues">Issues</a></h3><p>Found a bug or want another printer drawn? Open an issue.</p></div>
+  </div>
+</div></section>
+</main>
+
+<footer><div class="wrap">Feedline is free software under the MIT licence. <a href="https://github.com/Squallzz/feedline">Source on GitHub</a>. Not affiliated with Snapmaker, Klipper, Moonraker, Spoolman or Home Assistant.</div></footer>
+</body>
+</html>
