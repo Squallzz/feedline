@@ -72,7 +72,7 @@ Feedline reads your [Spoolman](https://github.com/Donkie/Spoolman) spools and sh
 
 ![The four U1 tool cards with spool name, brand, color, remaining grams and Spoolman number](docs/spoolman-cards.png)
 
-**How a tool is matched to a spool.** The U1 reads the RFID tag on each spool and reports its UID. Feedline looks for that UID in the `card_uids` field of your Spoolman spools. A tag with no matching spool still works: the card shows what the tag itself says (type, brand, weight) and the spool popup says "Not in Spoolman".
+**How a tool is matched to a spool.** The U1 reads the RFID tag on each spool and reports its UID. Feedline looks for that UID in the `card_uids` field of your Spoolman spools. A tag with no matching spool still works: the card shows what the tag itself says (type, brand, weight) and the spool popup says "Not in Spoolman". The U1 only reads a tag when filament is inserted, removed or reloaded in a channel (and at startup), so after you write or change a tag, press **Re-read tag** on that tool's card to make the printer scan it again (it sends `FILAMENT_DT_UPDATE CHANNEL=n`).
 
 **Click a spool** (on its card) to open its details: material, color, remaining / used / initial weight, remaining length, empty-spool weight, diameter, density, nozzle and bed temperature, price, location, lot, first / last used, comment, the tag UID and a link that opens the spool in Spoolman.
 

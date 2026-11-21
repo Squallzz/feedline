@@ -364,5 +364,34 @@ class ConsoleGcode(unittest.TestCase):
         self.assertEqual(self.send(None), [400])
 
 
+class TagReread(unittest.TestCase):
+    def send(self, req, objs=("filament_detect",)):
+        sent = []
+
+        class Fake(fs.Handler):
+            def objects(self):
+                return set(objs)
+
+            def run_gcode(self, s, timeout=15):
+                sent.append(s)
+
+            def jreply(self, code, obj):
+                sent.append(code)
+
+        h = object.__new__(Fake)
+        h.pid, h.printer, h.cfg = "test", "printer.test", dict(fs.DEFAULT_CFG)
+        h.tag_control(req)
+        return sent
+
+    def test_rereads_a_channel(self):
+        self.assertEqual(self.send({"channel": 2}), ["FILAMENT_DT_UPDATE CHANNEL=2", 200])
+        self.assertEqual(self.send({"channel": "0"}), ["FILAMENT_DT_UPDATE CHANNEL=0", 200])
+
+    def test_refuses_bad_channel_or_printer(self):
+        for bad in ({"channel": 4}, {"channel": -1}, {"channel": "x"}, {}, {"channel": "1;M112"}):
+            self.assertEqual(self.send(bad), [400], bad)
+        self.assertEqual(self.send({"channel": 1}, objs=()), [400])
+
+
 if __name__ == "__main__":
     unittest.main()

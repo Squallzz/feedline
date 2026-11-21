@@ -115,6 +115,8 @@
   .acts button{background:#1D1A42;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:4px 0;font:inherit;font-size:11px;cursor:pointer}
   .acts button:hover:not(:disabled){border-color:var(--violet);background:#2a2560}
   .acts button:disabled{opacity:.35;cursor:not-allowed}
+  .acts button.rfid{grid-column:1/-1;opacity:.85}      /* U1 "Re-read tag" gets its own full-width row under Load / Unload / Park / Pickup */
+  .acts button.rfid:disabled{opacity:.6;cursor:default}
   .glow{animation:pulse 1.6s ease-in-out infinite}
   @keyframes pulse{50%{opacity:.45}}
   #temps h2,#fans h2,#con h2{font-size:15px;font-weight:600;margin:0 0 10px;color:var(--muted)}
@@ -749,13 +751,25 @@ const LABEL = {load: "Load", unload: "Unload", park: "Park", pickup: "Pickup"};
 const QB_LABEL = {load: "Load", unload: "Unload", park: "Eject"};      // QIDI Box: Eject pulls a waiting filament out of its slot (Fluidd calls it Uninstall)
 function actions(i, loaded, isActive, ex, s) {
   const offered = ((CFG && CFG.actions) || []);
-  if (!CONTROLS || !offered.length || (s && s.ext)) return "";      // the external spool is loaded by hand
+  // Snapmaker U1: ask the printer to read this channel's RFID tag again (after a tag was written, or when it was missed)
+  const reread = CONTROLS && CFG.provider === "u1" ? '<button class="rfid" data-act="rfid" data-tool="' + i + '" title="Ask the printer to read the RFID tag in this channel again">Re-read tag</button>' : "";
+  if (!CONTROLS || !offered.length || (s && s.ext)) return reread ? '<div class="acts">' + reread + '</div>' : "";      // the external spool is loaded by hand
   const locked = running || printState === "printing" || printState === "paused";
   const afc = CFG.provider === "afc", qb = CFG.provider === "qidibox";      // QIDI Box: Load a waiting slot, Unload the one in the toolhead; the button carries the slot number
   const can = afc ? {load: loaded && !isActive, unload: loaded, park: isActive, pickup: loaded && !isActive} : qb ? {load: loaded && !isActive, unload: isActive, park: loaded && !isActive} : {load: loaded, unload: loaded, park: isActive, pickup: !isActive};
   return '<div class="acts">' + (afc ? ["park", "load", "unload"] : ["load", "unload", "park", "pickup"]).filter(a => offered.includes(a)).map(a =>
-    '<button data-act="' + a + '" data-tool="' + (qb ? s.slot : i) + '"' + (afc ? ' data-lane="' + escH(s.lane) + '"' : "") + (s && s.label ? ' data-who="' + escH(s.label) + '"' : "") + (qb ? ' data-direct="1"' : "") + (locked || !can[a] ? " disabled" : "") + '>' + (afc ? AFC_LABEL[a] : qb ? QB_LABEL[a] : LABEL[a]) + '</button>').join("") +
+    '<button data-act="' + a + '" data-tool="' + (qb ? s.slot : i) + '"' + (afc ? ' data-lane="' + escH(s.lane) + '"' : "") + (s && s.label ? ' data-who="' + escH(s.label) + '"' : "") + (qb ? ' data-direct="1"' : "") + (locked || !can[a] ? " disabled" : "") + '>' + (afc ? AFC_LABEL[a] : qb ? QB_LABEL[a] : LABEL[a]) + '</button>').join("") + reread +
     '</div>';
+}
+async function rereadTag(btn) {
+  const t = btn.textContent;
+  btn.disabled = true; btn.textContent = "Reading...";
+  try {
+    await postControl({action: "tag_reread", channel: +btn.dataset.tool});
+    btn.textContent = "Asked printer";
+    setTimeout(tick, 2500);                     // the printer needs a moment to scan; refresh the cards after that
+  } catch (e) { flashError(String(e.message || e), 6000); btn.textContent = t; }
+  setTimeout(() => { btn.disabled = false; btn.textContent = t; }, 3000);
 }
 const CONFIRM = {
   load: t => "Load filament into T" + t + "?\nThe printer will heat the nozzle and feed filament.",
@@ -955,6 +969,7 @@ document.getElementById("grid").addEventListener("click", ev => {
   const s = ev.target.closest(".spool");
   if (s) return openSpool(+s.dataset.spool);
   const b = ev.target.closest("button[data-act]");
+  if (b && !b.disabled && b.dataset.act === "rfid") return rereadTag(b);
   if (b && !b.disabled) control(b.dataset.act, +b.dataset.tool, b.dataset.lane, b.dataset.who, b.textContent, b.dataset.direct === "1");
 });
 

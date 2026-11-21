@@ -1190,6 +1190,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             self.jreply(502, {"error": str(e)})
 
+    def tag_control(self, req):
+        """Snapmaker U1: make the printer read the RFID tag in one channel again (FILAMENT_DT_UPDATE CHANNEL=n)."""
+        try:
+            ch = int(req.get("channel"))
+        except (TypeError, ValueError):
+            ch = -1
+        if not 0 <= ch <= 3:
+            return self.jreply(400, {"error": "bad request"})
+        try:
+            if "filament_detect" not in self.objects():
+                return self.jreply(400, {"error": "this printer has no RFID reader"})
+            self.run_gcode("FILAMENT_DT_UPDATE CHANNEL=%d" % ch, 15)
+            self.jreply(200, {"ok": True})
+        except Exception as e:  # noqa: BLE001
+            self.jreply(502, {"error": str(e)})
+
     # Fluidd-style movement. Only while the printer is idle; jogs are sent as ABSOLUTE moves computed from the current
     # position (and clamped to the axis limits), so a failed move can never leave the printer stuck in relative mode.
     JOG_STEPS = (0.1, 1, 10, 50, 100)
@@ -1678,7 +1694,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     # POST /control: the method that handles each "action". Print controls, tool buttons and macros are handled in do_POST
     # itself, because they share the one-command-at-a-time lock and the "not while printing" rule.
-    ROUTES = {"tune": "tune_control", "mesh_calibrate": "mesh_control", "gcode": "gcode_control", "fan": "fan_control", "temp": "temp_control", "light": "light_control",
+    ROUTES = {"tune": "tune_control", "mesh_calibrate": "mesh_control", "gcode": "gcode_control", "fan": "fan_control", "tag_reread": "tag_control", "temp": "temp_control", "light": "light_control",
               "home": "move_control", "jog": "move_control", "goto": "move_control", "motors_off": "move_control",
               "set_lane": "lane_control", "set_slot": "box_slot_control", "save_config": "config_save",
               "save_settings": "save_settings", "save_pack": "save_pack", "delete_pack": "delete_pack",
