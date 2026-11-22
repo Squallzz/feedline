@@ -329,6 +329,7 @@
   .fbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid #231f4a}
   .fbar .fp{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
   .fbar button{background:#1D1A42;border:1px solid var(--edge);color:var(--text);border-radius:8px;padding:5px 14px;cursor:pointer;font:inherit;font-size:13px}
+  button.rst{background:#1D1A42;border:1px solid var(--edge);color:var(--text);border-radius:8px;padding:4px 12px;cursor:pointer;font:inherit;font-size:12.5px} button.rst:hover:not(:disabled){border-color:#e8b04f} button.rst:disabled{opacity:.5;cursor:default}
   .fbar button.go{background:#7A63F2;border-color:#7A63F2;color:#fff} .fbar button:disabled{opacity:.4;cursor:default}
   .fedit{flex:1;display:flex;min-height:0;background:#07060f}
   #edgut{margin:0;padding:10px 8px 10px 10px;text-align:right;color:var(--sub);font:12.5px/1.5 Consolas,"Cascadia Mono",monospace;overflow:hidden;user-select:none;border-right:1px solid #1a1740;min-width:44px}
@@ -487,13 +488,13 @@
   <div class="jobsmount" data-limit="10"></div>
 </section>
 <section id="v-files" class="view" hidden style="max-width:none">
-  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px"><h2 style="margin:0">Files - printer config</h2><span style="margin-left:auto;display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--muted)">Export latest logs: <a class="seg-b" href="/logs/export?name=klippy.log" download title="Current Klipper log">klippy.log</a><a class="seg-b" href="/logs/export?name=moonraker.log" download title="Current Moonraker log">moonraker.log</a><a class="seg-b" href="/logs/export?name=all" download title="Both logs in one zip">Both (.zip)</a></span></div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px"><h2 style="margin:0">Files - printer config</h2><span class="rstgrp" style="margin-left:auto;display:flex;gap:8px;align-items:center"><button class="rst" data-restart="klipper" title="Restart Klipper: reloads printer.cfg and macros. A running print would be lost.">Restart Klipper</button><button class="rst" data-restart="firmware" title="Firmware restart: also restarts the printer's MCUs. A running print would be lost.">Firmware restart</button></span><span style="display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--muted)">Export latest logs: <a class="seg-b" href="/logs/export?name=klippy.log" download title="Current Klipper log">klippy.log</a><a class="seg-b" href="/logs/export?name=moonraker.log" download title="Current Moonraker log">moonraker.log</a><a class="seg-b" href="/logs/export?name=all" download title="Both logs in one zip">Both (.zip)</a></span></div>
   <div class="fwrap">
     <div class="fside"><input id="ffilter" type="search" placeholder="Search files..."><div id="ftree"></div></div>
     <div class="fmain">
       <div class="fbar"><span id="fpath" class="fp">No file open</span><span id="fbadge" class="badge" hidden></span><span id="fdirty" style="color:var(--warn)" hidden>&bull; Unsaved</span>
         <span style="margin-left:auto;display:flex;gap:8px"><button id="frevert" disabled>Revert</button><button id="freload" disabled>Reload</button><button id="fsave" class="go" disabled>Save (Ctrl+S)</button></span></div>
-      <div id="fnote" style="padding:6px 14px;font-size:12px;color:var(--sub);border-bottom:1px solid #231f4a">Pick a file on the left. Saving keeps a copy of the previous version on the dashboard server, and changes only take effect after Klipper/Moonraker is next restarted (this dashboard never restarts them). JSON and factory files are view-only.</div>
+      <div id="fnote" style="padding:6px 14px;font-size:12px;color:var(--sub);border-bottom:1px solid #231f4a">Pick a file on the left. Saving keeps a copy of the previous version on the dashboard server, and changes only take effect after Klipper is restarted (use the Restart Klipper button above). JSON and factory files are view-only.</div>
       <div class="fedit"><pre id="edgut">1</pre><div class="edwrap"><pre id="edhl" aria-hidden="true"></pre><textarea id="edta" spellcheck="false" wrap="off" readonly></textarea></div></div>
     </div>
   </div>
@@ -502,7 +503,8 @@
   <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px"><h2 style="margin:0">Console</h2><span id="fconstat" class="badge">Loading</span>
     <input id="confilter" type="search" placeholder="Filter lines..." style="background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:inherit;font-size:13px;padding:5px 10px;width:220px">
     <label style="font-size:12.5px;color:var(--muted);display:flex;gap:6px;align-items:center"><input id="conhidetemp" type="checkbox"> Hide temperature reports</label>
-    <span id="concount" style="font-size:12px;color:var(--sub);margin-left:auto"></span></div>
+    <span id="concount" style="font-size:12px;color:var(--sub);margin-left:auto"></span>
+    <span class="rstgrp" style="display:flex;gap:8px"><button class="rst" data-restart="klipper" title="Restart Klipper: reloads printer.cfg and macros. A running print would be lost.">Restart Klipper</button><button class="rst" data-restart="firmware" title="Firmware restart: also restarts the printer's MCUs. A running print would be lost.">Firmware restart</button></span></div>
   <pre id="fconlog"></pre>
   <form id="congo" autocomplete="off" style="display:flex;gap:8px;margin-top:10px;align-items:center">
     <input id="conin" type="text" maxlength="500" spellcheck="false" autocapitalize="characters" placeholder="Send G-code, for example M115 or G28 (Up / Down = earlier commands)" aria-label="G-code to send" style="flex:1;min-width:0;background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:13px ui-monospace,monospace;padding:8px 10px">
@@ -2850,7 +2852,25 @@ bootstrap();
   $("confilter").addEventListener("input", renderFullCon); $("conhidetemp").addEventListener("change", renderFullCon);
   // type G-code: Enter sends it, Up / Down walk through earlier lines. The server refuses restarts, emergency stop, firmware and shell commands.
   const conHist = []; let conPos = 0;
+  // Restart Klipper / Firmware restart (Files and Console tabs): ask first; the server refuses while a print is running
+  const rstLock = () => { const off = typeof CONTROLS !== "undefined" && !CONTROLS; document.querySelectorAll(".rstgrp").forEach(g => { g.hidden = off; }); };
+  rstLock(); setInterval(rstLock, 2000);           // CONTROLS is only known once the page has asked the server
+  document.addEventListener("click", async ev => {
+    const b = ev.target.closest && ev.target.closest("button.rst"); if (!b || b.disabled) return;
+    const kind = b.dataset.restart, fw = kind === "firmware";
+    if (printState === "printing" || printState === "paused") { setNote("Not restarting: a print is running. Cancel it first.", true); $("conerr").textContent = "Not restarting: a print is running. Cancel it first."; return; }
+    if (!await ask((fw ? "Firmware restart" : "Restart Klipper") + "?\n\n" + (fw ? "Klipper and the printer's microcontrollers restart. " : "Klipper reloads its configuration (printer.cfg, macros). ") + "The printer is unavailable for a little while and may need homing again.", fw ? "Firmware restart" : "Restart Klipper")) return;
+    const all = [...document.querySelectorAll("button.rst")], label = all.map(x => x.textContent);
+    all.forEach(x => { x.disabled = true; }); b.textContent = "Restarting...";
+    try {
+      await postControl({action: "restart", kind});
+      const m = (fw ? "Firmware restart" : "Klipper restart") + " sent. The printer reconnects in a few seconds.";
+      setNote(m); $("conerr").textContent = m;
+    } catch (e) { const m = "Restart failed: " + e.message; setNote(m, true); $("conerr").textContent = m; }
+    setTimeout(() => all.forEach((x, i) => { x.disabled = false; x.textContent = label[i]; }), 8000);
+  });
   const conLock = () => {            // re-checked on every refresh: the page decides later whether it may send commands
+    rstLock();
     const off = typeof CONTROLS !== "undefined" && !CONTROLS;
     $("conin").disabled = $("consend").disabled = off;
     $("conin").placeholder = off ? "Sending is turned off on this dashboard" : "Send G-code, for example M115 or G28 (Up / Down = earlier commands)";
@@ -2889,7 +2909,7 @@ bootstrap();
       n.f.sort((a, b) => a.path.localeCompare(b.path)).map(it => '<button class="fbtn' + (isEd(it.path) ? "" : " ro") + (it.path === fs_.cur ? " sel" : "") + '" data-file="' + esc(it.path) + '" title="' + esc(it.path) + '"><span>' + esc(it.path.split("/").pop()) + "</span><small>" + (isEd(it.path) ? "" : "view &middot; ") + fsize(it.size) + "</small></button>").join("");
     $("ftree").innerHTML = out(root, "") || '<div class="fmsg">No files.</div>';
   }
-  async function loadFiles() { fs_.list = await get("/config/list").then(r => r.result); renderTree(); }
+  async function loadFiles() { fs_.list = await get("/config/list").then(r => r.result); renderTree(); if (typeof rstLock === "function") rstLock(); }
   // ---- syntax highlighting: a colored copy of the text sits behind the transparent textarea ----
   const hesc = escH;
   const wrap = (c, s) => '<span class="' + c + '">' + hesc(s) + "</span>";

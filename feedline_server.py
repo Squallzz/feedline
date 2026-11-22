@@ -1190,6 +1190,30 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             self.jreply(502, {"error": str(e)})
 
+    RESTARTS = {"klipper": "/printer/restart", "firmware": "/printer/firmware_restart"}
+
+    def restart_control(self, req):
+        """Restart Klipper or do a firmware restart through Moonraker. The console refuses RESTART / FIRMWARE_RESTART
+        (CMD_DENY), so these two buttons are the only way; they never run while a print is going."""
+        path = self.RESTARTS.get(str(req.get("kind")))
+        if not path:
+            return self.jreply(400, {"error": "bad request"})
+        try:
+            state = self.mget("/printer/objects/query?print_stats", 6)["result"]["status"]["print_stats"]["state"]
+        except Exception:  # noqa: BLE001
+            state = None                       # Klipper is down or in shutdown: that is exactly when a restart is wanted
+        if state in ("printing", "paused"):
+            return self.jreply(409, {"error": "refused: printer is %s" % state})
+        try:
+            logging.info("restart: %s", req.get("kind"))
+            with urllib.request.urlopen(urllib.request.Request("http://%s:7125%s" % (self.printer, path), data=b"", method="POST"), timeout=20) as r:
+                r.read()
+            self.jreply(200, {"ok": True})
+        except urllib.error.HTTPError as e:
+            self.jreply(502, {"error": self.moonraker_error(e)})
+        except Exception as e:  # noqa: BLE001
+            self.jreply(502, {"error": str(e)})
+
     def tag_control(self, req):
         """Snapmaker U1: make the printer read the RFID tag in one channel again (FILAMENT_DT_UPDATE CHANNEL=n)."""
         try:
@@ -1694,7 +1718,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     # POST /control: the method that handles each "action". Print controls, tool buttons and macros are handled in do_POST
     # itself, because they share the one-command-at-a-time lock and the "not while printing" rule.
-    ROUTES = {"tune": "tune_control", "mesh_calibrate": "mesh_control", "gcode": "gcode_control", "fan": "fan_control", "tag_reread": "tag_control", "temp": "temp_control", "light": "light_control",
+    ROUTES = {"tune": "tune_control", "mesh_calibrate": "mesh_control", "gcode": "gcode_control", "fan": "fan_control", "restart": "restart_control", "tag_reread": "tag_control", "temp": "temp_control", "light": "light_control",
               "home": "move_control", "jog": "move_control", "goto": "move_control", "motors_off": "move_control",
               "set_lane": "lane_control", "set_slot": "box_slot_control", "save_config": "config_save",
               "save_settings": "save_settings", "save_pack": "save_pack", "delete_pack": "delete_pack",

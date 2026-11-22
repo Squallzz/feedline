@@ -364,6 +364,47 @@ class ConsoleGcode(unittest.TestCase):
         self.assertEqual(self.send(None), [400])
 
 
+class Restart(unittest.TestCase):
+    def send(self, kind, state="standby"):
+        out, posted = [], []
+
+        class Fake(fs.Handler):
+            def mget(self, path, timeout=8):
+                if state is None:
+                    raise OSError("klipper down")
+                return {"result": {"status": {"print_stats": {"state": state}}}}
+
+            def jreply(self, code, obj):
+                out.append(code)
+
+        class Resp:
+            def __enter__(s): return s
+            def __exit__(s, *a): return False
+            def read(s): return b"{}"
+
+        real = fs.urllib.request.urlopen
+        fs.urllib.request.urlopen = lambda req, timeout=0: (posted.append((req.full_url, req.get_method())), Resp())[1]
+        try:
+            h = object.__new__(Fake)
+            h.pid, h.printer, h.cfg = "test", "printer.test", dict(fs.DEFAULT_CFG)
+            h.restart_control({"kind": kind})
+        finally:
+            fs.urllib.request.urlopen = real
+        return out, posted
+
+    def test_restarts_when_idle_or_klipper_is_down(self):
+        self.assertEqual(self.send("klipper"), ([200], [("http://printer.test:7125/printer/restart", "POST")]))
+        self.assertEqual(self.send("firmware", "error"), ([200], [("http://printer.test:7125/printer/firmware_restart", "POST")]))
+        self.assertEqual(self.send("klipper", None)[0], [200])
+
+    def test_never_while_printing_and_only_known_kinds(self):
+        for st in ("printing", "paused"):
+            self.assertEqual(self.send("klipper", st), ([409], []))
+        for bad in ("", "shutdown", "klipper;M112", None):
+            self.assertEqual(self.send(bad), ([400], []))
+        self.assertEqual(fs.Handler.ROUTES["restart"], "restart_control")
+
+
 class TagReread(unittest.TestCase):
     def send(self, req, objs=("filament_detect",)):
         sent = []
