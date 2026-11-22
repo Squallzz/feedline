@@ -2894,14 +2894,16 @@ bootstrap();
   const hesc = escH;
   const wrap = (c, s) => '<span class="' + c + '">' + hesc(s) + "</span>";
   const TOK = /(\{%.*?%\}|\{\{.*?\}\}|\{#.*?#\})|((?:^|\s)[#;].*$)|("(?:[^"\\]|\\.)*")|((?<![\w.])-?\d+(?:\.\d+)?(?![\w.]))/g;
-  function tokenise(s) {          // numbers, strings, jinja and trailing comments inside a value / gcode line
+  // plain text between tokens, escaped; with `keys` also colors PARAM= names (done here on the plain text, never on markup that is already built)
+  const plain = (s, keys) => keys ? hesc(s).replace(/(^|\s)([A-Za-z_]+)(=)/g, '$1<span class="hk">$2</span>$3') : hesc(s);
+  function tokenise(s, keys) {    // numbers, strings, jinja and trailing comments inside a value / gcode line
     let out = "", last = 0, m; TOK.lastIndex = 0;
     while ((m = TOK.exec(s))) {
-      out += hesc(s.slice(last, m.index));
+      out += plain(s.slice(last, m.index), keys);
       if (m[1]) out += wrap("hj", m[1]); else if (m[2]) { const lead = m[2].match(/^\s*/)[0]; out += hesc(lead) + wrap("hc", m[2].slice(lead.length)); } else if (m[3]) out += wrap("hq", m[3]); else out += wrap("hn", m[4]);
       last = m.index + m[0].length;
     }
-    return out + hesc(s.slice(last));
+    return out + plain(s.slice(last), keys);
   }
   function hlIni(text) {
     let inGcode = false;
@@ -2911,7 +2913,7 @@ bootstrap();
       let m = /^(\[)([^\]]*)(\])(.*)$/.exec(line);
       if (m) { inGcode = /^gcode_macro/i.test(m[2]); return wrap("hs", m[1] + m[2] + m[3]) + (m[4] ? tokenise(m[4]) : ""); }
       if (/^\s/.test(line)) {                                         // indented: continuation line (G-code in macros)
-        if (inGcode) { const g = /^(\s*)([A-Za-z_]\w*)(.*)$/.exec(line); if (g) return hesc(g[1]) + wrap(/^(G\d+|M\d+|[A-Z][A-Z0-9_]+)$/.test(g[2]) ? "hg" : "", g[2]) + tokenise(g[3]).replace(/(^|\s)([A-Za-z_]+)(=)/g, '$1<span class="hk">$2</span>$3'); }
+        if (inGcode) { const g = /^(\s*)([A-Za-z_]\w*)(.*)$/.exec(line); if (g) return hesc(g[1]) + wrap(/^(G\d+|M\d+|[A-Z][A-Z0-9_]+)$/.test(g[2]) ? "hg" : "", g[2]) + tokenise(g[3], true); }
         return tokenise(line);
       }
       m = /^([^:=\s][^:=]*?)(\s*[:=]\s*)(.*)$/.exec(line);
