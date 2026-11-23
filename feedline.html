@@ -2748,7 +2748,7 @@ async function bootstrap() {
   await applyConfig(c || Object.assign({}, FALLBACK_CFG));
   if (window.routeHash && /^#(settings|macros)$/.test(location.hash)) window.routeHash();
   try { const f = sessionStorage.getItem("flash"); if (f) { sessionStorage.removeItem("flash"); notice.className = "pill on"; notice.textContent = f; setTimeout(() => { notice.textContent = ""; notice.className = ""; }, 12000); } } catch (e) {}
-  camNext(); conPoll(); tick(); setInterval(tick, 2000);
+  camNext(); conPoll(); tick(); setInterval(tick, TOUCH ? 4000 : 2000);      // touch mode: every 4 s, to go easy on the small computer driving the screen (a button press still updates at once)
 }
 bootstrap();
 </script>
