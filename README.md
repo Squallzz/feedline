@@ -244,6 +244,17 @@ Then open `http://<this machine's address>:8081/`. Or with Docker Compose: downl
 | `FEEDLINE_PRINTERS` | Optional, more printers besides the main one, comma-separated: `voron.lan, Second QIDI=192.168.1.51` (`Name=` is optional). They show on the Printers page like ones added in Settings, but can only be removed here. |
 | `FEEDLINE_SPOOLMAN` | Optional Spoolman address, e.g. `192.168.1.20:7912`. |
 | `FEEDLINE_PORT` | Port inside the container (default 8081). To change the outside port, change `-p` instead. |
+| `FEEDLINE_CA_CERTS` | Optional extra certificate authorities to trust: file paths inside the container (comma-separated), or the PEM text itself. See below. |
+
+**Your own certificate authority.** If a camera, Spoolman or printer is served over `https://` with a certificate from your own
+(home or company) CA, the container has to trust that CA or those connections fail (a blank camera, for example). Mount the
+CA certificates into `/certs` (every `.crt`, `.pem` and `.cer` file there is used), or pass them in `FEEDLINE_CA_CERTS`:
+
+    docker run ... -v /path/to/ca-folder:/certs:ro ...                       # or
+    docker run ... -e FEEDLINE_CA_CERTS="$(cat home-root.crt)" ...
+
+They are added to the system CAs, not used instead of them. The log says `trusting N extra CA certificate(s)` at startup; a
+file without a valid certificate stops the container with a message rather than failing later. Only add CAs you trust.
 
 The `/data` volume holds what `/var/lib/feedline` holds in the Linux install (UI settings, uploaded graphics, added printers, config backups),
 plus an optional `config.json` for the other [config.json options](#configjson-admin-only-edited-on-the-server). To add one, start from the example in the image:

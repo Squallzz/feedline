@@ -15,6 +15,7 @@ services:
       FEEDLINE_SPOOLMAN: ${FEEDLINE_SPOOLMAN:-}    # optional, e.g. 192.168.1.20:7912
     volumes:
       - feedline-data:/data          # settings, custom graphics, backups; put config.json here for more options
+      # - ./certs:/certs:ro          # optional: your own CA certificates (.crt/.pem), for https cameras, Spoolman or printers
 
   # Optional: add unknown Snapmaker U1 RFID tags to Spoolman.   docker compose --profile autoadd up -d
   feedline-autoadd:
@@ -31,6 +32,7 @@ services:
       FEEDLINE_SPOOLMAN: ${FEEDLINE_SPOOLMAN:-}
     volumes:
       - feedline-data:/data
+      # - ./certs:/certs:ro
 
 volumes:
   feedline-data:
