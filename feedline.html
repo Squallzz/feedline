@@ -860,11 +860,7 @@ function actions(i, loaded, isActive, ex, s) {
 async function rereadTag(btn) {
   const t = btn.textContent;
   btn.disabled = true; btn.textContent = "Reading...";
-  try {
-    await postControl({action: "tag_reread", channel: +btn.dataset.tool});
-    btn.textContent = "Asked printer";
-    setTimeout(tick, 2500);                     // the printer needs a moment to scan; refresh the cards after that
-  } catch (e) { flashError(String(e.message || e), 6000); btn.textContent = t; }
+  btn.textContent = await Act.rereadTag(+btn.dataset.tool) ? "Asked printer" : t;
   setTimeout(() => { btn.disabled = false; btn.textContent = t; }, 3000);
 }
 const CONFIRM = {
@@ -879,27 +875,144 @@ function flashError(text, ms) {
   notice.className = "pill off"; notice.textContent = text;
   setTimeout(() => { notice.textContent = ""; notice.className = ""; }, ms);
 }
-async function control(action, tool, lane, name, label, noAsk) {
-  const who = name || lane || "T" + tool, lbl = label || (lane ? AFC_LABEL[action] : LABEL[action]);
-  // Load and Unload act at once, without a question: their buttons are only live when that action is possible (and never
-  // while printing). So do all three QIDI Box buttons, as on the printer's own Box card. Buttons that move a toolhead or
-  // eject an AFC lane still ask first.
-  const direct = noAsk || lbl === "Load" || lbl === "Unload";
-  const cur = lane && action === "load" ? (SLOTSNOW.find(s => s.isActive && s.lane !== lane) || {}).lane : null;
-  if (running || !direct && !await ask(lane ? (cur ? "Swap to " + lane + "?\n" + cur + " is loaded, so it is unloaded first, then " + lane + " is loaded.\nThe printer moves filament." : lbl + " " + lane + "?\nThe printer runs its AFC lane macro and moves filament.") : CONFIRM[action](tool))) return;
-  running = true;
-  if (window.__st) render(window.__st);                       // the tool buttons go inactive at once, not at the next poll
-  notice.className = "pill"; notice.textContent = lbl + " " + who + " - running...";
-  try {
-    const j = await postControl({action: action, tool: tool, lane: lane});
-    notice.className = "pill on"; notice.textContent = lbl + " " + who + " done";
-  } catch (e) {
-    notice.className = "pill off"; notice.textContent = lbl + " " + who + " failed: " + e.message;
-  }
-  running = false;
-  tick();
-  setTimeout(() => { if (!running) { notice.textContent = ""; notice.className = ""; } }, 15000);
-}
+// ---- Printer actions: every command a button on Home, Macros or the touch view sends, in one place. Each one asks first
+// where it should, keeps to one command at a time, reports in the status pill (#notice) and refreshes the status after.
+// Views only decide which action a button runs, so a new view gets the same behaviour by calling these. The server
+// checks every action again (allow-list, printer state, limits). Each resolves to true when it was sent and accepted,
+// false when it was declined at the question, refused or failed (already reported). ----
+const PRINTING = () => printState === "printing" || printState === "paused";
+const noticeClear = ms => setTimeout(() => { if (!running && !pbusy) { notice.textContent = ""; notice.className = ""; } }, ms);
+const Act = {
+  // Filament / tool buttons: load, unload, park (QIDI Box: eject), pickup. lane: AFC lane; who / label: the wording in the pill.
+  async tool(action, tool, {lane, who, label, noAsk} = {}) {
+    who = who || lane || "T" + tool;
+    const lbl = label || (lane ? AFC_LABEL[action] : LABEL[action]);
+    // Load and Unload act at once, without a question: their buttons are only live when that action is possible (and never
+    // while printing). So do all three QIDI Box buttons, as on the printer's own Box card. Buttons that move a toolhead or
+    // eject an AFC lane still ask first.
+    const direct = noAsk || lbl === "Load" || lbl === "Unload";
+    const cur = lane && action === "load" ? (SLOTSNOW.find(s => s.isActive && s.lane !== lane) || {}).lane : null;
+    if (running || !direct && !await ask(lane ? (cur ? "Swap to " + lane + "?\n" + cur + " is loaded, so it is unloaded first, then " + lane + " is loaded.\nThe printer moves filament." : lbl + " " + lane + "?\nThe printer runs its AFC lane macro and moves filament.") : CONFIRM[action](tool))) return false;
+    running = true;
+    if (window.__st) render(window.__st);                       // the tool buttons go inactive at once, not at the next poll
+    notice.className = "pill"; notice.textContent = lbl + " " + who + " - running...";
+    let ok = true;
+    try {
+      await postControl({action, tool, lane});
+      notice.className = "pill on"; notice.textContent = lbl + " " + who + " done";
+    } catch (e) {
+      ok = false; notice.className = "pill off"; notice.textContent = lbl + " " + who + " failed: " + e.message;
+    }
+    running = false;
+    tick(); noticeClear(15000);
+    return ok;
+  },
+  // Snapmaker U1: ask the printer to read one channel's RFID tag again
+  async rereadTag(channel) {
+    try { await postControl({action: "tag_reread", channel}); }
+    catch (e) { flashError(String(e.message || e), 6000); return false; }
+    setTimeout(tick, 2500);                     // the printer needs a moment to scan; refresh the cards after that
+    return true;
+  },
+
+  // Moves (idle only)
+  async move(body, what) {
+    if (running) return false;
+    running = true; renderMove(window.__st);
+    notice.className = "pill"; notice.textContent = what + " ...";
+    let ok = true;
+    try {
+      await postControl(body);
+      notice.textContent = ""; notice.className = "";
+    } catch (e) {
+      ok = false; notice.className = "pill off"; notice.textContent = what + " failed: " + e.message;
+      setTimeout(() => { if (!running) { notice.textContent = ""; notice.className = ""; } }, 8000);
+    }
+    running = false;
+    tick();
+    return ok;
+  },
+  jog(axis, dist) {                             // relative move in mm; Z moves at most 10 mm at a time
+    if (axis === "Z") dist = Math.sign(dist) * Math.min(Math.abs(dist), 10);
+    return Act.move({action: "jog", axis, dist}, "Move " + axis);
+  },
+  goto(axis, pos) { return Act.move({action: "goto", axis, pos}, "Move " + axis); },
+  async home(axes = "all") {
+    if (!await ask("Home " + (axes === "all" ? "all axes" : axes.toUpperCase()) + "?\nThe toolhead/bed will move.", "Home")) return false;
+    return Act.move({action: "home", axes}, "Homing");
+  },
+  async motorsOff() {
+    if (!await ask("Turn the stepper motors off?\nThe printer will lose its homed position.", "Motors off")) return false;
+    return Act.move({action: "motors_off"}, "Motors off");
+  },
+
+  // Heaters, fans, light
+  async setTemp(heater, target, title) {        // target in °C, 0 = off; asks first while a print is running
+    if (PRINTING() && !await ask("A print is running. Change the " + title + " target to " + (target ? target + "°C" : "off") + "?")) return false;
+    let ok = true;
+    try { await postControl({action: "temp", heater, target}); }
+    catch (e) { ok = false; flashError(title + " target failed: " + e.message, 8000); }
+    tick();
+    return ok;
+  },
+  async setFan(fan, speed, title) {             // speed 0..1
+    fanHoldUntil = Date.now() + 3000;
+    let ok = true;
+    try { await postControl({action: "fan", fan, speed}); }
+    catch (e) { ok = false; flashError((title || "Fan") + " failed: " + e.message, 8000); }
+    fanHoldUntil = 0; tick();
+    return ok;
+  },
+  async light(on) {
+    let ok = true;
+    try { await postControl({action: "light", on}); }
+    catch (e) { ok = false; flashError("Light failed: " + e.message, 8000); }
+    tick();
+    return ok;
+  },
+
+  // Print: pause, resume, cancel, estop (always asks)
+  async print(action) {
+    if (pbusy || !await ask(PCONFIRM[action])) return false;
+    pbusy = true; renderPrintCtl(printState);
+    notice.className = "pill"; notice.textContent = PLABEL[action] + " - sending...";
+    let ok = true;
+    try {
+      await postControl({action});
+      notice.className = "pill on"; notice.textContent = PLABEL[action] + " sent";
+    } catch (e) {
+      ok = false; notice.className = "pill off"; notice.textContent = PLABEL[action] + " failed: " + e.message;
+    }
+    pbusy = false;
+    tick(); noticeClear(15000);
+    return ok;
+  },
+
+  // Print tuning (meant for use during a print): z_adjust (mm), speed / flow (%), pa, smooth
+  async tune(what, value, label) {
+    if (ptBusy) return false;
+    ptBusy = true; ptHold = Date.now() + 4000;
+    let ok = true;
+    try { await postControl({action: "tune", what, value}); }
+    catch (e) { ok = false; flashError(label + " failed: " + e.message, 8000); }
+    ptBusy = false; ptHold = 0; tick();
+    return ok;
+  },
+  async zReset() {
+    if (!await ask("Set the Z offset back to 0?\nThe nozzle moves by the current offset straight away.", "Reset")) return false;
+    return Act.tune("z_reset", 0, "Z offset");
+  },
+
+  // Macros: asks with the full command line. Resolves to the server's reply (null when declined) and throws the server's
+  // message, so the caller shows the outcome where it wants.
+  async runMacro(name, params = {}) {
+    const line = name + Object.entries(params).map(([k, v]) => " " + k + "=" + v).join("");
+    if (!await ask("Run this macro on " + CFG.name + "?\n\n" + line + "\n\nIt runs on the printer immediately and macros can move or heat it.")) return null;
+    running = true;
+    try { return await postControl({action: "run_macro", name, params}); }
+    finally { running = false; }
+  },
+};
 // ---- Editable target temperatures: click any underlined target to open a small editor ----
 const tgtPop = document.getElementById("tgtpop"), tgtIn = document.getElementById("tgtin");
 let tgtHeater = "", tgtTitle = "";
@@ -936,33 +1049,21 @@ function tgtOpen(el) {
   tgtPop.style.top = Math.max(8, Math.min(innerHeight - 130, r.bottom + 8)) + "px";
   tgtIn.focus(); tgtIn.select();
 }
-async function tgtApply(v) {
+function tgtApply(v) {                            // the editor checks the number; the action does the rest
   const n = +v;
   if (tgtFan) {
     if (v === "" || !(n >= 0 && n <= 100)) { tgtIn.focus(); return; }
-    tgtPop.hidden = true; fanHoldUntil = Date.now() + 3000;
-    try {
-      await postControl({action: "fan", fan: tgtFan, speed: n / 100});
-    } catch (e) {
-      flashError(tgtTitle + " failed: " + e.message, 8000);
-    }
-    fanHoldUntil = 0; tick();
-    return;
+    tgtPop.hidden = true;
+    return Act.setFan(tgtFan, n / 100, tgtTitle);
   }
   if (tgtAxis) {                                   // absolute axis move (server re-checks idle + homed + limits)
     if (v === "" || !(n >= tgtLim[0] && n <= tgtLim[1])) { tgtIn.focus(); return; }
     tgtPop.hidden = true;
-    return mvSend({action: "goto", axis: tgtAxis, pos: n}, "Move " + tgtAxis);
+    return Act.goto(tgtAxis, n);
   }
   if (!(n >= 0 && n <= tgtMax(tgtHeater))) { tgtIn.focus(); return; }
-  if ((printState === "printing" || printState === "paused") && !await ask("A print is running. Change the " + tgtTitle + " target to " + (n ? n + "°C" : "off") + "?")) return;
   tgtPop.hidden = true;
-  try {
-    await postControl({action: "temp", heater: tgtHeater, target: n});
-  } catch (e) {
-    flashError(tgtTitle + " target failed: " + e.message, 8000);
-  }
-  tick();
+  return Act.setTemp(tgtHeater, n, tgtTitle);
 }
 document.addEventListener("click", ev => {
   const t = ev.target.closest && ev.target.closest(".tgt");
@@ -984,15 +1085,9 @@ function lightApply() {
 async function lightToggle() {
   if (!CONTROLS) return;
   const want = !lightOn;
-  lightOn = want; lightHold = Date.now() + 4000;
+  lightOn = want; lightHold = Date.now() + 4000;          // the drawing shows the new state straight away
   lightApply();
-  try {
-    await postControl({action: "light", on: want});
-  } catch (e) {
-    lightOn = !want; lightHold = 0;
-    flashError("Light failed: " + e.message, 8000);
-  }
-  tick();
+  if (!await Act.light(want)) { lightOn = !want; lightHold = 0; lightApply(); }
 }
 document.getElementById("scene").addEventListener("click", ev => { if (ev.target.closest("#slight")) lightToggle(); });
 document.getElementById("scene").addEventListener("keydown", ev => { if ((ev.key === "Enter" || ev.key === " ") && ev.target.closest("#slight")) { ev.preventDefault(); lightToggle(); } });
@@ -1014,30 +1109,15 @@ document.getElementById("scene").addEventListener("keydown", ev => { if ((ev.key
 let mvStep = 10;
 const mvEl = document.getElementById("move");
 document.getElementById("mvsteps").innerHTML = [0.1, 1, 10, 50, 100].map(s => '<button data-step="' + s + '" class="' + (s === mvStep ? "on" : "") + '">' + s + '</button>').join("");
-async function mvSend(body, what) {
-  if (running) return;
-  running = true; renderMove(window.__st);
-  notice.className = "pill"; notice.textContent = what + " ...";
-  try {
-    const j = await postControl(body);
-    notice.textContent = "";
-    notice.className = "";
-  } catch (e) {
-    notice.className = "pill off"; notice.textContent = what + " failed: " + e.message;
-    setTimeout(() => { if (!running) { notice.textContent = ""; notice.className = ""; } }, 8000);
-  }
-  running = false;
-  tick();
-}
 mvEl.addEventListener("click", ev => {
   const st = ev.target.closest("button[data-step]");
   if (st) { mvStep = +st.dataset.step; mvEl.querySelectorAll("[data-step]").forEach(b => b.classList.toggle("on", b === st)); return; }
   const b = ev.target.closest("button[data-mv]");
   if (!b || b.disabled) return;
   const [kind, a, d] = b.dataset.mv.split(":");
-  if (kind === "jog") mvSend({action: "jog", axis: a, dist: (+d) * (a === "Z" ? Math.min(mvStep, 10) : mvStep)}, "Move " + a);
-  else if (kind === "home") { ask("Home " + (a === "all" ? "all axes" : a.toUpperCase()) + "?\nThe toolhead/bed will move.", "Home").then(ok => { if (ok) mvSend({action: "home", axes: a}, "Homing"); }); }
-  else if (kind === "motors_off") { ask("Turn the stepper motors off?\nThe printer will lose its homed position.", "Motors off").then(ok => { if (ok) mvSend({action: "motors_off"}, "Motors off"); }); }
+  if (kind === "jog") Act.jog(a, (+d) * mvStep);
+  else if (kind === "home") Act.home(a);
+  else if (kind === "motors_off") Act.motorsOff();
 });
 function renderMove(st) {
   if (!CONTROLS || !st) return;
@@ -1066,7 +1146,7 @@ document.getElementById("grid").addEventListener("click", ev => {
   if (s) return openSpool(+s.dataset.spool);
   const b = ev.target.closest("button[data-act]");
   if (b && !b.disabled && b.dataset.act === "rfid") return rereadTag(b);
-  if (b && !b.disabled) control(b.dataset.act, +b.dataset.tool, b.dataset.lane, b.dataset.who, b.textContent, b.dataset.direct === "1");
+  if (b && !b.disabled) Act.tool(b.dataset.act, +b.dataset.tool, {lane: b.dataset.lane, who: b.dataset.who, label: b.textContent, noAsk: b.dataset.direct === "1"});
 });
 
 // ---- Temperatures: every heater / temperature sensor the printer reports (discovered, like Fluidd) ----
@@ -1218,17 +1298,10 @@ fgrid.addEventListener("input", ev => {            // live readout while draggin
   fanHoldUntil = Date.now() + 60000;
   el.parentElement.querySelector(".v").textContent = el.value + "%";
 });
-fgrid.addEventListener("change", async ev => {      // send on release / key press
+fgrid.addEventListener("change", ev => {            // send on release / key press
   const el = ev.target;
   if (!el.matches("input[type=range]") || !CONTROLS) return;
-  fanHoldUntil = Date.now() + 3000;
-  try {
-    const j = await postControl({action: "fan", fan: el.dataset.fan, speed: el.value / 100});
-  } catch (e) {
-    notice.className = "pill off"; notice.textContent = "Fan failed: " + e.message;
-    fanHoldUntil = 0;
-    setTimeout(() => { if (!running && !pbusy) { notice.textContent = ""; notice.className = ""; } }, 15000);
-  }
+  Act.setFan(el.dataset.fan, el.value / 100, "Fan");
 });
 
 // ---- Print controls (pause / resume / cancel): the server enforces the state rules too ----
@@ -1247,25 +1320,11 @@ function renderPrintCtl(state) {
   pbtn.disabled = cbtn.disabled = pbusy;
   document.getElementById("ebtn").disabled = false;                      // never locked by another command that is running
 }
-async function printControl(action) {
-  if (pbusy || !await ask(PCONFIRM[action])) return;
-  pbusy = true; renderPrintCtl(printState);
-  notice.className = "pill"; notice.textContent = PLABEL[action] + " - sending...";
-  try {
-    const j = await postControl({action: action});
-    notice.className = "pill on"; notice.textContent = PLABEL[action] + " sent";
-  } catch (e) {
-    notice.className = "pill off"; notice.textContent = PLABEL[action] + " failed: " + e.message;
-  }
-  pbusy = false;
-  tick();
-  setTimeout(() => { if (!running && !pbusy) { notice.textContent = ""; notice.className = ""; } }, 15000);
-}
 printctl.addEventListener("click", ev => {
   const b = ev.target.closest("button[data-print]");
-  if (b && !b.disabled && CONTROLS) printControl(b.dataset.print);
+  if (b && !b.disabled && CONTROLS) Act.print(b.dataset.print);
 });
-document.getElementById("ebtn").addEventListener("click", () => { if (CONTROLS) printControl("estop"); });
+document.getElementById("ebtn").addEventListener("click", () => { if (CONTROLS) Act.print("estop"); });
 
 // ---- Live console: Moonraker's recent console history, polled (read-only) ----
 const conlog = document.getElementById("conlog"), constat = document.getElementById("constat");
@@ -1924,28 +1983,18 @@ function renderTune(st) {
   if (typeof ex.smooth_time === "number") put("ptsm", +ex.smooth_time.toFixed(4));
   ptEl("ptune").querySelectorAll("button[data-tune]").forEach(b => { b.disabled = ptBusy; });
 }
-async function tuneSend(what, value, label) {
-  if (ptBusy) return;
-  ptBusy = true; ptHold = Date.now() + 4000;
-  try {
-    await postControl({action: "tune", what, value});
-  } catch (e) {
-    flashError(label + " failed: " + e.message, 8000);
-  }
-  ptBusy = false; ptHold = 0; tick();
-}
 ptEl("ptune").addEventListener("click", ev => {
   const s = ev.target.closest("button[data-zstep]");
   if (s) { ptStep = +s.dataset.zstep; ptEl("ptzsteps").querySelectorAll("button").forEach(b => b.classList.toggle("on", b === s)); return; }
   const b = ev.target.closest("button[data-tune]"); if (!b || b.disabled || !CONTROLS) return;
   const t = b.dataset.tune, num = id => { const v = ptEl(id).value; return v === "" ? NaN : +v; };
-  if (t === "zdown") tuneSend("z_adjust", -ptStep, "Z offset");
-  else if (t === "zup") tuneSend("z_adjust", ptStep, "Z offset");
-  else if (t === "zreset") { ask("Set the Z offset back to 0?\nThe nozzle moves by the current offset straight away.", "Reset").then(ok => { if (ok) tuneSend("z_reset", 0, "Z offset"); }); }
-  else if (t === "speed100") tuneSend("speed", 100, "Speed");
-  else if (t === "flow100") tuneSend("flow", 100, "Flow");
-  else if (t === "pa") tuneSend("pa", num("ptpa"), "Pressure advance");
-  else if (t === "smooth") tuneSend("smooth", num("ptsm"), "Smooth time");
+  if (t === "zdown") Act.tune("z_adjust", -ptStep, "Z offset");
+  else if (t === "zup") Act.tune("z_adjust", ptStep, "Z offset");
+  else if (t === "zreset") Act.zReset();
+  else if (t === "speed100") Act.tune("speed", 100, "Speed");
+  else if (t === "flow100") Act.tune("flow", 100, "Flow");
+  else if (t === "pa") Act.tune("pa", num("ptpa"), "Pressure advance");
+  else if (t === "smooth") Act.tune("smooth", num("ptsm"), "Smooth time");
 });
 ptEl("ptune").addEventListener("input", ev => {            // live readout while a slider is dragged
   const e = ev.target; if (!e.matches("input[type=range]")) return;
@@ -1953,7 +2002,7 @@ ptEl("ptune").addEventListener("input", ev => {            // live readout while
 });
 ptEl("ptune").addEventListener("change", ev => {           // sent when the slider is released
   const e = ev.target; if (!e.matches("input[type=range]") || !CONTROLS) return;
-  tuneSend(e.id === "ptspeed" ? "speed" : "flow", Math.max(10, +e.value), e.id === "ptspeed" ? "Speed" : "Flow");
+  Act.tune(e.id === "ptspeed" ? "speed" : "flow", Math.max(10, +e.value), e.id === "ptspeed" ? "Speed" : "Flow");
 });
 // ---- Print info: ETA, speed, flow, filament used, slicer estimate (metadata of the current file) ----
 let meta = null, metaFile = "", thumbUrl = "";
@@ -3657,11 +3706,9 @@ bootstrap();
     else if (b.dataset.run) {
       const card = b.closest(".mcard"), params = {};
       card.querySelectorAll("[data-p]").forEach(i => { if (i.value.trim()) params[i.dataset.p] = i.value.trim(); });
-      const line = b.dataset.run + Object.entries(params).map(([k, v]) => " " + k + "=" + v).join("");
-      if (!await ask("Run this macro on " + CFG.name + "?\n\n" + line + "\n\nIt runs on the printer immediately and macros can move or heat it.")) return;
-      b.disabled = true; running = true;
-      try { const j = await post({action: "run_macro", name: b.dataset.run, params}); msg("Ran " + j.cmd); }
-      finally { running = false; b.disabled = locked() || !!b.dataset.blocked; }
+      b.disabled = true;
+      try { const j = await Act.runMacro(b.dataset.run, params); if (j) msg("Ran " + j.cmd); }
+      finally { b.disabled = locked() || !!b.dataset.blocked; }
     }
   }));
   window.macrosLoad = load;
