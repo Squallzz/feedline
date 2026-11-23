@@ -894,7 +894,7 @@ const Act = {
     const cur = lane && action === "load" ? (SLOTSNOW.find(s => s.isActive && s.lane !== lane) || {}).lane : null;
     if (running || !direct && !await ask(lane ? (cur ? "Swap to " + lane + "?\n" + cur + " is loaded, so it is unloaded first, then " + lane + " is loaded.\nThe printer moves filament." : lbl + " " + lane + "?\nThe printer runs its AFC lane macro and moves filament.") : CONFIRM[action](tool))) return false;
     running = true;
-    if (window.__st) render(window.__st);                       // the tool buttons go inactive at once, not at the next poll
+    Status.refresh();                                           // the tool buttons go inactive at once, not at the next poll
     notice.className = "pill"; notice.textContent = lbl + " " + who + " - running...";
     let ok = true;
     try {
@@ -1331,7 +1331,7 @@ const conlog = document.getElementById("conlog"), constat = document.getElementB
 let conSig = "", conFirst = true;
 const escHtml = escH;
 async function conPoll() {
-  if (!document.hidden && (!TOUCH || window.touchPanel === "console")) {      // touch mode: only while the Console section is open
+  if (!document.hidden && shown(conlog)) {                    // only while the console box is on screen
     try {
       const items = (await jget(MR + "/server/gcode_store?count=150")).result.gcode_store;
       const sig = items.length + ":" + (items.length ? items[items.length - 1].time : 0);
@@ -1972,8 +1972,7 @@ const PTSTEPS = [0.005, 0.01, 0.025, 0.05];
 let ptStep = 0.01, ptHold = 0, ptBusy = false;      // ptHold: leave the controls alone while one is being used
 const ptEl = id => document.getElementById(id);
 ptEl("ptzsteps").innerHTML = PTSTEPS.map(v => '<button data-zstep="' + v + '" class="' + (v === ptStep ? "on" : "") + '" title="Step of ' + v + ' mm">' + v + "</button>").join("");
-function renderTune(st) {
-  ptEl("ptune").hidden = !CONTROLS;
+function renderTune(st) {                       // the section is only shown with controls (applyConfig)
   if (!CONTROLS || Date.now() < ptHold) return;
   const gm = st.gcode_move || {}, ex = st[(st.toolhead || {}).extruder] || st.extruder || {}, z = +((gm.homing_origin || [])[2]) || 0;
   ptEl("ptz").textContent = (z > 0 ? "+" : "") + z.toFixed(3) + " mm";
@@ -2482,23 +2481,50 @@ function slotsExtruders(st) {                // any Klipper printer: one slot pe
   }
   return out;
 }
-function render(st) {
-  printState = st.print_stats.state;
-  // touch mode shows one section at a time: the others are not redrawn (switching section redraws it at once)
-  const vis = id => !TOUCH || !document.getElementById(id).classList.contains("tpoff");
-  renderPrintInfo(st);
-  if (vis("ptune")) renderTune(st);
+// ---- Status feed: each poll publishes the printer's status, and every view subscribes to what it shows ----
+// Status.on(fn, {el}) adds a view: fn(st) runs on every poll, but only while one of its elements (an id or a list of ids)
+// is on screen. A section that is not shown (another page, another touch section, a layout that hides it) costs
+// nothing, and Status.refresh() brings views up to date at once when they come into view or a button changes what
+// they show. One view failing is logged and does not stop the others or make the printer look offline.
+const shown = el => !!el && (el.checkVisibility ? el.checkVisibility() : el.offsetParent !== null);
+const Status = {
+  st: null, subs: [],
+  on(fn, opts = {}) {
+    const s = {fn, els: [].concat(opts.el || [])};
+    this.subs.push(s);
+    if (this.st) this.run(s);
+    return () => { this.subs = this.subs.filter(x => x !== s); };
+  },
+  run(s) {
+    if (s.els.length && !s.els.some(id => shown(document.getElementById(id)))) return;
+    try { s.fn(this.st); } catch (e) { console.warn("Feedline: a view failed to update", e); }
+  },
+  publish(st) {
+    this.st = window.__st = st;
+    printState = (st.print_stats || {}).state || "";       // read by the action buttons' locks everywhere
+    this.subs.forEach(s => this.run(s));
+  },
+  refresh() { if (this.st) this.subs.forEach(s => this.run(s)); },
+};
+// Home's views
+Status.on(st => {                                          // header: job line, print buttons; footer
   renderPrintCtl(printState);
-  if (vis("temps")) renderTemps(st);
-  if (vis("fans")) renderFans(st);
-  if (vis("afcbar")) renderAfcBar(st);
-  window.__st = st;
-  if (window.touchRender) window.touchRender(st);
-  if (vis("move")) renderMove(st);
-  if (!vis("grid")) return;
+  const p = st.print_stats || {};
+  document.getElementById("job").textContent = p.state === "printing" || p.state === "paused"
+    ? cap(p.state) + (st.virtual_sdcard ? " " + Math.round(st.virtual_sdcard.progress * 100) + "%" : "") + ": " + String(p.filename || "").split("/").pop() + (p.info && p.info.total_layer ? "  (layer " + p.info.current_layer + "/" + p.info.total_layer + ")" : "")
+    : "State: " + cap(p.state);
+  document.getElementById("foot").textContent = "updated " + new Date().toLocaleTimeString() + "  -  " + CFG.name + " (" + PRINTER + ")";
+});
+Status.on(renderPrintInfo);                                // also loads the file's metadata and thumbnail, which other views use
+Status.on(renderTune, {el: "ptune"});
+Status.on(renderTemps, {el: "temps"});
+Status.on(renderFans, {el: "fans"});
+Status.on(renderMove, {el: "move"});
+Status.on(renderSlots, {el: ["grid", "scene"]});           // filament cards, their status row and the drawn printer
+function renderSlots(st) {
+  renderAfcBar(st);
   const qb = CFG.provider === "qidibox", afc = CFG.provider === "afc" || qb;      // both have one card per lane / slot feeding a single toolhead
   const slots = CFG.provider === "u1" ? slotsU1(st) : qb ? slotsQidi(st) : afc ? slotsAFC(st) : slotsExtruders(st), ts = st.toolhead.extruder;
-  renderBoxBar(st); renderTcBar(st);
   let out = "";
   const sceneCols = [], sceneLoaded = [];
   for (const s of slots) {
@@ -2533,10 +2559,12 @@ function render(st) {
       (s.remTxt !== "-" ? '<div><b>' + s.remTxt + '</b>' + escH(String(s.spool || "").replace(/^./, c => c.toUpperCase())) + '</div>' : "") +
       (CFG.spoolman ? '<div><b>' + (s.sp ? "#" + s.sp.id : "-") + '</b>Spoolman</div>' : "") + '</div>' + actions(i, s.loaded, isActive, ex, s) + '</div>';
   }
-  document.getElementById("grid").innerHTML = out;
+  const grid = document.getElementById("grid");
+  if (shown(grid)) grid.innerHTML = out;
   AFCS = UNITON && slots.length ? slots : null;
   SLOTSNOW = slots;
-  if (!TOUCH) sceneUpdate(st, sceneCols, sceneLoaded);      // the drawn printer is not shown in touch mode
+  renderBoxBar(st); renderTcBar(st);                       // after the slots: the QIDI Box row names the slot in use
+  if (shown(document.getElementById("scene"))) sceneUpdate(st, sceneCols, sceneLoaded);      // hidden when the column is narrow, and in touch mode
   spinApply();
 }
 
@@ -2656,15 +2684,9 @@ async function tick() {
     const objs = base.map(n => encodeURIComponent(n)).join("&") + extra;
     const j = await jget(MR + "/printer/objects/query?" + objs);
     if (CFG.spoolman && Date.now() - spoolsAt > 15000) await loadSpools();
-    const st = j.result.status;
-    render(st);
     conn.textContent = "Connected";
     conn.className = "pill on";
-    const p = st.print_stats;
-    document.getElementById("job").textContent = p.state === "printing" || p.state === "paused"
-      ? cap(p.state) + (st.virtual_sdcard ? " " + Math.round(st.virtual_sdcard.progress * 100) + "%" : "") + ": " + String(p.filename || "").split("/").pop() + (p.info && p.info.total_layer ? "  (layer " + p.info.current_layer + "/" + p.info.total_layer + ")" : "")
-      : "State: " + cap(p.state);
-    document.getElementById("foot").textContent = "updated " + new Date().toLocaleTimeString() + "  -  " + CFG.name + " (" + PRINTER + ")";
+    Status.publish(j.result.status);                       // every view updates itself (see Status)
   } catch (e) {
     conn.textContent = "Offline";
     conn.className = "pill off";
@@ -2775,6 +2797,7 @@ async function applyConfig(c) {
   const slotsN = (c.provider === "afc" || c.provider === "qidibox") && c.lanes && c.lanes.length ? c.lanes.length : N;
   stage.style.setProperty("--n", slotsN); stage.style.setProperty("--cols", Math.min(slotsN, c.provider === "qidibox" ? 5 : 4));      // one QIDI Box and its external spool share a row
   mvEl.hidden = !CONTROLS;
+  document.getElementById("ptune").hidden = !CONTROLS;
   document.getElementById("navsettings").hidden = !CONTROLS;
   document.getElementById("navmacros").hidden = !HOSTED;
   const canLive = !!CAM_PAGE, canSnap = !!(c.camera && c.camera.snapshot);
@@ -3275,6 +3298,7 @@ bootstrap();
     $("layout").style.display = v === "home" ? "" : "none"; $("foot").hidden = v !== "home";
     for (const k of ["printers", "jobs", "history", "tune", "console", "files", "settings", "macros"]) $("v-" + k).hidden = v !== k;
     document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.view === v));
+    if (v === "home") Status.refresh();      // Home's sections were not redrawn while another page was shown
     try {      // push when the user navigates so Back/Forward work; replace on first load and on hash changes (which are already in the history)
       const base = location.pathname + location.search, url = v === "home" ? base : base + "#" + v;
       if (push && url !== base + location.hash) history.pushState(null, "", url); else history.replaceState(null, "", url);
@@ -3726,13 +3750,13 @@ bootstrap();
     if (!PANELS[p]) p = "home";
     panel = window.touchPanel = p;
     ALL.forEach(id => $(id).classList.toggle("tpoff", !PANELS[p].includes(id)));
-    if (window.__st) try { render(window.__st); } catch (e) {}      // hidden sections are not redrawn, so bring this one up to date now
     $("layout").classList.toggle("tpoff", p === "macros");
     $("v-macros").hidden = p !== "macros";
     if (p === "macros" && window.macrosLoad) window.macrosLoad();
     document.querySelectorAll("#trail button").forEach(b => b.classList.toggle("on", b.dataset.tp === p));
     $("layout").scrollTop = 0; $("v-macros").scrollTop = 0;
     try { sessionStorage.setItem("touchPanel", p); } catch (e) {}
+    Status.refresh();                 // sections that were hidden were not redrawn: bring the ones now shown up to date
   }
   $("trail").addEventListener("click", e => { const b = e.target.closest("button[data-tp]"); if (b) show(b.dataset.tp); });
   // the normal page's section switcher runs first; take the page over from it
@@ -3743,7 +3767,9 @@ bootstrap();
   // status bar temperatures and the print card, from each status poll
   const STATE = {standby: "Ready", printing: "Printing", paused: "Paused", complete: "Finished", cancelled: "Cancelled", error: "Error"};
   const deg = v => typeof v === "number" ? Math.round(v) + "°" : "--";
-  window.touchRender = st => {
+  Status.on(st => {                   // status bar: temperatures; the Move section only with controls
+    const mv = document.querySelector('#trail [data-tp="move"]'); mv.hidden = $("move").hidden;       // no move controls without the server
+    if (panel === "move" && mv.hidden) return show("home");
     const chips = [], chip = (obj, label) => {
       const h = st[obj]; if (!h || typeof h.temperature !== "number") return;
       const tg = typeof h.target === "number" ? h.target : null, hot = tg > 0;
@@ -3755,7 +3781,8 @@ bootstrap();
     if (CH && CH.sensor) chip(CH.sensor, "Chamber");
     const html = chips.join("");
     if ($("ttemps").__h !== html) { $("ttemps").innerHTML = html; $("ttemps").__h = html; }
-
+  });
+  Status.on(st => {                   // the print card (Status section)
     const ps = st.print_stats || {}, vs = st.virtual_sdcard || {}, active = ps.state === "printing" || ps.state === "paused";
     const tl = ps.info && ps.info.total_layer, cl = ps.info && ps.info.current_layer;
     const prog = Math.max(0, Math.min(1, vs.progress || 0)), pct = Math.round(prog * 100);
@@ -3767,9 +3794,7 @@ bootstrap();
     const im = $("tjimg"), src = ps.filename && thumbUrl ? thumbUrl : "";
     if (im.getAttribute("src") !== src) { if (src) im.src = src; else im.removeAttribute("src"); }
     im.hidden = !src;
-    const mv = document.querySelector('#trail [data-tp="move"]'); mv.hidden = $("move").hidden;       // no move controls without the server
-    if (panel === "move" && mv.hidden) show("home");
-  };
+  }, {el: "tjob"});
 
   // number fields: a pad on the screen instead of a keyboard (inside the target editor, else floating at the right)
   for (const id of ["tgtin", "ptpa", "ptsm"]) { const e = $(id); e.type = "text"; e.inputMode = "none"; }
