@@ -86,6 +86,8 @@
   #stage .tool{margin:0}
   #stage.u1layout .tool{margin:0 5px}
   .slotsvg{width:100%;height:auto;display:block}
+  .slotsvg.afcspool{width:auto;max-width:100%;height:clamp(84px,11vw,124px);margin:4px auto 6px}   /* the spool keeps its shape and leaves room for the text under it */
+  .tn small{font-size:11px;font-weight:500;color:var(--sub);margin-left:6px}
   #pname.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0} /* the drop-down already shows the name; keep the h1 for screen readers */
   #psel{background:#14122b;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:5px 8px;font:inherit;font-size:14px;margin-left:10px}
   .stool{transition:transform 1.8s linear}
@@ -2185,7 +2187,8 @@ function afcSvg(s) {
   const cx = 104, cy = 70, RY = 56, RX = 25, dx = 34;                      // flange ellipse radii, flange spacing
   const rf = 20 + (RY - 7 - 20) * Math.max(.06, Math.min(1, s.frac)), rfx = rf * RX / RY;
   const fx = cx + dx;                                                        // front flange x
-  return '<svg class="slotsvg" viewBox="0 0 220 176" role="img"><defs>' +
+  // cropped to the spool itself (x 79..166, y 13..127), centred: the card's header already names the slot and its state
+  return '<svg class="slotsvg afcspool" viewBox="27 6 188 128" role="img"><defs>' +
     '<linearGradient id="afw' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + light + '"/><stop offset=".45" stop-color="' + c + '"/><stop offset="1" stop-color="' + dark + '"/></linearGradient>' +
     '<linearGradient id="aff' + id + '" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4a4690"/><stop offset="1" stop-color="#1d1a42"/></linearGradient>' +
     '<linearGradient id="afs' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3670"/><stop offset="1" stop-color="#211e48"/></linearGradient></defs>' +
@@ -2201,11 +2204,8 @@ function afcSvg(s) {
     // hub, axle stub
     '<ellipse cx="' + fx + '" cy="' + cy + '" rx="9" ry="20" fill="#0f0d24" stroke="#6a66b0"/>' +
     '<rect x="' + fx + '" y="' + (cy - 5) + '" width="16" height="10" rx="3" fill="#8a86c8"/><ellipse cx="' + (fx + 16) + '" cy="' + cy + '" rx="3" ry="5" fill="#b3b0e6"/></g>' +
-    // status LED on the slab front and labels
-    '<circle cx="196" cy="14" r="3.6" fill="' + led + '"/><circle cx="196" cy="14" r="7" fill="' + led + '" opacity=".25"/>' +
-    '<text x="110" y="162" text-anchor="middle" font-size="9" font-weight="600" fill="#A29EDB">' + escH(s.status) + '</text>' +
-    '<text x="8" y="14" font-size="12" font-weight="700" fill="' + (s.isActive ? "#9580FF" : "#A29EDB") + '">' + escH(s.label) + '</text>' +
-    (s.map ? '<text x="8" y="28" font-size="9.5" fill="#6B66A5">' + escH(s.map) + '</text>' : "") + '</svg>';
+    // the lane's status light, as on the unit: on the axle stub's end
+    '<circle cx="' + (fx + 16) + '" cy="' + cy + '" r="7" fill="' + led + '" opacity=".25"/><circle cx="' + (fx + 16) + '" cy="' + cy + '" r="3" fill="' + led + '"/></svg>';
 }
 
 const exName = i => i ? "extruder" + i : "extruder";
@@ -2367,7 +2367,7 @@ function render(st) {
     }
     Object.assign(s, {isActive, fanLabel});
     out += '<div class="tool' + (isActive ? " active" : "") + (s.loaded ? "" : " empty") + '">' +
-      '<div class="top"><span class="tn">' + escH(s.label || "T" + i) + '</span>' +
+      '<div class="top"><span class="tn">' + escH(s.label || "T" + i) + (s.map && s.map !== s.label && !s.ext ? "<small>" + escH(s.map) + "</small>" : "") + '</span>' +
       '<span class="badge' + (isActive ? " active" : heating ? " heat" : "") + '">' + (heating && !isActive ? "Heating" : escH(cap(state))) + '</span></div>' +
       slotGraphic(s) +
       '<div class="mat">' + escH(s.title) + '</div>' +
