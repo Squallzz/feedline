@@ -1008,6 +1008,14 @@ function spark(arr, hot) {
   return '<svg viewBox="0 0 160 34" preserveAspectRatio="none"><polyline points="' + pts +
     '" fill="none" stroke="' + (hot ? "#E8B04F" : "#7A63F2") + '" stroke-width="1.6" stroke-linejoin="round"/></svg>';
 }
+// 0..1: how far a heater has come from room temperature (25 °C) to its target. Within 1° of the target counts as there,
+// so the small swings while holding temperature do not move the bar.
+function heatProgress(t, target) {
+  if (!(target > 0) || typeof t !== "number") return 0;
+  if (t >= target - 1) return 1;
+  const room = Math.min(25, target - 2);
+  return Math.max(0, Math.min(1, (t - room) / (target - 1 - room)));
+}
 function renderTemps(st) {
   const heaters = [], sensors = [];
   for (const n of tempObjs || []) {
@@ -1017,9 +1025,13 @@ function renderTemps(st) {
     const hot = hasTarget && o.target > 0;
     const pw = typeof o.power === "number" ? Math.round(o.power * 100) : null;
     const tgt = /^(extruder\d*|heater_bed)$/.test(n) ? tgtSpan(n, tempTitle(n), o.target, false) : (o.target > 0 ? o.target.toFixed(0) + "°" : "off");
+    // The bar is how far the heater has got from room temperature to its target: empty when cold, full at temperature,
+    // steady while it holds there. (Not the heater's power: the controller pulses that between 0 and 100% every second.)
+    const prog = hot ? heatProgress(o.temperature, o.target) : 0;
+    const tip = hot ? (prog >= 1 ? "at target" : Math.round(prog * 100) + "% of the way to " + Math.round(o.target) + "°") + (pw !== null ? " · heater power " + pw + "%" : "") : "off";
     const row = '<div class="tr' + (hot ? " hot" : "") + '"><span class="nm" title="' + escH(n) + '">' + escH(tempTitle(n)) + '</span><span class="v">' + o.temperature.toFixed(1) + '°' +
       (hasTarget ? ' <small>/ ' + tgt + '</small>' : "") + '</span>' +
-      (pw !== null ? '<div class="bar" title="heater power ' + pw + '%"><i style="width:' + pw + '%"></i></div>' : "") + '</div>';
+      (hasTarget ? '<div class="bar" title="' + escH(tip) + '"><i style="width:' + (prog * 100).toFixed(1) + '%"></i></div>' : "") + '</div>';
     (hasTarget ? heaters : sensors).push({n, row});
   }
   const rank = n => n === "heater_bed" ? 0 : /^extruder\d*$/.test(n) ? 1 : 2;
