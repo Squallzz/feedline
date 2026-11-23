@@ -3139,7 +3139,7 @@ bootstrap();
     const g = CFG.graphics, pk = CFG.packs, md = CFG.model || {};
     const opts = (kind, sel) => (pk[kind] || []).map(p => '<option value="' + escH(p.id) + '"' + (p.id === sel ? " selected" : "") + ">" + escH(p.label || p.id) + (p.custom ? " (custom)" : "") + "</option>").join("");
     const plist = PRINTERS.map(p => '<div class="prow"><b>' + escH(p.active ? CFG.name : p.name) + '</b><span>' + escH(p.host) + (p.active ? " &middot; shown now" : "") + '</span>' +
-      (p.active ? "" : '<button data-sw="' + escH(p.id) + '">Switch</button>') + (p.main ? '<span class="sub">set in config.json</span>' : '<button class="danger" data-rm="' + escH(p.id) + '">Remove</button>') + '</div>').join("");
+      (p.active ? "" : '<button data-sw="' + escH(p.id) + '">Switch</button>') + (p.main ? '<span class="sub">set in config.json</span>' : p.fixed ? '<span class="sub">set in server config</span>' : '<button class="danger" data-rm="' + escH(p.id) + '">Remove</button>') + '</div>').join("");
     const customs = kind => (pk[kind] || []).filter(p => p.custom).map(p => '<div class="prow"><b>' + escH(p.label || p.id) + '</b><span>' + escH(p.id) + '</span>' +
       (kind === "printer" ? '<button data-edit="' + escH(p.id) + '">Edit anchors</button>' : "") + '<button class="danger" data-del="' + kind + ":" + escH(p.id) + '">Delete</button></div>').join("") || '<div class="sub">None yet.</div>';
     root.innerHTML = '<h2>Settings <span id="setmsg" class="badge"></span></h2>' +

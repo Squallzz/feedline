@@ -11,6 +11,7 @@ services:
       - "8081:8081"
     environment:
       FEEDLINE_PRINTER: ${FEEDLINE_PRINTER:-}      # printer IP or host name, where Moonraker runs (port 7125)
+      FEEDLINE_PRINTERS: ${FEEDLINE_PRINTERS:-}    # optional, more printers: "voron.lan, Second QIDI=192.168.1.51"
       FEEDLINE_SPOOLMAN: ${FEEDLINE_SPOOLMAN:-}    # optional, e.g. 192.168.1.20:7912
     volumes:
       - feedline-data:/data          # settings, custom graphics, backups; put config.json here for more options

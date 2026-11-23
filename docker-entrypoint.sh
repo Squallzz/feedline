@@ -22,6 +22,7 @@ case "$cmd" in
     set -- --root /app --state "$DATA" --config "$CONFIG" --port "${FEEDLINE_PORT:-8081}" "$@"
     [ -n "${FEEDLINE_PRINTER:-}" ] && set -- "$@" --printer "$FEEDLINE_PRINTER"
     [ -n "${FEEDLINE_SPOOLMAN:-}" ] && set -- "$@" --spoolman "$FEEDLINE_SPOOLMAN"
+    [ -n "${FEEDLINE_PRINTERS:-}" ] && set -- "$@" --printers "$FEEDLINE_PRINTERS"
     exec python3 /app/feedline_server.py "$@"
     ;;
   autoadd)

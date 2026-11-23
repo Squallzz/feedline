@@ -241,6 +241,7 @@ Then open `http://<this machine's address>:8081/`. Or with Docker Compose: downl
 | Environment variable | Meaning |
 | --- | --- |
 | `FEEDLINE_PRINTER` | Printer IP or host name, where Moonraker runs (port 7125). Required unless `config.json` sets `printer`. |
+| `FEEDLINE_PRINTERS` | Optional, more printers besides the main one, comma-separated: `voron.lan, Second QIDI=192.168.1.51` (`Name=` is optional). They show on the Printers page like ones added in Settings, but can only be removed here. |
 | `FEEDLINE_SPOOLMAN` | Optional Spoolman address, e.g. `192.168.1.20:7912`. |
 | `FEEDLINE_PORT` | Port inside the container (default 8081). To change the outside port, change `-p` instead. |
 
@@ -274,6 +275,7 @@ See `config.example.json`. Only `printer` is required. Anything the browser coul
 | key | meaning |
 | --- | --- |
 | `printer` | Moonraker host (port 7125) |
+| `printers` | optional, more printers besides `printer`, e.g. `["voron.lan", {"name": "Second QIDI", "host": "192.168.1.51", "provider": "auto"}]`. They show on the Printers page like ones added in Settings > Printers, but cannot be removed there. `--printers "voron.lan, Second QIDI=192.168.1.51"` (or `FEEDLINE_PRINTERS` in Docker) overrides it |
 | `name` | header text (can also be changed in Settings) |
 | `allowed_hosts` | extra Host names the server answers to (anti DNS-rebinding). IP addresses, single-label names and `.local/.lan/.home.arpa/.internal/.ts.net` always work |
 | `allow_embed` | optional; normally use Settings > Home Assistant and other pages. `true` lets another site show the page in a frame (e.g. a Home Assistant card); default refuses framing |
