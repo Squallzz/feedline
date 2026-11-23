@@ -1,0 +1,35 @@
+# Feedline with Docker Compose:   docker compose up -d   then open http://THIS_MACHINE:8081/
+# Set your printer below (or in a .env file next to this one: FEEDLINE_PRINTER=192.168.1.50).
+# Update:   docker compose pull && docker compose up -d
+services:
+  feedline:
+    image: ${FEEDLINE_IMAGE:-ghcr.io/cl-tim/feedline:latest}
+    # build: .                       # or build from this folder instead of pulling the image
+    container_name: feedline
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      FEEDLINE_PRINTER: ${FEEDLINE_PRINTER:-}      # printer IP or host name, where Moonraker runs (port 7125)
+      FEEDLINE_SPOOLMAN: ${FEEDLINE_SPOOLMAN:-}    # optional, e.g. 192.168.1.20:7912
+    volumes:
+      - feedline-data:/data          # settings, custom graphics, backups; put config.json here for more options
+
+  # Optional: add unknown Snapmaker U1 RFID tags to Spoolman.   docker compose --profile autoadd up -d
+  feedline-autoadd:
+    image: ${FEEDLINE_IMAGE:-ghcr.io/cl-tim/feedline:latest}
+    # build: .
+    container_name: feedline-autoadd
+    profiles: ["autoadd"]
+    command: ["autoadd"]
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+    environment:
+      FEEDLINE_PRINTER: ${FEEDLINE_PRINTER:-}
+      FEEDLINE_SPOOLMAN: ${FEEDLINE_SPOOLMAN:-}
+    volumes:
+      - feedline-data:/data
+
+volumes:
+  feedline-data:

@@ -7,7 +7,7 @@ Works with any Klipper + Moonraker printer; ships with a drawn Snapmaker U1 view
 
 | 🚀 Get started | 🧩 Connect things | 🖥️ Using it | 📚 Reference |
 | --- | --- | --- | --- |
-| [Install (Linux)](#install-linux-about-two-minutes) | [🧵 Spoolman](#spoolman-on-the-snapmaker-u1) | [Settings tab](#settings-tab) | [config.json options](#configjson-admin-only-edited-on-the-server) |
+| [Install (Linux)](#install-linux-about-two-minutes) · [🐳 Docker](#install-with-docker) | [🧵 Spoolman](#spoolman-on-the-snapmaker-u1) | [Settings tab](#settings-tab) | [config.json options](#configjson-admin-only-edited-on-the-server) |
 | [Where to run it](#where-to-run-it) | [Spoolman auto-add helper](#auto-add-helper-optional) | [Filament systems](#filament-systems) | [Run by hand](#run) |
 | [📱 Android app](#android-app-apk) | [🏠 Home Assistant](#home-assistant) | [Print tuning](#print-tuning) | [Security](SECURITY.md) |
 | [Install as an app (PWA)](#install-as-an-app-android-iphone-desktop) | [📺 Remote touchscreen](#remote-touchscreen-snapmaker-u1-with-the-paxx-firmware) | [Tune tab: bed mesh](#tune-tab-bed-mesh) | [Tests](#tests) |
@@ -116,6 +116,7 @@ Feedline is one small Python process (it used about 20 MB of memory on the test 
 | **A small VM or LXC container** (Proxmox, ESXi, Hyper-V, a cloud-free home server) | Recommended. Debian or Ubuntu, 1 vCPU and a few hundred MB of RAM is plenty. Isolated from the printer, easy to snapshot, and a good place to run Spoolman and the auto-add helper too. This is how it was developed and tested. |
 | **The machine that already runs Spoolman** | Same idea without a new VM: install it next to Spoolman. Then Spoolman's address is simply `127.0.0.1:7912`. |
 | **A Raspberry Pi or other always-on Linux box** | Fine, including the Pi that runs Klipper and Moonraker for a non-Snapmaker printer. Not tested on every board, but it needs only Python 3.8+ and systemd. |
+| **Any machine that already runs Docker** (NAS, home server, Unraid, Portainer) | Fine: see [Install with Docker](#install-with-docker). The container needs the same network access as below. |
 | **A Windows or Mac PC** | Works for trying it out (`python feedline_server.py ...`, see Run), but `install.sh` and the service file are Linux only, and the dashboard is down whenever the PC sleeps. |
 | **On the printer itself** | Not recommended. On the Snapmaker U1 the system is rebuilt on every boot, so an install would not survive without changing how the printer boots, memory is tight (about 500 MB free when idle), and a firmware update can wipe it. On a Klipper Pi it is fine (see above). |
 
@@ -223,6 +224,37 @@ delete `/etc/systemd/system/feedline.service`, `/opt/feedline` and `/var/lib/fee
 
 Troubleshooting: `journalctl -u feedline -e`. "unknown host name" (HTTP 421) means you opened the page by a DNS name the server does not know:
 add it to `allowed_hosts`. A blank printer page means Moonraker is unreachable from this machine (`curl http://PRINTER_ADDRESS:7125/server/info` with your printer's address).
+
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
+
+## Install with Docker
+
+Another way to run it, instead of `install.sh` (pick one, not both: they both use port 8081). Nothing to clone: the image is
+`ghcr.io/cl-tim/feedline` and runs on amd64, arm64 and 32-bit ARM (Raspberry Pi). Put your printer's address in place of `PRINTER_ADDRESS`:
+
+    docker run -d --name feedline --restart unless-stopped -p 8081:8081 \
+      -e FEEDLINE_PRINTER=PRINTER_ADDRESS -v feedline-data:/data ghcr.io/cl-tim/feedline
+
+Then open `http://<this machine's address>:8081/`. Or with Docker Compose: download [`compose.yaml`](compose.yaml), set
+`FEEDLINE_PRINTER` in it (or in a `.env` file next to it), and run `docker compose up -d`.
+
+| Environment variable | Meaning |
+| --- | --- |
+| `FEEDLINE_PRINTER` | Printer IP or host name, where Moonraker runs (port 7125). Required unless `config.json` sets `printer`. |
+| `FEEDLINE_SPOOLMAN` | Optional Spoolman address, e.g. `192.168.1.20:7912`. |
+| `FEEDLINE_PORT` | Port inside the container (default 8081). To change the outside port, change `-p` instead. |
+
+The `/data` volume holds what `/var/lib/feedline` holds in the Linux install (UI settings, uploaded graphics, added printers, config backups),
+plus an optional `config.json` for the other [config.json options](#configjson-admin-only-edited-on-the-server). To add one, start from the example in the image:
+
+    docker cp feedline:/app/config.example.json config.json      # edit it, then:
+    docker cp config.json feedline:/data/config.json && docker restart feedline
+
+The Spoolman [auto-add helper](#auto-add-helper-optional) runs from the same image: `docker compose --profile autoadd up -d`,
+or `docker run` as above with `--name feedline-autoadd` and `autoadd` added after the image name.
+
+Update: `docker pull ghcr.io/cl-tim/feedline`, then remove and re-create the container (`docker compose pull && docker compose up -d` with Compose).
+The `/data` volume is kept. Logs: `docker logs feedline`. Build it yourself from a clone with `docker build -t feedline .`
 
 <sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
