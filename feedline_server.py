@@ -260,6 +260,100 @@ def parse_printers(spec, main_host=None):
     return out
 
 
+def color_hex(c):
+    """A filament color as "#RRGGBB": from "#rrggbb", "rrggbbaa" or a 24-bit number; None when there is none."""
+    if isinstance(c, bool):
+        return None
+    if isinstance(c, int):
+        return "#%06X" % (c & 0xFFFFFF)
+    m = re.match(r"#?([0-9a-fA-F]{6})", str(c or "").strip())
+    return "#" + m.group(1).upper() if m else None
+
+
+def ex_name(i):
+    return "extruder" if i == 0 else "extruder%d" % i
+
+
+def filament_objects(provider, objs, tools=1):
+    """The Klipper objects filament_slots needs for this filament system (asked for together on the Printers page)."""
+    if provider == "u1":
+        return ["toolhead", "filament_detect", "filament_feed left", "filament_feed right"]
+    if provider == "afc":
+        return ["AFC"] + [o for o in objs if re.match(r"AFC_(stepper|lane) \S", o)]
+    if provider == "qidibox":
+        return ["multi_color_controller", "save_variables", "box_extras", "filament_switch_sensor fila"]
+    if provider == "toolchanger":
+        return ["toolhead", "toolchanger"]
+    return ["toolhead"] if tools > 1 else []
+
+
+def filament_slots(provider, st, names=(), tools=1, table=None):
+    """What each filament slot holds, compactly, for one card on the Printers page:
+    [{"label", "title", "color", "loaded", "active"}] (title and color only when known). The same rules as the Home page,
+    without Spoolman (which the Home page adds per spool). `names`: AFC lanes or QIDI Box slots; `table`: box_table()."""
+    st, out = st or {}, []
+    if provider == "qidibox":
+        M = st.get("multi_color_controller") or {}
+        V = (st.get("save_variables") or {}).get("variables") or {}
+        sl = M.get("slots") or {}
+        states, mats, T = sl.get("states") or {}, sl.get("materials") or {}, table or {}
+
+        def state(n):
+            v = states.get(n)
+            v = V.get(n) if v is None else v
+            try:
+                return int(v or 0)
+            except (TypeError, ValueError):
+                return 0
+
+        def material(n):
+            if isinstance(mats.get(n), dict):
+                return mats[n]
+            if not T:
+                return {}
+            return {"filament": {"filament": (T.get("fila") or {}).get(V.get("filament_" + n))},
+                    "color": (T.get("color") or {}).get(V.get("color_" + n)), "vendor": (T.get("vendor") or {}).get(V.get("vendor_" + n))}
+
+        box_loaded = any(state(n) == 2 for n in names if n != "slot16")
+        ex, be, sw = M.get("extruder") or {}, st.get("box_extras") or {}, st.get("filament_switch_sensor fila") or {}
+        at_head = (ex["filament_detected"] if isinstance(ex.get("filament_detected"), bool)
+                   else be["e_endstop_state"] == 1 if isinstance(be.get("e_endstop_state"), (int, float)) else bool(sw.get("filament_detected")))
+        for n in names:
+            ext, num = n == "slot16", int(re.sub(r"\D", "", n) or 0)
+            m = material(n)
+            f = m.get("filament") if isinstance(m.get("filament"), dict) else {}
+            s = (2 if at_head and not box_loaded else 1 if f.get("filament") or f.get("type") else 0) if ext else state(n)
+            if ext and not s:
+                continue                                      # an external spool nobody set up says nothing
+            out.append({"label": "Ext" if ext else "%d%s" % (num // 4 + 1, "ABCD"[num % 4]), "loaded": s > 0, "active": s == 2,
+                        "title": str(f.get("filament") or f.get("type") or "") if s else "", "color": color_hex(m.get("color")) if s else None})
+    elif provider == "afc":
+        cur = (st.get("AFC") or {}).get("current_load")
+        for n in names:
+            L = st.get("AFC_stepper " + n) or st.get("AFC_lane " + n) or {}
+            loaded = bool(L.get("prep") or L.get("load") or L.get("tool_loaded"))
+            out.append({"label": n, "loaded": loaded, "active": bool(L.get("tool_loaded")) or cur == n,
+                        "title": str(L.get("filament_name") or L.get("material") or "") if loaded else "", "color": color_hex(L.get("color")) if loaded else None})
+    elif provider == "u1":
+        info, cur = (st.get("filament_detect") or {}).get("info") or [], (st.get("toolhead") or {}).get("extruder")
+        for i in range(tools):
+            d = info[i] if i < len(info) and isinstance(info[i], dict) else {}
+            ch = (st.get("filament_feed " + ("left" if i < 2 else "right")) or {}).get("extruder%d" % i)
+            loaded = bool(ch.get("filament_detected")) if isinstance(ch, dict) else bool(d.get("MAIN_TYPE")) and d.get("MAIN_TYPE") != "NONE"
+            typ = " ".join(str(d.get(k) or "") for k in ("MAIN_TYPE", "SUB_TYPE")).strip() if d.get("MAIN_TYPE") not in (None, "", "NONE") else ""
+            out.append({"label": "T%d" % i, "loaded": loaded, "active": cur == ex_name(i), "title": typ if loaded else "",
+                        "color": color_hex(d.get("RGB_1")) if loaded and d.get("RGB_1") is not None else None})
+    elif provider == "toolchanger":
+        n = (st.get("toolchanger") or {}).get("tool_number")
+        for i in range(tools):
+            out.append({"label": "T%d" % i, "loaded": True, "active": n == i, "title": "", "color": None})
+    elif tools > 1:
+        cur = (st.get("toolhead") or {}).get("extruder")
+        for i in range(tools):
+            out.append({"label": "T%d" % i, "loaded": True, "active": cur == ex_name(i), "title": "", "color": None})
+    return out
+
+
 def write_json_atomic(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
@@ -650,6 +744,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     row["camera"] = self.clean_view(ui) if isinstance(ui, dict) else cam["view"]
             except Exception:  # noqa: BLE001
                 pass                                          # the extras are optional: the row still shows the state
+            try:                                              # what each filament slot holds (Box slots, AFC lanes, U1 channels, tools)
+                prov = h.provider()
+                tools = len(h.tc_tools()) if prov == "toolchanger" else h.tool_count()
+                names = h.afc_lanes() if prov == "afc" else h.qidi_slots() + ["slot16"] if prov == "qidibox" else []
+                objs = filament_objects(prov, h.objects(), tools)
+                fst = h.mget("/printer/objects/query?" + "&".join(urllib.parse.quote(o) for o in objs), 4)["result"]["status"] if objs else {}
+                need_table = prov == "qidibox" and not ((fst.get("multi_color_controller") or {}).get("slots") or {}).get("materials")
+                row.update(provider=prov, filament=filament_slots(prov, fst, names, tools, h.box_table() if need_table else None))
+            except Exception:  # noqa: BLE001
+                pass
 
         threads = [threading.Thread(target=ask, args=(r,), daemon=True) for r in rows]
         for t in threads:

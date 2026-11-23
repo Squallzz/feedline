@@ -299,6 +299,12 @@
   .ovbar{height:7px;background:#0a0818;border-radius:4px;overflow:hidden} .ovbar i{display:block;height:100%;background:#7A63F2;border-radius:4px}
   .ovrow{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--muted)} .ovrow b{color:var(--text);font-weight:600}
   .ovsub{font-size:11.5px;color:var(--sub)} .ovnote{font-size:12px;color:var(--sub);margin-top:14px} .ovbody{display:flex;flex-direction:column;gap:7px}
+  .ovfils{display:flex;flex-wrap:wrap;gap:5px}
+  .ovfil{display:inline-flex;align-items:center;gap:5px;max-width:100%;padding:2px 8px 2px 5px;border-radius:999px;background:#1D1A42;border:1px solid var(--edge);font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ovfil i{flex:none;width:11px;height:11px;border-radius:50%;border:1px solid #0006;background:#808080} .ovfil b{color:var(--text);font-weight:600}
+  .ovfil.empty{opacity:.55} .ovfil.empty i{background:transparent;border:1px dashed var(--sub)} .ovfil.on{border-color:#7A63F2;color:var(--text);box-shadow:inset 0 0 0 1px #7A63F2}
+  .ovctl{display:flex;gap:6px} .ovctl button{flex:1;padding:5px 8px;border-radius:8px;border:1px solid var(--edge);background:#1D1A42;color:var(--text);font:inherit;font-size:12.5px;cursor:pointer}
+  .ovctl button:hover{border-color:#9580FF} .ovctl button.danger{color:var(--bad);border-color:#7a2c40} .ovctl button:disabled{opacity:.5;cursor:default}
   .jobtbl{width:100%;border-collapse:collapse}
   .jobtbl th{font-size:12px;font-weight:500;color:var(--sub);text-align:left;padding:6px 10px;border-bottom:1px solid #231f4a}
   .jobtbl td{padding:8px 10px;border-bottom:1px solid #1a1740;vertical-align:middle;white-space:nowrap}      /* dates and times stay on one line; only the file name gives way */
@@ -515,7 +521,7 @@
 <section id="v-settings" class="view" hidden></section>
 <section id="v-macros" class="view" hidden></section>
 <section id="v-printers" class="view" hidden><h2>Printers <span id="ovstat" class="badge"></span></h2><div id="ovgrid"></div>
-  <div class="ovnote">Click a printer to open it. This page only shows status; controls are on each printer's own page.</div></section>
+  <div class="ovnote">Click a printer to open it. A printer that is printing can be paused, resumed or cancelled from its card; everything else is on each printer's own page.</div></section>
 <section id="v-tune" class="view" hidden>
   <h2>Tune - bed mesh</h2>
   <div class="srow" style="margin:0 0 14px"><button id="meshcal" type="button" title="Probe the bed with BED_MESH_CALIBRATE (printer idle and homed)">Calibrate bed mesh</button><span id="meshcalmsg" role="status" style="color:var(--muted);font-size:13px"></span></div>
@@ -2559,7 +2565,7 @@ const withP = u => u + (u.includes("?") ? "&" : "?") + "p=" + encodeURIComponent
 if (HOSTED) {
   const rawFetch = window.fetch.bind(window);
   window.fetch = (u, o) => {
-    if (typeof u === "string" && u[0] === "/" && PID) { o = Object.assign({}, o); o.headers = Object.assign({}, o.headers, {"X-Printer": PID}); }
+    if (typeof u === "string" && u[0] === "/" && PID) { o = Object.assign({}, o); o.headers = Object.assign({"X-Printer": PID}, o.headers); }   // a request may name another printer (Printers page controls)
     return rawFetch(u, o);
   };
 }
@@ -2995,6 +3001,15 @@ bootstrap();
   window.addEventListener("beforeunload", e => { if (edDirty()) { e.preventDefault(); e.returnValue = ""; } });
   // ---------- Printers: every printer at a glance (status only; a click opens that printer) ----------
   let ovSig = "";
+  // what each slot holds (QIDI Box slots, AFC lanes, U1 channels, tools): a color dot, the slot, the filament; the one feeding the nozzle is outlined
+  const ovFils = f => !f || !f.length ? "" : '<div class="ovfils">' + f.map(s => {
+    const what = s.loaded ? s.title || (s.color ? "" : "loaded") : "empty";
+    return '<span class="ovfil' + (s.active ? " on" : "") + (s.loaded ? "" : " empty") + '" title="' + esc(s.label + (what ? ": " + what : "") + (s.active ? " (in use)" : "")) + '"><i' +
+      (s.loaded && s.color ? ' style="background:' + esc(s.color) + '"' : "") + "></i><b>" + esc(s.label) + "</b>" + (s.loaded && s.title ? esc(s.title) : "") + "</span>";
+  }).join("") + "</div>";
+  // Pause / Resume / Cancel for a printer that is printing, right on its card (the server checks the state again before sending)
+  const ovCtl = p => !CONTROLS || !(p.state === "printing" || p.state === "paused") ? "" : '<div class="ovctl">' +
+    (p.state === "printing" ? '<button data-ctl="pause">Pause</button>' : '<button data-ctl="resume">Resume</button>') + '<button class="danger" data-ctl="cancel">Cancel</button></div>';
   const ovTemp = (label, t) => t && typeof t[0] === "number" ? "<span>" + label + " <b>" + Math.round(t[0]) + "°</b>" + (t[1] > 0 ? " / " + Math.round(t[1]) + "°" : "") + "</span>" : "<span></span>";
   function ovBody(p) {
     if (!p.online) return '<div class="ovfile">Not reachable</div><div class="ovsub">' + esc((p.model && p.model.label ? p.model.label + " · " : "") + p.host) + "</div>";
@@ -3005,7 +3020,7 @@ bootstrap();
     return '<div class="ovfile" title="' + esc(p.file) + '">' + (act ? esc(p.file.split("/").pop()) : p.klippy && p.klippy !== "ready" ? "Klipper is " + esc(p.klippy) : "Idle") + "</div>" +
       (act ? '<div class="ovbar"><i style="width:' + (pr * 100).toFixed(1) + '%"></i></div><div class="ovrow"><span><b>' + Math.round(pr * 100) + "%</b>" + (p.layer ? " · layer " + (+p.layer[0] || 0) + "/" + (+p.layer[1] || 0) : "") + "</span><span>" +
         (left != null ? dur(left) + " left · " + esc(eta) : "") + "</span></div>" : "") +
-      '<div class="ovrow">' + ovTemp("Nozzle", p.nozzle) + ovTemp("Bed", p.bed) + "</div>" +
+      '<div class="ovrow">' + ovTemp("Nozzle", p.nozzle) + ovTemp("Bed", p.bed) + "</div>" + ovFils(p.filament) + ovCtl(p) +
       '<div class="ovsub">' + esc((p.model && p.model.label ? p.model.label + " · " : "") + p.host) + (p.active ? " · shown in this tab" : "") + "</div>";
   }
   const ovTurn = v => !v ? "" : (v.flipH ? " scaleX(-1)" : "") + (v.flipV ? " scaleY(-1)" : "") + (v.rotation ? " rotate(" + (+v.rotation || 0) + "deg)" + (v.rotation % 180 ? " scale(.5625)" : "") : "");
@@ -3034,8 +3049,24 @@ bootstrap();
       th.hidden = !want; if (want && th.getAttribute("src") !== want) th.src = want;
     });
   }
-  $("ovgrid").addEventListener("click", e => { const c = e.target.closest(".ovcard"); if (c) selectPrinter(c.dataset.id, true); });
-  $("ovgrid").addEventListener("keydown", e => { const c = e.target.closest(".ovcard"); if (c && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); selectPrinter(c.dataset.id, true); } });
+  async function ovControl(b, c) {
+    const act = b.dataset.ctl, name = (c.querySelector(".ovhd b") || {}).textContent || c.dataset.id;
+    if (!PCONFIRM[act] || !await ask(name + ": " + PCONFIRM[act], PLABEL[act])) return;      // the same questions as the buttons at the top
+    b.closest(".ovctl").querySelectorAll("button").forEach(x => { x.disabled = true; });
+    try {
+      const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1", "X-Printer": c.dataset.id}, body: JSON.stringify({action: act})});
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+      $("ovstat").textContent = PLABEL[act] + " sent to " + name;
+    } catch (e) { $("ovstat").textContent = name + ": " + e.message; }
+    loadOverview().catch(() => {});
+  }
+  $("ovgrid").addEventListener("click", e => {
+    const c = e.target.closest(".ovcard"), b = e.target.closest("button[data-ctl]");
+    if (b && c) { e.stopPropagation(); if (!b.disabled) ovControl(b, c); return; }
+    if (c) selectPrinter(c.dataset.id, true);
+  });
+  $("ovgrid").addEventListener("keydown", e => { const c = e.target.closest(".ovcard"); if (c && !e.target.closest("button") && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); selectPrinter(c.dataset.id, true); } });
   // ---------- routing ----------
   const loaders = {printers: loadOverview, files: loadFiles, console: loadConsole, jobs: loadJobs, history: () => Promise.all([loadHistory(), loadJobs()]), tune: loadMesh, settings: () => (window.settingsLoad ? window.settingsLoad() : Promise.resolve()), macros: () => (window.macrosLoad ? window.macrosLoad() : Promise.resolve())};
   function setView(v, push) {

@@ -511,5 +511,65 @@ class ConfigPrinters(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "printers.json")))
 
 
+class OverviewFilament(unittest.TestCase):
+    """The compact filament list on each Printers page card."""
+
+    def test_colors(self):
+        self.assertEqual(fs.color_hex("#ff8800"), "#FF8800")
+        self.assertEqual(fs.color_hex("00ff00ff"), "#00FF00")
+        self.assertEqual(fs.color_hex(0x123456), "#123456")
+        for bad in (None, "", "red", True, "#12"):
+            self.assertIsNone(fs.color_hex(bad), bad)
+
+    def test_qidi_box_from_the_controller(self):
+        st = {"multi_color_controller": {"slots": {"states": {"slot0": 2, "slot1": 1, "slot2": 0},
+                                                   "materials": {"slot0": {"filament": {"filament": "PLA Rapido", "type": "PLA"}, "color": "#FF0000"},
+                                                                 "slot1": {"filament": {"type": "PETG"}, "color": "00FF00"}}}}}
+        got = fs.filament_slots("qidibox", st, ["slot0", "slot1", "slot2", "slot16"])
+        self.assertEqual(got, [
+            {"label": "1A", "loaded": True, "active": True, "title": "PLA Rapido", "color": "#FF0000"},
+            {"label": "1B", "loaded": True, "active": False, "title": "PETG", "color": "#00FF00"},
+            {"label": "1C", "loaded": False, "active": False, "title": "", "color": None}])     # external spool not set up: left out
+
+    def test_qidi_box_from_saved_variables_and_the_table(self):
+        st = {"save_variables": {"variables": {"slot4": 1, "filament_slot4": 3, "color_slot4": 2, "slot16": 0}},
+              "box_extras": {"e_endstop_state": 1}}
+        table = {"fila": {3: "ABS"}, "color": {2: "#0000ff"}, "vendor": {}}
+        got = fs.filament_slots("qidibox", st, ["slot4", "slot16"], table=table)
+        self.assertEqual(got[0], {"label": "2A", "loaded": True, "active": False, "title": "ABS", "color": "#0000FF"})
+        # filament at the head and no Box slot loaded into it: the external spool is in use (as on the Home page)
+        self.assertEqual(got[1], {"label": "Ext", "loaded": True, "active": True, "title": "", "color": None})
+
+    def test_qidi_external_spool_in_use(self):
+        st = {"multi_color_controller": {"extruder": {"filament_detected": True}, "slots": {"states": {"slot0": 1},
+              "materials": {"slot16": {"filament": {"type": "TPU"}, "color": "#111111"}}}}}
+        got = fs.filament_slots("qidibox", st, ["slot0", "slot16"])
+        self.assertEqual(got[1], {"label": "Ext", "loaded": True, "active": True, "title": "TPU", "color": "#111111"})
+
+    def test_afc_lanes(self):
+        st = {"AFC": {"current_load": "lane2"}, "AFC_stepper lane1": {"prep": True, "material": "PLA", "color": "#abcdef"},
+              "AFC_lane lane2": {"load": True, "filament_name": "Silk", "color": "112233"}, "AFC_stepper lane3": {}}
+        got = fs.filament_slots("afc", st, ["lane1", "lane2", "lane3"])
+        self.assertEqual([(s["label"], s["loaded"], s["active"], s["title"], s["color"]) for s in got],
+                         [("lane1", True, False, "PLA", "#ABCDEF"), ("lane2", True, True, "Silk", "#112233"), ("lane3", False, False, "", None)])
+
+    def test_u1_channels(self):
+        st = {"toolhead": {"extruder": "extruder1"},
+              "filament_detect": {"info": [{"MAIN_TYPE": "PLA", "SUB_TYPE": "Matte", "RGB_1": 0xFF0000}, {"MAIN_TYPE": "PETG", "RGB_1": 255}, {"MAIN_TYPE": "NONE"}]},
+              "filament_feed left": {"extruder0": {"filament_detected": True}, "extruder1": {"filament_detected": True}},
+              "filament_feed right": {"extruder2": {"filament_detected": False}}}
+        got = fs.filament_slots("u1", st, tools=4)
+        self.assertEqual([(s["label"], s["loaded"], s["active"], s["title"], s["color"]) for s in got],
+                         [("T0", True, False, "PLA Matte", "#FF0000"), ("T1", True, True, "PETG", "#0000FF"),
+                          ("T2", False, False, "", None), ("T3", False, False, "", None)])
+
+    def test_tools_and_plain_printers(self):
+        self.assertEqual([s["active"] for s in fs.filament_slots("toolchanger", {"toolchanger": {"tool_number": 1}}, tools=3)], [False, True, False])
+        self.assertEqual([s["active"] for s in fs.filament_slots("extruders", {"toolhead": {"extruder": "extruder"}}, tools=2)], [True, False])
+        self.assertEqual(fs.filament_slots("extruders", {}, tools=1), [])
+        self.assertEqual(fs.filament_objects("extruders", [], 1), [])
+        self.assertEqual(fs.filament_objects("afc", ["AFC", "AFC_stepper a", "extruder", "AFC_hub x"]), ["AFC", "AFC_stepper a"])
+
+
 if __name__ == "__main__":
     unittest.main()
