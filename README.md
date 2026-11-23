@@ -186,7 +186,7 @@ Notes:
 - A status bar with the temperatures (tap one to set its target), Pause / Cancel and Emergency stop, and big section buttons on the left: Status (print card with thumbnail and progress, print details, all temperatures), Filament, Move, Tune (print tuning and fans), Macros and Console.
 - Made for 1024×600 and up. Nothing needs hover or a keyboard: number fields bring up a number pad on the screen.
 - The camera is left out, which also keeps the load low on the small computer that drives the screen.
-- Any browser in kiosk mode works. On a Raspberry Pi, [Cog](https://github.com/Igalia/cog) (WPE WebKit) is light and needs no desktop: `cog --platform=drm http://<feedline>/touch`.
+- Any browser in kiosk mode works. On a Raspberry Pi, [Cog](https://github.com/Igalia/cog) (WPE WebKit) is light and needs no desktop: `cog --platform=drm --platform-params=renderer=gles http://<feedline>/touch`, run as a user in the `video`, `render` and `input` groups (with KlipperScreen and any desktop stopped, so Cog can take the screen).
 
 <sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
