@@ -10,7 +10,12 @@
 <link rel="apple-touch-icon" href="/graphics/feedline-192.png">
 <style>
   :root{--bg:#0A0814;--card:#13112A;--edge:#352F6B;--text:#DEDCFA;--muted:#A29EDB;--sub:#8985C4;
-        --violet:#7A63F2;--blue:#3B82F6;--good:#4ADE80;--warn:#E8B04F;--bad:#F0577A;color-scheme:dark;accent-color:#7A63F2}
+        --violet:#7A63F2;--blue:#3B82F6;--good:#4ADE80;--warn:#E8B04F;--bad:#F0577A;color-scheme:dark;accent-color:#7A63F2;
+        /* vertical rhythm, used everywhere a block is spaced from the next: change these, not individual margins */
+        --gap-section:16px;     /* between sections and cards (columns, views, stacked cards) */
+        --gap-title:10px}       /* from a section's title to its content */
+  /* section titles on Home ("Print", "Print tuning", "Console", "Fan speeds", "Temperatures") share one style */
+  #layout section > h2{font-size:15px;font-weight:600;margin:0 0 var(--gap-title);color:var(--muted)}
   /* global: keyboard focus ring, disabled look, file-picker button that matches the app buttons */
   :is(button,select,input,textarea,a,[role=button],[tabindex]):focus-visible{outline:2px solid #9580FF;outline-offset:2px}
   button:disabled,input:disabled,select:disabled{opacity:.45;cursor:not-allowed}
@@ -21,12 +26,12 @@
   h1{font-size:20px;margin:0;font-weight:600}
   .pill{padding:3px 12px;border-radius:999px;font-size:12px;background:#1D1A42;border:1px solid var(--edge);color:var(--muted)}
   .pill.on{color:var(--good);border-color:#2c6b48}
-  #afcbar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px} #afcbar[hidden]{display:none} #afcbar .pill{display:inline-flex;align-items:center;gap:6px} #afcbar .pill i{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor} #afcbar .pill.dim i{opacity:.35;box-shadow:none}
+  #afcbar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 var(--gap-title)} #afcbar[hidden]{display:none} #afcbar .pill{display:inline-flex;align-items:center;gap:6px} #afcbar .pill i{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor} #afcbar .pill.dim i{opacity:.35;box-shadow:none}
   .pill.off{color:var(--bad);border-color:#7a2c40}
   #job{flex:1;min-width:200px;color:var(--muted);font-size:13px}
-  #layout{display:flex;flex-wrap:wrap;align-items:flex-start;gap:18px;max-width:1800px;margin:0 auto;padding:16px 24px 18px}
-  #colL{flex:0 0 clamp(585px,38vw,860px);min-width:0;display:flex;flex-direction:column;gap:14px}
-  #colR{flex:1 1 620px;min-width:0;display:flex;flex-direction:column;gap:18px}
+  #layout{display:flex;flex-wrap:wrap;align-items:flex-start;gap:var(--gap-section) 18px;max-width:1800px;margin:0 auto;padding:16px 24px 18px}
+  #colL{flex:0 0 clamp(585px,38vw,860px);min-width:0;display:flex;flex-direction:column;gap:var(--gap-section)}
+  #colR{flex:1 1 620px;min-width:0;display:flex;flex-direction:column;gap:var(--gap-section)}
   @media (max-width:1180px){#colL,#colR{flex:1 1 100%}}
   main{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
   /* Front view of the printer; each card sits under its toolhead's real dock position (X = 35, 102.7, 170.2, 237.7 mm) */
@@ -121,7 +126,6 @@
   .acts button.rfid:disabled{opacity:.6;cursor:default}
   .glow{animation:pulse 1.6s ease-in-out infinite}
   @keyframes pulse{50%{opacity:.45}}
-  #temps h2,#fans h2,#con h2{font-size:15px;font-weight:600;margin:0 0 10px;color:var(--muted)}
   #fgrid{background:var(--card);border:1px solid var(--edge);border-radius:20px;padding:12px;
          display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
   .f{background:#0f0d24;border:1px solid #231f4a;border-radius:12px;padding:8px 9px}
@@ -199,25 +203,24 @@
   #tgtpop input{width:80px;background:#0a0818;border:1px solid #352F6B;border-radius:8px;color:#fff;font:inherit;font-size:16px;padding:5px 8px}
   #tgtpop button{background:#1D1A42;border:1px solid #352F6B;color:#e8e6ff;border-radius:8px;padding:5px 10px;cursor:pointer;font:inherit;font-size:13px}
   #tgtpop button.go{background:#7A63F2;border-color:#7A63F2;color:#fff}
-  #sideR{position:absolute;left:calc(80.5% + 6px);top:16%;width:max-content;display:flex;flex-direction:column;gap:16px}
+  #sideR{position:absolute;left:calc(80.5% + 6px);top:16%;width:max-content;display:flex;flex-direction:column;gap:var(--gap-section)}
   #sideR #fans{width:auto}
   #sideR #fgrid{grid-template-columns:repeat(2,minmax(100px,1fr));gap:10px 14px;border-radius:14px;padding:12px 14px}
   #sideR .f{background:none;border:0;padding:0}
   #mid #stage{margin:0 0 0 max(-100px,calc((100% - 855px) / 2 - 100px));pointer-events:none}
   #stage .tool,#stage #scene *,#sideR,#spmodal,#scrmodal,#tgtpop{pointer-events:auto}
-  @container (max-width:845px){#sideR{position:static;width:auto;margin-top:10px}#sceneWrap #temps,#sceneWrap #fans{position:static;width:auto;max-width:none;margin-top:10px}
+  /* #temps sits inside #sideR, which carries the gap; a margin on #temps as well would double it */
+  @container (max-width:845px){#sideR{position:static;width:auto;margin-top:var(--gap-section)}#sceneWrap #temps,#sceneWrap #fans{position:static;width:auto;max-width:none;margin-top:0}
     #mid #stage{margin:0 auto}}
   /* picture-based layouts (generic printer, AFC) are not shifted over the left column and keep temps/fans below the picture */
   #mid #stage:not(.u1layout){margin:0 auto}
-  #stage:not(.u1layout) #sideR{position:static;width:auto;margin-top:10px}
-  #stage:not(.u1layout) #sceneWrap #temps,#stage:not(.u1layout) #sceneWrap #fans{position:static;width:auto;max-width:none;margin-top:10px}
-  #pinfo h2{font-size:15px;font-weight:600;margin:0 0 10px;color:var(--muted)}
+  #stage:not(.u1layout) #sideR{position:static;width:auto;margin-top:var(--gap-section)}
+  #stage:not(.u1layout) #sceneWrap #temps,#stage:not(.u1layout) #sceneWrap #fans{position:static;width:auto;max-width:none;margin-top:0}
   #pgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px 12px;background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:8px 12px}
   #pgrid .p{min-width:0} #pgrid .p .k{font-size:11px;color:var(--sub)} #pgrid .p .v{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #pgrid .p .s{font-size:10.5px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:13px}
   #pgrid .wide{grid-column:span 2}
   /* Print tuning: one row per setting */
-  #ptune{margin-top:14px} #ptune h2{font-size:15px;font-weight:600;margin:0 0 10px;color:var(--muted)}
   .ptbox{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:10px 12px;display:flex;flex-direction:column;gap:10px}
   .ptrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px} .ptrow .k{color:var(--sub);font-size:12px;min-width:64px}
   .ptrow b{font-weight:600;min-width:58px;font-variant-numeric:tabular-nums} .ptrow input[type=range]{flex:1 1 120px;min-width:100px}
@@ -258,13 +261,13 @@
   #nav button:hover{color:var(--text);background:#17143a}
   #nav button.on{color:#fff;background:#2a2360;box-shadow:inset 3px 0 0 #7A63F2}
   body{padding-left:60px}
-  #layout{padding:16px 6px 18px 8px;gap:8px}
+  #layout{padding:16px 6px 18px 8px;column-gap:8px}
   #colL{flex-basis:clamp(550px,36vw,860px)}
   /* Phone: flatten both columns (display:contents) so every Home block is a direct flex item of #layout and can be ordered freely:
      camera, print info, status + filament cards + drawing, temperatures, move controls, fans, console.
      Without a box #colR is no longer the size container, so the container-query rules (2 columns, drawing hidden) stop applying; the 2-column cards are set here. */
   @media (max-width:700px){
-    #layout{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:14px}
+    #layout{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:var(--gap-section)}
     #colL,#colR,#mid,#stage,#sceneWrap,#sideR,#cam{display:contents}
     #cam .box{order:1;background:var(--card);border:1px solid var(--edge);border-radius:20px;padding:14px}
     #pinfo,#ptune{order:2} #afcbar{order:3;margin:0} #grid{order:4} #scene{order:5;flex:none} #temps{order:6}
@@ -280,14 +283,14 @@
     .acts button{min-height:38px;padding:6px 0}
   }
   .view{padding:16px 24px 30px;max-width:1300px;margin:0 auto}
-  .view h2{font-size:18px;font-weight:600;margin:0 0 14px}
-  .sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px}
+  .view h2{font-size:18px;font-weight:600;margin:0 0 var(--gap-title)}
+  .sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:var(--gap-section)}
   .stat{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:14px 16px}
   .stat .k{font-size:12px;color:var(--muted)} .stat .n{font-size:26px;font-weight:600;margin-top:4px} .stat .s{font-size:12px;color:var(--sub);margin-top:2px}
-  .vcard{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:14px 16px;margin-bottom:16px}
-  .vcard h3{margin:0 0 10px;font-size:14px;font-weight:600;color:var(--muted)}
+  .vcard{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:14px 16px;margin-bottom:var(--gap-section)}
+  .vcard h3{margin:0 0 var(--gap-title);font-size:14px;font-weight:600;color:var(--muted)}
   /* Printers overview: one card per printer */
-  #ovgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+  #ovgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--gap-section)}
   .ovcard{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:12px;cursor:pointer;display:flex;flex-direction:column;gap:10px;text-align:left;color:var(--text);font:inherit}
   .ovcard:hover,.ovcard:focus-visible{border-color:#9580FF;outline:none} .ovcard.here{box-shadow:inset 0 0 0 1px #7A63F2}
   .ovcard.off{opacity:.6}
@@ -351,7 +354,7 @@
   #edhl .hn{color:#f0a97a} #edhl .hq{color:#8bd58b} #edhl .hj{color:#c792ea} #edhl .hg{color:#4ade80} #edhl .hb{color:#f0577a}
   .fmsg{padding:30px;color:var(--sub)}
   @media (max-width:900px){.fwrap{flex-direction:column;height:auto}.fside{flex-basis:auto;max-height:300px}.fedit{height:60vh}}
-  .meshrow{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+  .meshrow{display:flex;flex-wrap:wrap;gap:var(--gap-section);align-items:flex-start}
   .meshrow .vcard{flex:1 1 420px;margin-bottom:0}
   .meshrow svg{width:100%;height:auto;display:block}
   .seg-b{text-decoration:none;display:inline-block;background:#1D1A42;border:1px solid var(--edge);color:var(--muted);border-radius:999px;padding:3px 12px;cursor:pointer;font:inherit;font-size:12px}
@@ -360,8 +363,8 @@
   @media (max-width:700px){#nav .brand{display:none}#nav{width:100%;height:calc(60px + env(safe-area-inset-bottom,0px));top:auto;bottom:0;right:0;flex-direction:row;justify-content:flex-start;overflow-x:auto;border-right:0;border-top:1px solid #231f4a;padding:4px 4px env(safe-area-inset-bottom,0px)}#nav button{width:auto;flex:0 0 auto;min-width:56px;height:52px;padding:6px 8px;font-size:11px}body{padding-left:0;padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
 
   #v-settings{max-width:900px}
-  #v-settings .vcard{margin-bottom:16px;padding:14px 16px}
-  #v-settings h3{margin:0 0 10px;font-size:15px} #v-settings h4{margin:14px 0 6px;font-size:13px;color:var(--muted)}
+  #v-settings .vcard{margin-bottom:var(--gap-section);padding:14px 16px}
+  #v-settings h3{margin:0 0 var(--gap-title);font-size:15px} #v-settings h4{margin:14px 0 6px;font-size:13px;color:var(--muted)}
   #v-settings .srow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   #v-settings label{font-size:13px;color:var(--muted)} #v-settings label + select{margin-left:10px}#v-settings .rad{display:inline-flex;gap:4px;align-items:center;margin-right:8px}
   #v-settings input[type=text],#v-settings input:not([type]),#v-settings select{background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:inherit;font-size:13px;padding:6px 10px;min-width:160px}
@@ -387,7 +390,7 @@
   #pkov text{pointer-events:none}
   .badge:empty{display:none}.badge.bad{background:#4a1d28;color:#ff9aa8}
 
-  #v-macros{max-width:1100px} #v-macros .vcard{margin-bottom:16px;padding:14px 16px} #v-macros h3{margin:0 0 10px;font-size:15px}
+  #v-macros{max-width:1100px} #v-macros .vcard{margin-bottom:var(--gap-section);padding:14px 16px} #v-macros h3{margin:0 0 var(--gap-title);font-size:15px}
   #v-macros .srow{display:flex;gap:10px;align-items:center;flex-wrap:wrap} #v-macros .sub{font-size:12px;color:var(--sub)} #v-macros code{background:#0a0818;padding:1px 5px;border-radius:4px;font-size:11.5px}
   #v-macros input{background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:inherit;font-size:13px;padding:6px 10px;min-width:0}
   #v-macros button{background:#1f1b45;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer} #v-macros button:hover:not(:disabled){border-color:#9580FF} #v-macros button:disabled{opacity:.45;cursor:not-allowed}
