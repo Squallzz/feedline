@@ -1973,7 +1973,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.logs_export(urllib.parse.urlparse(path).query)
         elif route == "/config/read":
             return self.config_read(urllib.parse.urlparse(path).query)
-        elif route in ("/", "/index.html"):
+        elif route in ("/", "/index.html", "/touch", "/touch/"):     # /touch: the same page, laid out for a printer's touchscreen
             with open(os.path.join(self.root, "index.html"), "rb") as f:
                 return self.reply(200, "text/html; charset=utf-8", f.read())
         elif route == "/manifest.webmanifest":              # makes the page installable as an app (Chrome / Android "Install app")

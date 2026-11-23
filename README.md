@@ -10,7 +10,7 @@ Works with any Klipper + Moonraker printer; ships with a drawn Snapmaker U1 view
 | [Install (Linux)](#install-linux-about-two-minutes) · [🐳 Docker](#install-with-docker) | [🧵 Spoolman](#spoolman-on-the-snapmaker-u1) | [Settings tab](#settings-tab) | [config.json options](#configjson-admin-only-edited-on-the-server) |
 | [Where to run it](#where-to-run-it) | [Spoolman auto-add helper](#auto-add-helper-optional) | [Filament systems](#filament-systems) | [Run by hand](#run) |
 | [📱 Android app](#android-app-apk) | [🏠 Home Assistant](#home-assistant) | [Print tuning](#print-tuning) | [Security](SECURITY.md) |
-| [Install as an app (PWA)](#install-as-an-app-android-iphone-desktop) | [📺 Remote touchscreen](#remote-touchscreen-snapmaker-u1-with-the-paxx-firmware) | [Tune tab: bed mesh](#tune-tab-bed-mesh) | [Tests](#tests) |
+| [Install as an app (PWA)](#install-as-an-app-android-iphone-desktop) · [👆 Touchscreen at the printer](#touchscreen-at-the-printer-touch) | [📺 Remote touchscreen](#remote-touchscreen-snapmaker-u1-with-the-paxx-firmware) | [Tune tab: bed mesh](#tune-tab-bed-mesh) | [Tests](#tests) |
 | | | [Console](#console) · [Macros](#macros-tab) | [Not covered](#not-covered) |
 
 **Features at a glance**
@@ -176,6 +176,17 @@ Notes:
   On a home network without a public domain, create a local DNS name (for example `feedline`) pointing at the proxy and sign its certificate with a local CA that your devices trust. If the name has dots and is not `.local`, `.lan` or similar, add it to `allowed_hosts`. If the proxy runs on the same machine, start Feedline with `--bind 127.0.0.1`. The live camera and touchscreen window are loaded by your browser straight from the printer over http, so an https page may block them (mixed content); this is not yet verified.
 - With several printers, give each card its printer in the address: `url: http://192.168.1.60:8081/?p=<id>` (see Settings > Printers). Without `?p=` a framed Feedline shows the printer picked last in that browser, which some browsers do not remember inside a frame. Buttons that ask first (Load, Home, Pause, Emergency stop...) use an in-page dialog, so they also work inside a card.
 - The setting can also be preset with `allow_embed` in `config.json`; the toggle in Settings overrides it.
+
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
+
+## Touchscreen at the printer (`/touch`)
+
+`http://<feedline>/touch` is the same dashboard laid out for a small touchscreen next to the printer, in place of KlipperScreen. Add `?p=<id>` for a printer other than the main one, for example `/touch?p=qidi2`.
+
+- A status bar with the temperatures (tap one to set its target), Pause / Cancel and Emergency stop, and big section buttons on the left: Status (print card with thumbnail and progress, print details, all temperatures), Filament, Move, Tune (print tuning and fans), Macros and Console.
+- Made for 1024×600 and up. Nothing needs hover or a keyboard: number fields bring up a number pad on the screen.
+- The camera is left out, which also keeps the load low on the small computer that drives the screen.
+- Any browser in kiosk mode works. On a Raspberry Pi, [Cog](https://github.com/Igalia/cog) (WPE WebKit) is light and needs no desktop: `cog --platform=drm http://<feedline>/touch`.
 
 <sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
