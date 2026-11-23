@@ -118,7 +118,7 @@
   .stats .sw{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px;border:1px solid #fff4}
   #notice:not(:empty){padding:3px 12px;border-radius:999px;font-size:12px;background:#1D1A42;border:1px solid var(--edge);color:var(--muted)}
   #notice.on{color:var(--good);border-color:#2c6b48} #notice.off{color:var(--bad);border-color:#7a2c40}
-  .acts{display:grid;grid-template-columns:repeat(auto-fit,minmax(44px,1fr));gap:5px;margin-top:9px}      /* two, three or four buttons share one row when they fit */
+  .acts{display:grid;grid-template-columns:repeat(auto-fit,minmax(38px,1fr));gap:5px;margin-top:9px}      /* two, three or four buttons share one row when they fit */
   .acts button{background:#1D1A42;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:4px 0;font:inherit;font-size:11px;cursor:pointer}
   .acts button:hover:not(:disabled){border-color:var(--violet);background:#2a2560}
   .acts button:disabled{opacity:.35;cursor:not-allowed}
@@ -249,6 +249,8 @@
   [hidden]{display:none !important}
   /* the camera picture sits centred in #camview, which takes the picture's shape as shown (after any quarter turn) */
   #camview{position:relative;width:100%;aspect-ratio:16/9;margin:0 auto;overflow:hidden;background:#07060f;border-radius:12px}
+  #camview.off > *{visibility:hidden}
+  #camview.off::after{content:attr(data-msg);position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;text-align:center;color:var(--sub);font-size:13px}
   #camview > *{position:absolute;top:50%;left:50%;width:100%;height:100%;border:0;display:block;object-fit:contain;transform:translate(-50%,-50%)}
   #cam button.badge{background:#1f1b45;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:4px 12px;cursor:pointer;font:inherit;font-size:12px;margin-right:8px} /* the mode toggle is a button; #camstat stays a plain badge */
   #cam button.badge:hover{border-color:#9580FF}
@@ -315,6 +317,12 @@
   .jobtbl td{padding:8px 10px;border-bottom:1px solid #1a1740;vertical-align:middle;white-space:nowrap}      /* dates and times stay on one line; only the file name gives way */
   .jobtbl th{white-space:nowrap}
   .jobtbl tr:hover td{background:#17143a}
+  .jobtbl .jsub{display:none}
+  @media (max-width:700px){      /* phones: file and status only; when it started and how long it took go under the file name */
+    .jobtbl .jx{display:none}
+    .jobtbl .jsub{display:block;font-size:11.5px;color:var(--sub);margin-top:4px} .jobtbl .jsub .st{font-size:10.5px;padding:1px 8px;margin-right:4px}
+    .jobtbl td.fn{min-width:0;white-space:normal;overflow-wrap:anywhere}
+  }
   .jobtbl img{width:44px;height:44px;border-radius:8px;background:#07060f;object-fit:contain;display:block}
   .jobtbl .fn{width:100%;max-width:0;min-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}   /* max-width:0 + width:100% = take the free width, truncate only when the table is narrow */
   .st{white-space:nowrap;display:inline-block;padding:2px 10px;border-radius:999px;font-size:11.5px;border:1px solid var(--edge);color:var(--muted)}
@@ -325,7 +333,7 @@
   .seg{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
   .seg button{background:#1D1A42;border:1px solid var(--edge);color:var(--muted);border-radius:999px;padding:4px 14px;cursor:pointer;font:inherit;font-size:12.5px}
   .seg button.on{background:#7A63F2;border-color:#7A63F2;color:#fff}
-  #fconlog{margin:0;height:calc(100vh - 150px);min-height:300px;overflow:auto;background:#07060f;border:1px solid var(--edge);border-radius:12px;padding:10px 14px;font:12.5px/1.5 Consolas,"Cascadia Mono",monospace;color:#c9c6f0;white-space:pre-wrap;word-break:break-word}
+  #fconlog{margin:0;height:calc(100vh - 255px);   /* leaves room for the title row above and the Send box below, so the page does not scroll */min-height:300px;overflow:auto;background:#07060f;border:1px solid var(--edge);border-radius:12px;padding:10px 14px;font:12.5px/1.5 Consolas,"Cascadia Mono",monospace;color:#c9c6f0;white-space:pre-wrap;word-break:break-word}
   #fconlog .cmd{color:#7fb2ff} #fconlog .err{color:var(--bad)} #fconlog .dim{color:var(--sub)}
   .fwrap{display:flex;gap:14px;align-items:stretch;height:calc(100vh - 170px);min-height:420px}   /* viewport minus header, title row and padding, so only the two panes scroll */
   .fside{flex:0 0 330px;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:10px;min-width:0}
@@ -341,6 +349,9 @@
   .fbar .fp{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
   .fbar button{background:#1D1A42;border:1px solid var(--edge);color:var(--text);border-radius:8px;padding:5px 14px;cursor:pointer;font:inherit;font-size:13px}
   button.rst{background:#1D1A42;border:1px solid var(--edge);color:var(--text);border-radius:8px;padding:4px 12px;cursor:pointer;font:inherit;font-size:12.5px} button.rst:hover:not(:disabled){border-color:#e8b04f} button.rst:disabled{opacity:.5;cursor:default}
+  /* buttons that had no style of their own (they showed as grey browser buttons) */
+  #meshcal,#consend{background:#1D1A42;border:1px solid var(--edge);color:var(--text);border-radius:8px;padding:6px 14px;cursor:pointer;font:inherit;font-size:13px}
+  #meshcal:hover:not(:disabled),#consend:hover:not(:disabled){border-color:#9580FF} #consend{background:var(--violet);border-color:var(--violet);color:#fff}
   .fbar button.go{background:#7A63F2;border-color:#7A63F2;color:#fff} .fbar button:disabled{opacity:.4;cursor:default}
   .fedit{flex:1;display:flex;min-height:0;background:#07060f}
   #edgut{margin:0;padding:10px 8px 10px 10px;text-align:right;color:var(--sub);font:12.5px/1.5 Consolas,"Cascadia Mono",monospace;overflow:hidden;user-select:none;border-right:1px solid #1a1740;min-width:44px}
@@ -360,7 +371,7 @@
   .seg-b{text-decoration:none;display:inline-block;background:#1D1A42;border:1px solid var(--edge);color:var(--muted);border-radius:999px;padding:3px 12px;cursor:pointer;font:inherit;font-size:12px}
   .legend{height:10px;border-radius:5px;margin-top:10px;background:linear-gradient(90deg,#3b6fe0,#43b8b0,#4ade80,#e8d44f,#f0577a)}
   .legend + div{display:flex;justify-content:space-between;font-size:11.5px;color:var(--sub);margin-top:3px}
-  @media (max-width:700px){#nav .brand{display:none}#nav{width:100%;height:calc(60px + env(safe-area-inset-bottom,0px));top:auto;bottom:0;right:0;flex-direction:row;justify-content:flex-start;overflow-x:auto;border-right:0;border-top:1px solid #231f4a;padding:4px 4px env(safe-area-inset-bottom,0px)}#nav button{width:auto;flex:0 0 auto;min-width:56px;height:52px;padding:6px 8px;font-size:11px}body{padding-left:0;padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
+  @media (max-width:700px){#nav .brand{display:none}#nav{width:100%;height:calc(60px + env(safe-area-inset-bottom,0px));top:auto;bottom:0;right:0;flex-direction:row;justify-content:flex-start;overflow-x:auto;border-right:0;border-top:1px solid #231f4a;padding:4px 4px env(safe-area-inset-bottom,0px)}#nav button{width:auto;flex:1 1 0;min-width:36px;height:52px;padding:6px 0;font-size:9.5px;white-space:nowrap}#nav button svg{width:20px;height:20px}body{padding-left:0;padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
 
   #v-settings{max-width:900px}
   #v-settings .vcard{margin-bottom:var(--gap-section);padding:14px 16px}
@@ -998,7 +1009,12 @@ function tempTitle(n) {
   const m = n.match(/^extruder(\d+)$/);
   if (m) return "T" + m[1] + " nozzle";
   // Klipper object names use underscores: show them as words (the raw name goes in the row's tooltip)
-  const w = n.replace(/^(heater_generic|temperature_sensor|temperature_fan) /, "").replace(/_/g, " ");
+  return nameWords(n.replace(/^(heater_generic|temperature_sensor|temperature_fan) /, ""));
+}
+// "cpu_fan" -> "CPU fan", "mainboard_mcu" -> "Mainboard MCU": Klipper names as words, with the usual abbreviations in capitals
+const ACRONYMS = /^(cpu|mcu|psu|rpi|led|ssr|ntc|adc|pwm|tmc|usb|ebb|sb|nh|hbb)$/i;
+function nameWords(s) {
+  const w = String(s).replace(/_/g, " ").split(" ").filter(Boolean).map(x => ACRONYMS.test(x) ? x.toUpperCase() : x).join(" ");
   return w.charAt(0).toUpperCase() + w.slice(1);
 }
 function spark(arr, hot) {
@@ -1065,7 +1081,8 @@ function fanTitle(n) {
   if (m) return "T" + m[1] + " hotend fan";
   m = name.match(/^e(\d)_fan$/);
   if (m) return "T" + m[1] + " fan";
-  return name.replace(/_fan$/, "").replace(/_/g, " ").replace(/^./, c => c.toUpperCase()) + " fan";
+  const words = nameWords(name);                       // "hotend_fan3" -> "Hotend fan3", "board_fan_box1" -> "Board fan box1"
+  return /\bfans?\d*\b/i.test(words) ? words : words + " fan";
 }
 // Sliders only for the part fan and fan_generic fans; heater_fan (hotend / PSU) stay automatic and read-only.
 let fanHoldUntil = 0;     // skip re-rendering while a slider is being used
@@ -2511,7 +2528,7 @@ async function tick() {
     conn.className = "pill on";
     const p = st.print_stats;
     document.getElementById("job").textContent = p.state === "printing" || p.state === "paused"
-      ? cap(p.state) + (st.virtual_sdcard ? " " + Math.round(st.virtual_sdcard.progress * 100) + "%" : "") + ": " + p.filename + (p.info && p.info.total_layer ? "  (layer " + p.info.current_layer + "/" + p.info.total_layer + ")" : "")
+      ? cap(p.state) + (st.virtual_sdcard ? " " + Math.round(st.virtual_sdcard.progress * 100) + "%" : "") + ": " + String(p.filename || "").split("/").pop() + (p.info && p.info.total_layer ? "  (layer " + p.info.current_layer + "/" + p.info.total_layer + ")" : "")
       : "State: " + cap(p.state);
     document.getElementById("foot").textContent = "updated " + new Date().toLocaleTimeString() + "  -  " + CFG.name + " (" + PRINTER + ")";
   } catch (e) {
@@ -2539,6 +2556,7 @@ function setCam(m) {
   else camlive.removeAttribute("src");                           // no src: the browser stops reading the stream
   cambtn.textContent = live ? "Use snapshots" : "Use live video";
   camstat.textContent = live ? (mjpeg ? "Connecting" : "Live (WebRTC)") : "Loading";
+  camOff(false);
   camLayout();
 }
 // The camera view. The box keeps the picture's own shape (4:3, 16:9, ...) so it fills it without bars, and the picture is
@@ -2558,14 +2576,20 @@ function camLayout() {
   }
 }
 const camShape = im => { if (im.naturalWidth && im.naturalHeight) { camNat = [im.naturalWidth, im.naturalHeight]; camLayout(); } };
-camlive.addEventListener("load", () => { camShape(camlive); if (camMode === "live") camstat.textContent = "Live (MJPEG)"; });
-camlive.addEventListener("error", () => { if (camMode === "live" && camlive.getAttribute("src")) camstat.textContent = "Unavailable"; });
+// No picture: say so in the box instead of showing a broken-image icon
+function camOff(off) {
+  const v = document.getElementById("camview");
+  v.classList.toggle("off", off);
+  v.dataset.msg = off ? "Camera unavailable" + (camMode === "live" ? " - try Use snapshots" : " - retrying") : "";
+}
+camlive.addEventListener("load", () => { camShape(camlive); camOff(false); if (camMode === "live") camstat.textContent = "Live (MJPEG)"; });
+camlive.addEventListener("error", () => { if (camMode === "live" && camlive.getAttribute("src")) { camstat.textContent = "Unavailable"; camOff(true); } });
 cambtn.onclick = () => setCam(camMode === "live" ? "snap" : "live");
 function camNext() {
   if (document.hidden || camMode !== "snap") return setTimeout(camNext, 1000);
   const im = new Image();
-  im.onload = () => { camimg.src = im.src; camShape(im); camstat.textContent = "Live"; setTimeout(camNext, 800); };
-  im.onerror = () => { camstat.textContent = "Unavailable"; setTimeout(camNext, 4000); };
+  im.onload = () => { camimg.src = im.src; camShape(im); camOff(false); camstat.textContent = "Live"; setTimeout(camNext, 800); };
+  im.onerror = () => { camstat.textContent = "Unavailable"; camOff(true); setTimeout(camNext, 4000); };
   im.src = HOSTED ? withP("/cam/snapshot?t=" + Date.now()) : MR_HTTP + "/webcam/snapshot.jpg?t=" + Date.now();
 }
 let MR_HTTP = HOSTED ? "" : "http://" + PRINTER;
@@ -2672,18 +2696,21 @@ bootstrap();
       return {j, m, th: thumbOf(j), ids: spoolIds(j), cols};
     });
     const hasTh = info.some(r => r.th), hasMat = info.some(r => r.ids.length || r.cols.length);
-    h += '<div class="vcard" style="padding:6px 8px;overflow-x:auto"><table class="jobtbl"><thead><tr>' + (hasTh ? "<th></th>" : "") + '<th>File</th><th>Status</th><th>Started</th><th>Print time</th><th>Filament</th>' + (hasMat ? "<th>Materials (click for Spoolman info)</th>" : "") + "</tr></thead><tbody>";
+    h += '<div class="vcard" style="padding:6px 8px;overflow-x:auto"><table class="jobtbl"><thead><tr>' + (hasTh ? "<th></th>" : "") + '<th>File</th><th class="jx">Status</th><th class="jx">Started</th><th class="jx">Print time</th><th class="jx">Filament</th>' + (hasMat ? '<th class="jx">Materials (click for Spoolman info)</th>' : "") + "</tr></thead><tbody>";
     h += info.map(({j, m, th, ids, cols}) => {
       let mats = ids.map(id => { const s = spoolMap && spoolMap[id], f = s && s.filament;
         return '<button class="chip" data-spool-id="' + id + '" title="Spool #' + id + (f ? " - " + esc((f.vendor ? f.vendor.name + " " : "") + f.name) : " (not found in Spoolman)") + '"><i style="background:' + (f && f.color_hex ? "#" + esc(f.color_hex.slice(0, 6)) : "#555") + '"></i>#' + id + (f ? " " + esc(f.material || "") : "") + "</button>"; }).join("");
       if (!mats) mats = '<span class="dots">' + cols.map(c => '<i style="background:' + esc(c) + '"></i>').join("") + "</span>";
+      const started = j.start_time ? new Date(j.start_time * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"}) : "";
       return "<tr>" + (hasTh ? "<td>" + (th ? '<img src="' + esc(th) + '" alt="" onerror="this.style.visibility=\'hidden\'">' : '<div style="width:44px;height:44px"></div>') + "</td>" : "") +
-        '<td class="fn" title="' + esc(j.filename) + '">' + esc(String(j.filename).split("/").pop()) + "</td>" +      // base name only; the full path is in the tooltip
-        '<td><span class="st ' + esc(j.status) + '">' + esc(cap(String(j.status).replace(/_/g, " "))) + "</span></td>" +
-        "<td>" + (j.start_time ? new Date(j.start_time * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"}) : "-") + "</td>" +
-        "<td>" + (j.print_duration ? dur(j.print_duration) : "-") + (m.estimated_time ? ' <span style="color:var(--sub)">/ ' + dur(m.estimated_time) + "</span>" : "") + "</td>" +
-        "<td>" + (j.filament_used ? (j.filament_used / 1000).toFixed(2) + " m" : "-") + (m.filament_weight_total ? ' <span style="color:var(--sub)">(' + m.filament_weight_total.toFixed(0) + " g est.)</span>" : "") + "</td>" +
-        (hasMat ? "<td>" + mats + "</td>" : "") + "</tr>";
+        '<td class="fn" title="' + esc(j.filename) + '">' + esc(String(j.filename).split("/").pop()) +      // base name only; the full path is in the tooltip
+          '<span class="jsub"><span class="st ' + esc(j.status) + '">' + esc(cap(String(j.status).replace(/_/g, " "))) + "</span> " +
+          esc([started, j.print_duration ? dur(j.print_duration) : ""].filter(Boolean).join(" · ")) + "</span></td>" +      // phones: the other columns folded in here
+        '<td class="jx"><span class="st ' + esc(j.status) + '">' + esc(cap(String(j.status).replace(/_/g, " "))) + "</span></td>" +
+        '<td class="jx">' + (started || "-") + "</td>" +
+        '<td class="jx">' + (j.print_duration ? dur(j.print_duration) : "-") + (m.estimated_time ? ' <span style="color:var(--sub)">/ ' + dur(m.estimated_time) + "</span>" : "") + "</td>" +
+        '<td class="jx">' + (j.filament_used ? (j.filament_used / 1000).toFixed(2) + " m" : "-") + (m.filament_weight_total ? ' <span style="color:var(--sub)">(' + m.filament_weight_total.toFixed(0) + " g est.)</span>" : "") + "</td>" +
+        (hasMat ? '<td class="jx">' + mats + "</td>" : "") + "</tr>";
     }).join("") + "</tbody></table>" + (rows.length ? "" : '<div style="padding:14px;color:var(--sub)">No jobs recorded.</div>') + "</div>";
     if (lim && all.length > lim) h += '<div style="margin:-6px 0 16px"><button class="seg-b" data-goto="jobs">All jobs (' + all.length + ')</button></div>';
     return h;
@@ -2847,10 +2874,10 @@ bootstrap();
       plan = j.steps;
     } catch (e) { m.textContent = "Cannot calibrate now: " + String(e.message || e); return; }
     if (!await ask("Calibrate the bed mesh? The printer will: " + plan.map((s, i) => (i + 1) + ". " + s).join("  ") + ". The toolhead moves and it takes a few minutes. The new mesh is kept in the printer's memory only: run SAVE_CONFIG on the printer to keep it.", "Calibrate")) return;
-    b.disabled = true; m.textContent = "Working... this can take several minutes";
+    b.disabled = true; b.dataset.working = "1"; m.textContent = "Working... this can take several minutes";
     try { await postControl({action: "mesh_calibrate"}); m.textContent = "Done. Run SAVE_CONFIG on the printer to keep this mesh."; await loadMesh(); }
     catch (e) { m.textContent = String(e.message || e); }
-    finally { b.disabled = false; }
+    finally { b.dataset.working = ""; b.disabled = false; }
   });
 
   // ---------- Console (full history, polled while the page is open) ----------
@@ -2874,7 +2901,20 @@ bootstrap();
   // type G-code: Enter sends it, Up / Down walk through earlier lines. The server refuses restarts, emergency stop, firmware and shell commands.
   const conHist = []; let conPos = 0;
   // Restart Klipper / Firmware restart (Files and Console tabs): ask first; the server refuses while a print is running
-  const rstLock = () => { const off = typeof CONTROLS !== "undefined" && !CONTROLS; document.querySelectorAll(".rstgrp").forEach(g => { g.hidden = off; }); };
+  const rstLock = () => {
+    const off = typeof CONTROLS !== "undefined" && !CONTROLS, busy = printState === "printing" || printState === "paused";
+    document.querySelectorAll(".rstgrp").forEach(g => { g.hidden = off; });
+    document.querySelectorAll("button.rst").forEach(b => {        // greyed out with the reason while a print runs (the server refuses then anyway)
+      if (b.dataset.tip == null) b.dataset.tip = b.title;
+      b.disabled = busy || b.dataset.sending === "1";
+      b.title = busy ? "Not while a print is running" : b.dataset.tip;
+    });
+    const mc = $("meshcal");                                  // Calibrate bed mesh: the same rule
+    if (mc && !mc.dataset.working) {
+      if (mc.dataset.tip == null) mc.dataset.tip = mc.title;
+      mc.disabled = busy; mc.title = busy ? "Not while a print is running" : mc.dataset.tip;
+    }
+  };
   rstLock(); setInterval(rstLock, 2000);           // CONTROLS is only known once the page has asked the server
   document.addEventListener("click", async ev => {
     const b = ev.target.closest && ev.target.closest("button.rst"); if (!b || b.disabled) return;
@@ -2882,13 +2922,13 @@ bootstrap();
     if (printState === "printing" || printState === "paused") { setNote("Not restarting: a print is running. Cancel it first.", true); $("conerr").textContent = "Not restarting: a print is running. Cancel it first."; return; }
     if (!await ask((fw ? "Firmware restart" : "Restart Klipper") + "?\n\n" + (fw ? "Klipper and the printer's microcontrollers restart. " : "Klipper reloads its configuration (printer.cfg, macros). ") + "The printer is unavailable for a little while and may need homing again.", fw ? "Firmware restart" : "Restart Klipper")) return;
     const all = [...document.querySelectorAll("button.rst")], label = all.map(x => x.textContent);
-    all.forEach(x => { x.disabled = true; }); b.textContent = "Restarting...";
+    all.forEach(x => { x.disabled = true; x.dataset.sending = "1"; }); b.textContent = "Restarting...";
     try {
       await postControl({action: "restart", kind});
       const m = (fw ? "Firmware restart" : "Klipper restart") + " sent. The printer reconnects in a few seconds.";
       setNote(m); $("conerr").textContent = m;
     } catch (e) { const m = "Restart failed: " + e.message; setNote(m, true); $("conerr").textContent = m; }
-    setTimeout(() => all.forEach((x, i) => { x.disabled = false; x.textContent = label[i]; }), 8000);
+    setTimeout(() => { all.forEach((x, i) => { x.dataset.sending = ""; x.textContent = label[i]; }); rstLock(); }, 8000);
   });
   const conLock = () => {            // re-checked on every refresh: the page decides later whether it may send commands
     rstLock();
@@ -3185,7 +3225,7 @@ bootstrap();
     const g = CFG.graphics, pk = CFG.packs, md = CFG.model || {};
     const opts = (kind, sel) => (pk[kind] || []).map(p => '<option value="' + escH(p.id) + '"' + (p.id === sel ? " selected" : "") + ">" + escH(p.label || p.id) + (p.custom ? " (custom)" : "") + "</option>").join("");
     const plist = PRINTERS.map(p => '<div class="prow"><b>' + escH(p.active ? CFG.name : p.name) + '</b><span>' + escH(p.host) + (p.active ? " &middot; shown now" : "") + '</span>' +
-      (p.active ? "" : '<button data-sw="' + escH(p.id) + '">Switch</button>') + (p.main ? '<span class="sub">set in config.json</span>' : p.fixed ? '<span class="sub">set in server config</span>' : '<button class="danger" data-rm="' + escH(p.id) + '">Remove</button>') + '</div>').join("");
+      (p.active ? "" : '<button data-sw="' + escH(p.id) + '">Switch</button>') + (p.main || p.fixed ? '<span class="sub">set in server config</span>' : '<button class="danger" data-rm="' + escH(p.id) + '">Remove</button>') + '</div>').join("");
     const customs = kind => (pk[kind] || []).filter(p => p.custom).map(p => '<div class="prow"><b>' + escH(p.label || p.id) + '</b><span>' + escH(p.id) + '</span>' +
       (kind === "printer" ? '<button data-edit="' + escH(p.id) + '">Edit anchors</button>' : "") + '<button class="danger" data-del="' + kind + ":" + escH(p.id) + '">Delete</button></div>').join("") || '<div class="sub">None yet.</div>';
     root.innerHTML = '<h2>Settings <span id="setmsg" class="badge"></span></h2>' +
