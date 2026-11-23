@@ -45,7 +45,9 @@ for f in files:
         with open(f, encoding="utf-8", errors="replace") as fh:
             add(fh.read(), f)
     except OSError as e:
-        say("cannot read CA certificate %s: %s" % (f, e.strerror))
+        hint = (" (the container runs as user %d: make the file readable, e.g. chmod 644, or pass the PEM text in FEEDLINE_CA_CERTS)" % os.getuid()
+                if isinstance(e, PermissionError) else "")
+        say("cannot read CA certificate %s: %s%s" % (f, e.strerror, hint))
         sys.exit(1)
 if not pems:
     sys.exit(0)                                    # nothing extra: the system CAs as they are
