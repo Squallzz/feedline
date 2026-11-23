@@ -1272,7 +1272,7 @@ const conlog = document.getElementById("conlog"), constat = document.getElementB
 let conSig = "", conFirst = true;
 const escHtml = escH;
 async function conPoll() {
-  if (!document.hidden) {
+  if (!document.hidden && (!TOUCH || window.touchPanel === "console")) {      // touch mode: only while the Console section is open
     try {
       const items = (await jget(MR + "/server/gcode_store?count=150")).result.gcode_store;
       const sig = items.length + ":" + (items.length ? items[items.length - 1].time : 0);
@@ -2435,15 +2435,18 @@ function slotsExtruders(st) {                // any Klipper printer: one slot pe
 }
 function render(st) {
   printState = st.print_stats.state;
+  // touch mode shows one section at a time: the others are not redrawn (switching section redraws it at once)
+  const vis = id => !TOUCH || !document.getElementById(id).classList.contains("tpoff");
   renderPrintInfo(st);
-  renderTune(st);
+  if (vis("ptune")) renderTune(st);
   renderPrintCtl(printState);
-  renderTemps(st);
-  renderFans(st);
-  renderAfcBar(st);
+  if (vis("temps")) renderTemps(st);
+  if (vis("fans")) renderFans(st);
+  if (vis("afcbar")) renderAfcBar(st);
   window.__st = st;
   if (window.touchRender) window.touchRender(st);
-  renderMove(st);
+  if (vis("move")) renderMove(st);
+  if (!vis("grid")) return;
   const qb = CFG.provider === "qidibox", afc = CFG.provider === "afc" || qb;      // both have one card per lane / slot feeding a single toolhead
   const slots = CFG.provider === "u1" ? slotsU1(st) : qb ? slotsQidi(st) : afc ? slotsAFC(st) : slotsExtruders(st), ts = st.toolhead.extruder;
   renderBoxBar(st); renderTcBar(st);
@@ -2484,7 +2487,7 @@ function render(st) {
   document.getElementById("grid").innerHTML = out;
   AFCS = UNITON && slots.length ? slots : null;
   SLOTSNOW = slots;
-  sceneUpdate(st, sceneCols, sceneLoaded);
+  if (!TOUCH) sceneUpdate(st, sceneCols, sceneLoaded);      // the drawn printer is not shown in touch mode
   spinApply();
 }
 
@@ -2512,16 +2515,25 @@ function spinApply() {
 }
 const FANPOS = {part: 190, cavity: 352}, fanSpd = {part: 0, cavity: 0}, fanAng = {part: 0, cavity: 0};
 let spinLast = 0;
+// Touch mode runs on small computers: no drawn printer at all, and the spools only turn while Filament is shown, at about 12 frames a second
+const spinNext = () => TOUCH ? setTimeout(() => requestAnimationFrame(spinFrame), window.touchPanel === "filament" ? 80 : 500) : requestAnimationFrame(spinFrame);
 function spinFrame(t) {
+  if (TOUCH && window.touchPanel !== "filament") { spinLast = 0; return spinNext(); }
   const dt = spinLast ? Math.min(0.1, (t - spinLast) / 1000) : 0;
   spinLast = t;
+  if (TOUCH) {
+    let turned = false;
+    for (let i = 0; i < spoolSpd.length; i++) if (spoolSpd[i]) { spoolAng[i] = (spoolAng[i] + spoolSpd[i] * dt + 360) % 360 || .01; turned = true; }
+    if (turned) spinApply();
+    return spinNext();
+  }
   let moved = false;
   for (let i = 0; i < N; i++) if (spinSpeed[i] > 0) { spinAngle[i] = (spinAngle[i] + spinSpeed[i] * dt) % 360; moved = true; }
   for (const k in FANPOS) if (fanSpd[k] > 0) { fanAng[k] = (fanAng[k] + fanSpd[k] * dt) % 360; moved = true; }
   for (let i = 0; i < spoolSpd.length; i++) if (spoolSpd[i]) { spoolAng[i] = (spoolAng[i] + spoolSpd[i] * dt + 360) % 360 || .01; moved = true; }
   if (moved) spinApply();
   motionApply(dt);
-  requestAnimationFrame(spinFrame);
+  spinNext();
 }
 requestAnimationFrame(spinFrame);
 
@@ -3665,8 +3677,9 @@ bootstrap();
   let panel = "home";
   function show(p) {
     if (!PANELS[p]) p = "home";
-    panel = p;
+    panel = window.touchPanel = p;
     ALL.forEach(id => $(id).classList.toggle("tpoff", !PANELS[p].includes(id)));
+    if (window.__st) try { render(window.__st); } catch (e) {}      // hidden sections are not redrawn, so bring this one up to date now
     $("layout").classList.toggle("tpoff", p === "macros");
     $("v-macros").hidden = p !== "macros";
     if (p === "macros" && window.macrosLoad) window.macrosLoad();
