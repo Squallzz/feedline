@@ -439,6 +439,10 @@
   body.touch input{user-select:text;-webkit-user-select:text}
   body.touch > :is(#nav,header,#layout,#foot,.view){display:none !important}
   #touch{display:grid;grid-template:60px minmax(0,1fr) / 96px minmax(0,1fr);height:100vh}
+  /* ?aspect (screens with pixels that are not square, see the script): the transform also makes the body the box that the
+     fixed dialogs (question, number pad, target editor) are placed in, so they are squeezed and centred with the rest */
+  html.aspect{overflow:hidden}
+  html.aspect body.touch{width:calc(100vw * var(--aspect));transform:scaleX(calc(1 / var(--aspect)));transform-origin:0 0}
   #tbar{grid-column:1 / -1;display:flex;align-items:center;gap:10px;padding:0 10px 0 14px;background:#0d0b22;border-bottom:1px solid #231f4a;min-width:0}
   #tbar h1{font-size:20px;white-space:nowrap}
   #tbar #conn{font-size:14px} #tbar #conn.on{display:none}
@@ -770,6 +774,13 @@ const ico = (name, cls) => '<svg class="i' + (cls ? " " + cls : "") + '" aria-hi
 // Touch mode (/touch, or ?touch): the layout for a touchscreen beside the printer (the script at the end of the page)
 const TOUCH = /^\/touch\/?$/.test(location.pathname) || q.has("touch");
 if (TOUCH) document.body.classList.add("touch");
+// ?aspect=<width / height of one screen pixel>: for a touchscreen whose pixels are not square (a 7" 1024x600 panel has
+// pixels about 1.05 times wider than tall, so everything looks stretched sideways). The page lays out that much wider and
+// is squeezed back to the screen's width, so round things look round. Taps still land right: the browser undoes the squeeze.
+if (TOUCH && +q.get("aspect") > 0.5 && +q.get("aspect") < 2 && +q.get("aspect") !== 1) {
+  document.documentElement.classList.add("aspect");
+  document.documentElement.style.setProperty("--aspect", +q.get("aspect"));
+}
 let SPOOLMAN = q.get("spoolman") || "";          // browser-reachable Spoolman host:port (for the "Open in Spoolman" link)
 // Served from the printer itself: use same-origin Moonraker (nginx proxies /printer and /server).
 // Opened from a file or another host: pass ?printer=IP (defaults to the host the page was loaded from).
