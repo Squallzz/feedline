@@ -485,6 +485,55 @@ class PauseAt(unittest.TestCase):
             fs.PAUSE_AT.pop("t", None)
 
 
+class ExcludeObject(unittest.TestCase):
+    EO = {"objects": [{"name": "CUBE.STL_ID_0_COPY_0", "center": [50, 50], "polygon": [[40, 40], [60, 40], [60, 60], [40, 60]]},
+                      {"name": "BENCHY_1"}, {"name": "BRACKET-2"}],
+          "excluded_objects": ["BRACKET-2"], "current_object": "BENCHY_1"}
+
+    def test_builds_the_command_for_an_object_of_this_print(self):
+        self.assertEqual(fs.exclude_command("CUBE.STL_ID_0_COPY_0", self.EO, "printing"), "EXCLUDE_OBJECT NAME=CUBE.STL_ID_0_COPY_0")
+        self.assertEqual(fs.exclude_command("BENCHY_1", self.EO, "paused"), "EXCLUDE_OBJECT NAME=BENCHY_1")
+
+    def test_refuses(self):
+        one_left = dict(self.EO, excluded_objects=["BRACKET-2", "BENCHY_1"])
+        odd = {"objects": [{"name": "A B"}, {"name": "C;M112"}, {"name": "D"}], "excluded_objects": []}
+        for name, eo, state, refused in (
+                ("BENCHY_1", self.EO, "standby", True), ("BENCHY_1", self.EO, "complete", True),      # no running print
+                ("BRACKET-2", self.EO, "printing", True),                                           # already excluded
+                ("CUBE.STL_ID_0_COPY_0", one_left, "printing", True),                               # the only object left
+                ("BENCHY_1", None, "printing", True), ("BENCHY_1", {}, "printing", True), ("BENCHY_1", {"objects": []}, "printing", True),
+                ("NOPE", self.EO, "printing", False), ("benchy_1", self.EO, "printing", False),      # not an object of this print
+                ("", self.EO, "printing", False), (None, self.EO, "printing", False), (7, self.EO, "printing", False),
+                ("A B", odd, "printing", False), ("C;M112", odd, "printing", False)):               # would not stay one parameter
+            with self.assertRaises(ValueError, msg=(name, state)) as cm:
+                fs.exclude_command(name, eo, state)
+            self.assertEqual(str(cm.exception).startswith("refused"), refused, msg=(name, state, str(cm.exception)))
+
+    def test_control_checks_with_the_printer_then_sends(self):
+        out, sent = [], []
+
+        class Fake(fs.Handler):
+            def mget(self, path, timeout=8):
+                return {"result": {"status": {"exclude_object": ExcludeObject.EO, "print_stats": {"state": "printing"}}}}
+
+            def run_gcode(self, script, timeout=15):
+                sent.append(script)
+
+            def jreply(self, code, obj):
+                out.append((code, obj))
+
+        h = object.__new__(Fake)
+        h.pid, h.printer = "t", "printer.test"
+        h.exclude_control({"action": "exclude_object", "name": "BENCHY_1"})
+        self.assertEqual((out[-1][0], sent), (200, ["EXCLUDE_OBJECT NAME=BENCHY_1"]))
+        h.exclude_control({"action": "exclude_object", "name": "BRACKET-2"})
+        self.assertEqual(out[-1][0], 409)
+        h.exclude_control({"action": "exclude_object", "name": "BENCHY_1\nM112"})
+        self.assertEqual(out[-1][0], 400)
+        self.assertEqual(sent, ["EXCLUDE_OBJECT NAME=BENCHY_1"])
+        self.assertEqual(fs.Handler.ROUTES["exclude_object"], "exclude_control")
+
+
 class ConfigPrinters(unittest.TestCase):
     """Printers set by the admin (config.json "printers", --printers / FEEDLINE_PRINTERS) next to ones added in the UI."""
 
