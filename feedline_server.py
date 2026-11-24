@@ -1202,6 +1202,44 @@ class Handler(http.server.BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             self.jreply(502, {"error": str(e)})
 
+    # ---- "Pause at layer": one pending request per printer, carried out by watch_pause_at() ----
+    def pause_at_status(self):
+        ps = self.mget("/printer/objects/query?print_stats")["result"]["status"]["print_stats"]
+        info = ps.get("info") or {}
+        return {"state": ps.get("state"), "file": os.path.basename(str(ps.get("filename") or "")),
+                "layer": info.get("current_layer") or 0, "total": info.get("total_layer") or 0}
+
+    def pause_at_control(self, req):
+        if req.get("action") == "pause_at_cancel":
+            PAUSE_AT.pop(self.pid, None)
+            pause_at_save()
+            return self.jreply(200, {"ok": True, "pending": None})
+        try:
+            st = self.pause_at_status()
+        except Exception as e:  # noqa: BLE001
+            return self.jreply(502, {"error": str(e)})
+        try:
+            pend = pause_at_plan(req.get("mode"), req.get("layer"), st)
+        except ValueError as e:
+            return self.jreply(409 if str(e).startswith("refused") else 400, {"error": str(e)})
+        pend["file"] = st["file"]
+        PAUSE_AT[self.pid] = pend
+        pause_at_save()
+        logging.info("pause at: %s layer %s (printer %s)", pend["mode"], pend["n"], self.pid)
+        self.jreply(200, {"ok": True, "pending": pend})
+
+    def pause_at_get(self):
+        try:
+            st = self.pause_at_status()
+        except Exception as e:  # noqa: BLE001
+            return self.jreply(502, {"error": str(e)})
+        pend = PAUSE_AT.get(self.pid)
+        if pend and pause_at_due(pend, st) == "clear":
+            PAUSE_AT.pop(self.pid, None)
+            pause_at_save()
+            pend = None
+        self.jreply(200, {"pending": pend, "state": st["state"], "layer": st["layer"], "total": st["total"]})
+
     # ---- print tuning: baby-stepping, speed and flow factors, pressure advance. Meant for use during a print, so there is
     # no print-state check; every value is range-checked and turned into one fixed command.
     Z_STEPS = (0.005, 0.01, 0.025, 0.05)
@@ -1880,7 +1918,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     # POST /control: the method that handles each "action". Print controls, tool buttons and macros are handled in do_POST
     # itself, because they share the one-command-at-a-time lock and the "not while printing" rule.
-    ROUTES = {"tune": "tune_control", "mesh_calibrate": "mesh_control", "gcode": "gcode_control", "fan": "fan_control", "restart": "restart_control", "tag_reread": "tag_control", "temp": "temp_control", "light": "light_control",
+    ROUTES = {"tune": "tune_control", "mesh_calibrate": "mesh_control", "gcode": "gcode_control", "fan": "fan_control", "restart": "restart_control", "pause_at": "pause_at_control", "pause_at_cancel": "pause_at_control", "tag_reread": "tag_control", "temp": "temp_control", "light": "light_control",
               "home": "move_control", "jog": "move_control", "goto": "move_control", "motors_off": "move_control",
               "set_lane": "lane_control", "set_slot": "box_slot_control", "save_config": "config_save",
               "save_settings": "save_settings", "save_pack": "save_pack", "delete_pack": "delete_pack",
@@ -1963,6 +2001,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             except ValueError:
                 return self.jreply(400, {"error": "bad request"})
             return self.jreply(200, EVENTS.since(since, wait))
+        if route == "/api/pause_at":        # the pending "pause at layer" request (read-only) with the layer the print is on
+            return self.pause_at_get()
         if route == "/api/overview":
             return self.jreply(200, self.overview())
         if route == "/api/printers":
@@ -2062,6 +2102,82 @@ def print_event(prev, cur, ps):
     return None
 
 
+PAUSE_AT = {}                # printer id -> {"mode": "after"|"before", "n": layer the user typed, "layer": layer that triggers the pause, "file": name}
+PAUSE_AT_FILE = None
+
+
+def pause_at_save():
+    if PAUSE_AT_FILE:
+        try:
+            write_json_atomic(PAUSE_AT_FILE, PAUSE_AT)
+        except OSError:
+            logging.exception("could not save pause_at.json")
+
+
+def pause_at_plan(mode, n, st):
+    """Check a "pause at layer" request against the print's state `st` (see Handler.pause_at_status) and return the pending
+    request, or raise ValueError (message starting "refused" when the print state is the reason, 409)."""
+    if mode not in ("after", "before"):
+        raise ValueError("mode must be after or before")
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        raise ValueError("layer must be a whole number") from None
+    if st.get("state") != "printing":
+        raise ValueError("refused: there is no running print (printer is %s)" % st.get("state"))
+    total, cur = st.get("total") or 0, st.get("layer") or 0
+    if total <= 0:
+        raise ValueError("refused: this print has no layer information (the slicer has to write it into the G-code)")
+    if n < 1 or n > total:
+        raise ValueError("layer must be between 1 and %d" % total)
+    trigger = n + 1 if mode == "after" else n          # Klipper reports the layer being started, so "after N" means "when N+1 begins"
+    if trigger > total:
+        raise ValueError("layer %d is the last layer: the print ends there anyway" % n)
+    if trigger <= cur:
+        raise ValueError("refused: the print is already on layer %d" % cur)
+    return {"mode": mode, "n": n, "layer": trigger}
+
+
+def pause_at_due(pend, st):
+    """"pause" when the pending request is reached, "clear" when it no longer applies (other file, print over), else None."""
+    state = st.get("state")
+    if state not in ("printing", "paused") or (pend.get("file") and st.get("file") != pend["file"]):
+        return "clear"
+    if state == "printing" and (st.get("layer") or 0) >= pend["layer"]:
+        return "pause"
+    return None
+
+
+def watch_pause_at(interval=1):
+    """Carry out pending "pause at layer" requests: when the print reaches the layer, send Moonraker's pause. Idle when none."""
+    h = object.__new__(Handler)
+    h.headers = {}
+    while True:
+        time.sleep(interval)
+        if not PAUSE_AT:
+            continue
+        try:
+            rows = {r["id"]: r for r in h.printer_list()}
+        except Exception:  # noqa: BLE001
+            continue
+        for pid, pend in list(PAUSE_AT.items()):
+            row = rows.get(pid)
+            if not row:
+                PAUSE_AT.pop(pid, None)
+                continue
+            h.pid, h.printer = pid, row["host"]
+            try:
+                due = pause_at_due(pend, h.pause_at_status())
+                if due == "pause":
+                    logging.info("pause at: layer %s reached on %s, pausing", pend["layer"], pid)
+                    urllib.request.urlopen(urllib.request.Request("http://%s:7125/printer/print/pause" % row["host"], method="POST"), timeout=30).read()
+            except Exception:  # noqa: BLE001
+                continue                                    # printer unreachable: try again next second
+            if due:
+                PAUSE_AT.pop(pid, None)
+                pause_at_save()
+
+
 def watch_printers(interval=5):
     """Poll every printer's print state (read-only) and record changes in EVENTS. Never ends; never sends a command."""
     h = object.__new__(Handler)
@@ -2113,6 +2229,10 @@ def main():
     for p in Handler.fixed_printers:
         logging.info("printer %s: %s (%s), set in config", p["id"], p["name"], p["host"])
     Handler.backups = os.path.join(a.state, "backups")
+    global PAUSE_AT_FILE
+    PAUSE_AT_FILE = os.path.join(a.state, "pause_at.json")
+    PAUSE_AT.update({k: v for k, v in load_json(PAUSE_AT_FILE, {}).items() if isinstance(v, dict) and {"mode", "n", "layer"} <= set(v)})
+    threading.Thread(target=watch_pause_at, daemon=True).start()
     if cfg.get("events", True):
         threading.Thread(target=watch_printers, daemon=True).start()
     logging.info("Feedline listening on %s:%d for printer %s", a.bind, a.port, Handler.printer)

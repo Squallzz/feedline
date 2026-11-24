@@ -52,6 +52,20 @@
   #askmodal .row{display:flex;justify-content:flex-end;gap:10px}
   #askmodal button{background:#1D1A42;border:1px solid #352F6B;color:#e8e6ff;border-radius:8px;padding:7px 18px;cursor:pointer;font:inherit;font-size:13px;min-width:84px}
   #askmodal button:hover{border-color:#9580FF} #askok{background:#7A63F2;border-color:#7A63F2;color:#fff;font-weight:600}
+  #pamodal{position:fixed;inset:0;z-index:95;background:#000b;display:flex;align-items:center;justify-content:center;padding:16px}
+  #pamodal[hidden]{display:none}
+  #pamodal .dlg{background:#14122b;border:1px solid #352F6B;border-radius:14px;max-width:440px;width:100%;padding:18px 20px;color:#e8e6ff;box-shadow:0 12px 40px #000c}
+  #pamodal h3{margin:0 0 10px;font-size:16px}
+  #pamodal p{font-size:13px;line-height:1.45;margin:0 0 12px;color:#bdb8ee}
+  #pamodal .opts{display:flex;gap:16px;margin:0 0 12px;font-size:14px} #pamodal .opts label{cursor:pointer}
+  #pamodal input[type=number]{background:#0d0b20;border:1px solid #352F6B;color:#e8e6ff;border-radius:8px;padding:7px 10px;font:inherit;font-size:15px;width:120px}
+  #pamodal .pend{background:#1D1A42;border:1px solid #352F6B;border-radius:8px;padding:8px 10px;margin:0 0 12px;font-size:13px}
+  #pamodal .err{color:var(--bad);min-height:1.2em;margin:8px 0 0;font-size:13px}
+  #pamodal .row{display:flex;justify-content:flex-end;gap:10px;margin-top:12px}
+  #pamodal button{background:#1D1A42;border:1px solid #352F6B;color:#e8e6ff;border-radius:8px;padding:7px 18px;cursor:pointer;font:inherit;font-size:13px;min-width:84px}
+  #pamodal button:hover:not(:disabled){border-color:#9580FF} #pamodal #paok{background:#7A63F2;border-color:#7A63F2;color:#fff;font-weight:600}
+  #pamodal button:disabled{opacity:.4;cursor:not-allowed}
+  body.touch #pamodal .dlg{max-width:600px;padding:24px 26px} body.touch #pamodal button{min-height:58px;font-size:18px} body.touch #pamodal input[type=number]{font-size:22px;width:160px} body.touch #pamodal p,body.touch #pamodal .opts{font-size:18px}
   .spool{cursor:pointer;outline:none} .spool:hover circle:first-child,.spool:focus-visible circle:first-child{stroke:#9580FF}
   #spmodal{position:fixed;inset:0;background:rgba(5,4,14,.72);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
   #spmodal .dlg{background:#14122b;border:1px solid #352F6B;border-radius:14px;max-width:440px;width:100%;max-height:90vh;overflow:auto;padding:18px 20px;position:relative;color:#e8e6ff}
@@ -643,6 +657,7 @@ SOFTWARE.
   <div id="job"></div>
   <span id="printctl" hidden>
     <button id="pbtn" data-print="pause"><svg class="i" aria-hidden="true"><use href="#i-pause"/></svg>Pause</button>
+    <button id="pabtn" title="Pause automatically before or after a layer">Pause at...</button>
     <button id="cbtn" data-print="cancel" class="danger"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg>Cancel print</button>
   </span>
   <span id="estopwrap" hidden><button id="ebtn" data-print="estop" class="danger estop" title="Emergency stop (M112) - always available"><svg class="i" aria-hidden="true"><use href="#i-octagon-x"/></svg>Emergency stop</button></span>
@@ -766,6 +781,16 @@ SOFTWARE.
   </div>
 </section>
 
+<div id="pamodal" hidden role="dialog" aria-modal="true" aria-labelledby="patitle"><div class="dlg">
+  <h3 id="patitle">Pause at layer</h3>
+  <p id="painfo"></p>
+  <div id="papend" class="pend" hidden></div>
+  <div class="opts"><label><input type="radio" name="pamode" value="after" checked> After layer</label><label><input type="radio" name="pamode" value="before"> Before layer</label></div>
+  <input id="palayer" type="number" min="1" step="1" inputmode="numeric" aria-label="Layer number">
+  <p class="err" id="paerr" role="alert"></p>
+  <p>The printer pauses on its own when the print gets there. It is accurate to about a second: the printer reads the G-code slightly ahead of what it is printing. The slicer must write layer information into the G-code.</p>
+  <div class="row"><button id="parem" type="button" hidden>Remove</button><button id="pano" type="button">Close</button><button id="paok" type="button">Set pause</button></div>
+</div></div>
 <div id="askmodal" hidden role="alertdialog" aria-modal="true" aria-labelledby="askmsg"><div class="dlg"><p id="askmsg"></p><div class="row"><button id="askno" type="button">Cancel</button><button id="askok" type="button">OK</button></div></div></div>
 <script>
 const q = new URLSearchParams(location.search);
@@ -1516,6 +1541,8 @@ const PCONFIRM = {pause: "Pause the print?", resume: "Resume the print?",
                   estop: "EMERGENCY STOP?\nThis immediately halts the printer (M112). Any print is lost, heaters switch off, and Klipper must be restarted (firmware restart) before the printer works again."};
 const PLABEL = {pause: "Pause", resume: "Resume", cancel: "Cancel print", estop: "Emergency stop"};
 let pbusy = false;
+const pabtn = document.getElementById("pabtn"), pamodal = document.getElementById("pamodal");
+let paAt = 0, paInfo = null;
 function renderPrintCtl(state) {
   const active = state === "printing" || state === "paused";
   printctl.hidden = !(active && CONTROLS);
@@ -1523,6 +1550,8 @@ function renderPrintCtl(state) {
   pbtn.dataset.print = state === "paused" ? "resume" : "pause";
   pbtn.innerHTML = state === "paused" ? ico("play") + "Resume" : ico("pause") + "Pause";
   pbtn.disabled = cbtn.disabled = pbusy;
+  pabtn.hidden = state !== "printing";                                  // not while paused: there is nothing left to wait for
+  if (!pabtn.hidden && Date.now() - paAt > 5000) paRefresh();
   document.getElementById("ebtn").disabled = false;                      // never locked by another command that is running
 }
 printctl.addEventListener("click", ev => {
@@ -1530,6 +1559,50 @@ printctl.addEventListener("click", ev => {
   if (b && !b.disabled && CONTROLS) Act.print(b.dataset.print);
 });
 document.getElementById("ebtn").addEventListener("click", () => { if (CONTROLS) Act.print("estop"); });
+
+// ---- Pause at layer: a pop-up sets one pending pause; the server watches the print and pauses when it gets there ----
+const paText = p => (p.mode === "after" ? "after" : "before") + " layer " + p.n;
+async function paRefresh() {
+  paAt = Date.now();
+  try {
+    const r = await fetch("/api/pause_at");
+    paInfo = r.ok ? await r.json() : null;
+  } catch (e) { paInfo = null; }
+  pabtn.textContent = paInfo && paInfo.pending ? "Pause " + paText(paInfo.pending) : "Pause at...";
+  return paInfo;
+}
+function paShow() {
+  const i = paInfo || {}, pend = document.getElementById("papend"), err = document.getElementById("paerr");
+  err.textContent = "";
+  document.getElementById("painfo").textContent = i.total ? "Now on layer " + i.layer + " of " + i.total + "." : "No layer information from the printer yet.";
+  pend.hidden = !i.pending;
+  if (i.pending) pend.textContent = "Pending: pause " + paText(i.pending) + ".";
+  document.getElementById("parem").hidden = !i.pending;
+  document.getElementById("palayer").max = i.total || "";
+}
+pabtn.addEventListener("click", async () => {
+  if (!CONTROLS) return;
+  await paRefresh();
+  paShow();
+  const inp = document.getElementById("palayer"), err = document.getElementById("paerr");
+  const done = () => { pamodal.hidden = true; document.removeEventListener("keydown", key, true); };
+  const key = e => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); done(); } };
+  const send = async body => {
+    try { await postControl(body); } catch (e) { err.textContent = e.message; return false; }
+    await paRefresh(); return true;
+  };
+  document.getElementById("paok").onclick = async () => {
+    const n = parseInt(inp.value, 10);
+    if (!(n >= 1)) { err.textContent = "Enter a layer number."; return; }
+    const mode = pamodal.querySelector("input[name=pamode]:checked").value;
+    if (await send({action: "pause_at", mode, layer: n})) { done(); notice.className = "pill on"; notice.textContent = "Will pause " + paText(paInfo.pending || {mode, n}); noticeClear(15000); }
+  };
+  document.getElementById("parem").onclick = async () => { if (await send({action: "pause_at_cancel"})) { paShow(); done(); } };
+  document.getElementById("pano").onclick = done;
+  pamodal.onclick = e => { if (e.target === pamodal) done(); };
+  document.addEventListener("keydown", key, true);
+  pamodal.hidden = false; inp.focus();
+});
 
 // ---- Live console: Moonraker's recent console history, polled (read-only) ----
 const conlog = document.getElementById("conlog"), constat = document.getElementById("constat");

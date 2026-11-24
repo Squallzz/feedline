@@ -375,6 +375,15 @@ The **Tune** tab shows the loaded bed mesh as a heatmap and a 3D surface. **Cali
 
 <sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
+## Pause at a layer
+
+While a print runs, the **Pause at...** button next to Pause opens a pop-up: pick **After layer** or **Before layer**, type the layer number and press *Set pause*. The pop-up shows the layer the print is on now and how many there are. Feedline then watches the print and pauses it when it gets there (for example *after layer 499* pauses as layer 500 begins). Only one pause is pending per printer; the button shows it (`Pause after layer 499`) and the pop-up has **Remove**. Notes:
+
+- The slicer has to write layer information into the G-code (Orca, Prusa, Super and Cura do); without it the request is refused.
+- The pause is accurate to about a second: Klipper reads the G-code slightly ahead of the move being printed.
+- The request is refused when the layer has already passed or is the last one, and it is dropped when the print finishes, is cancelled or another file starts. It survives a Feedline restart (`pause_at.json` in the state folder).
+- Resume as usual with the Resume button.
+
 ## Console
 
 When Klipper is not ready (it could not start, for example because a microcontroller does not answer, or it shut down after an emergency stop), every page, including the touch view, shows what Klipper reports with **Restart**, **Firmware restart** and the Klipper and Moonraker logs, as Fluidd and Mainsail do. It goes away by itself once Klipper is ready again.

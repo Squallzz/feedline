@@ -434,6 +434,57 @@ class TagReread(unittest.TestCase):
         self.assertEqual(self.send({"channel": 1}, objs=()), [400])
 
 
+class PauseAt(unittest.TestCase):
+    ST = {"state": "printing", "file": "a.gcode", "layer": 10, "total": 600}
+
+    def test_after_triggers_on_the_next_layer(self):
+        self.assertEqual(fs.pause_at_plan("after", "499", self.ST), {"mode": "after", "n": 499, "layer": 500})
+        self.assertEqual(fs.pause_at_plan("before", 20, self.ST), {"mode": "before", "n": 20, "layer": 20})
+
+    def test_refuses_bad_requests(self):
+        for mode, n, st in (("sideways", 20, self.ST), ("after", "x", self.ST), ("after", 0, self.ST), ("after", 601, self.ST),
+                            ("after", 600, self.ST), ("before", 10, self.ST), ("after", 9, self.ST),
+                            ("after", 20, dict(self.ST, state="paused")), ("after", 20, dict(self.ST, total=0))):
+            with self.assertRaises(ValueError, msg=(mode, n, st)):
+                fs.pause_at_plan(mode, n, st)
+        self.assertTrue(fs.pause_at_plan("before", 600, self.ST)["layer"] == 600)
+
+    def test_due(self):
+        p = {"mode": "after", "n": 499, "layer": 500, "file": "a.gcode"}
+        s = lambda **k: dict(self.ST, **k)
+        self.assertIsNone(fs.pause_at_due(p, s(layer=499)))
+        self.assertEqual(fs.pause_at_due(p, s(layer=500)), "pause")
+        self.assertEqual(fs.pause_at_due(p, s(layer=501)), "pause")
+        self.assertIsNone(fs.pause_at_due(p, s(layer=100, state="paused")))      # paused by hand: keep waiting
+        for bad in (s(state="complete"), s(state="cancelled"), s(state="standby"), s(file="b.gcode")):
+            self.assertEqual(fs.pause_at_due(p, bad), "clear")
+
+    def test_control_stores_and_cancels(self):
+        out = []
+
+        class Fake(fs.Handler):
+            def pause_at_status(self):
+                return dict(PauseAt.ST)
+
+            def jreply(self, code, obj):
+                out.append((code, obj))
+
+        h = object.__new__(Fake)
+        h.pid = "t"
+        try:
+            h.pause_at_control({"action": "pause_at", "mode": "after", "layer": 50})
+            self.assertEqual(out[-1][0], 200)
+            self.assertEqual(fs.PAUSE_AT["t"], {"mode": "after", "n": 50, "layer": 51, "file": "a.gcode"})
+            h.pause_at_control({"action": "pause_at", "mode": "before", "layer": 5})
+            self.assertEqual(out[-1][0], 409)
+            h.pause_at_control({"action": "pause_at", "mode": "x", "layer": 5})
+            self.assertEqual(out[-1][0], 400)
+            h.pause_at_control({"action": "pause_at_cancel"})
+            self.assertNotIn("t", fs.PAUSE_AT)
+        finally:
+            fs.PAUSE_AT.pop("t", None)
+
+
 class ConfigPrinters(unittest.TestCase):
     """Printers set by the admin (config.json "printers", --printers / FEEDLINE_PRINTERS) next to ones added in the UI."""
 
