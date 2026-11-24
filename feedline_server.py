@@ -1980,8 +1980,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.reply(200, "application/manifest+json", json.dumps(PWA_MANIFEST).encode(), {"Cache-Control": "no-cache"})
         elif route == "/sw.js":
             return self.reply(200, "text/javascript; charset=utf-8", PWA_SW.encode(), {"Cache-Control": "no-cache"})
-        elif route in ("/printer/objects/query", "/printer/objects/list", "/server/gcode_store", "/server/files/metadata",
-                     "/server/history/list", "/server/history/totals", "/server/spoolman/status"):            # job history (read-only)
+        elif route in ("/printer/objects/query", "/printer/objects/list", "/printer/info", "/server/gcode_store", "/server/files/metadata",
+                     "/server/history/list", "/server/history/totals", "/server/spoolman/status"):            # status, Klipper's state, job history (read-only)
             url = "http://%s:7125%s" % (self.printer, path)
         elif (re.fullmatch(r"/server/files/gcodes/(?:%s/)*\.thumbs/%s\.png" % (THUMB_SEG, THUMB_SEG), urllib.parse.unquote(route))
               and not any(s in (".", "..") for s in urllib.parse.unquote(route).split("/"))):      # no stepping out of the gcodes folder

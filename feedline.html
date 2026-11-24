@@ -401,6 +401,15 @@
   #pkov text{pointer-events:none}
   .badge:empty{display:none}.badge.bad{background:#4a1d28;color:#ff9aa8}
 
+  /* Klipper not ready (error, shutdown, starting): what it says, with Restart / Firmware restart and the logs, on every page */
+  #kalert{margin:12px 8px 0;background:#241018;border:1px solid #7a2c40;border-left:4px solid var(--bad);border-radius:14px;padding:14px 16px}
+  #kalert .kh{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:600;color:var(--bad)}
+  #kalert .kh svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  #kmsg{margin:10px 0 14px;white-space:pre-wrap;word-break:break-word;font:14px/1.5 Consolas,"Cascadia Mono",monospace;color:#ff9aa8;user-select:text;-webkit-user-select:text}
+  #kmsg:empty{display:none}
+  .kbtns{display:flex;flex-wrap:wrap;gap:8px}
+  .kbtns > *{display:inline-flex;align-items:center;justify-content:center;background:#1D1A42;border:1px solid #7a2c40;color:#ff9aa8;border-radius:8px;padding:7px 16px;font:inherit;font-size:13.5px;cursor:pointer;text-decoration:none}
+  .kbtns > :hover:not(:disabled){border-color:var(--bad);color:#fff} .kbtns > :disabled{opacity:.45;cursor:default}
   #v-macros{max-width:1100px} #v-macros .vcard{margin-bottom:var(--gap-section);padding:14px 16px} #v-macros h3{margin:0 0 var(--gap-title);font-size:15px}
   #v-macros .srow{display:flex;gap:10px;align-items:center;flex-wrap:wrap} #v-macros .sub{font-size:12px;color:var(--sub)} #v-macros code{background:#0a0818;padding:1px 5px;border-radius:4px;font-size:11.5px}
   #v-macros input{background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:inherit;font-size:13px;padding:6px 10px;min-width:0}
@@ -434,7 +443,7 @@
   #trail button{flex:1;border:0;background:none;color:var(--sub);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font:inherit;font-size:12.5px;cursor:pointer}
   #trail svg{width:28px;height:28px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   #trail button.on{color:#fff;background:#2a2360;box-shadow:inset 4px 0 0 #7A63F2}
-  #tmain{overflow:auto;padding:12px 14px}
+  #tmain{display:block;overflow:auto;padding:12px 14px}      /* not the card grid every other <main> is */
   #tmain > .tp{display:flex;flex-direction:column;gap:var(--gap-section)}
   #tmain h2{font-size:15px;font-weight:600;margin:0 0 var(--gap-title);color:var(--muted)}
   .tbox{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:14px 16px}
@@ -478,6 +487,7 @@
   body.touch #pgrid{grid-template-columns:repeat(4,1fr);padding:12px 14px;gap:10px 14px} body.touch #pgrid .p .v{font-size:17px}
   body.touch #grid{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;max-width:none;margin:0;padding:0}
   body.touch #afcbar{margin:0}
+  body.touch #kalert{margin:0 0 var(--gap-section)} body.touch .kbtns > *{flex:1 1 180px;min-height:54px;font-size:16px;border-radius:12px}
   body.touch .acts{gap:8px} body.touch .acts button{min-height:48px;font-size:14px;border-radius:10px}
   body.touch #conlog{height:calc(100vh - 180px)}
   body.touch #v-macros{max-width:none;margin:0;padding:0}
@@ -519,6 +529,12 @@
   <span id="estopwrap" hidden><button id="ebtn" data-print="estop" class="danger estop" title="Emergency stop (M112) - always available">Emergency stop</button></span>
   <span id="notice"></span>
 </header>
+<section id="kalert" role="alert" hidden>
+  <div class="kh"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/></svg>Klipper reports: <b id="kstate"></b></div>
+  <pre id="kmsg"></pre>
+  <div class="kbtns"><button type="button" data-krestart="klipper" title="Restart Klipper: reloads printer.cfg and macros">Restart</button><button type="button" data-krestart="firmware" title="Firmware restart: also restarts the printer's microcontrollers">Firmware restart</button>
+    <a href="/logs/export?name=klippy.log" download title="Current Klipper log">Klipper log</a><a href="/logs/export?name=moonraker.log" download title="Current Moonraker log">Moonraker log</a></div>
+</section>
 <div id="layout">
 <div id="colL">
 <section id="cam"><div class="box">
@@ -1026,7 +1042,51 @@ const Act = {
     try { return await postControl({action: "run_macro", name, params}); }
     finally { running = false; }
   },
+
+  // Restart Klipper ("klipper") or a firmware restart ("firmware"). Not while a print runs; when Klipper is not ready there is
+  // no print, and this is how it is brought back (the server checks the print state again).
+  async restart(kind) {
+    const fw = kind === "firmware", what = fw ? "Firmware restart" : "Restart Klipper";
+    if (Klippy.state === "ready" && PRINTING()) { flashError("Not restarting: a print is running. Cancel it first.", 8000); return false; }
+    if (!await ask(what + "?\n\n" + (fw ? "Klipper and the printer's microcontrollers restart. " : "Klipper reloads its configuration (printer.cfg, macros). ") +
+        "The printer is unavailable for a little while and may need homing again.", what)) return false;
+    notice.className = "pill"; notice.textContent = what + " - sending...";
+    let ok = true;
+    try {
+      await postControl({action: "restart", kind});
+      notice.className = "pill on"; notice.textContent = (fw ? "Firmware restart" : "Klipper restart") + " sent. The printer reconnects in a few seconds.";
+    } catch (e) {
+      ok = false; notice.className = "pill off"; notice.textContent = "Restart failed: " + e.message;
+    }
+    setTimeout(tick, 3000); noticeClear(15000);
+    return ok;
+  },
 };
+
+// ---- Klipper's own state: "ready", or "startup", "shutdown" (after an emergency stop or an MCU error) or "error" (it could
+// not start, e.g. a microcontroller does not answer). Anything but ready shows what Klipper says, with Restart / Firmware restart
+// and the logs (#kalert), on every page of the normal and the touch view. Set from each poll (see tick). ----
+const Klippy = {state: "ready", message: ""};
+function klippySet(state, message) {
+  state = String(state || "ready"); message = String(message || "").trim();
+  const was = Klippy.state;
+  Klippy.state = state; Klippy.message = message;
+  if (was !== "ready" && state === "ready") tempObjs = null;      // back from an error: list the printer's objects again (heaters, fans...)
+  const box = document.getElementById("kalert");
+  box.hidden = state === "ready";
+  if (box.hidden) return;
+  document.getElementById("kstate").textContent = state.toUpperCase();
+  document.getElementById("kmsg").textContent = message;
+  box.querySelectorAll("[data-krestart]").forEach(b => { b.hidden = !CONTROLS; });
+  box.querySelectorAll("a").forEach(a => { a.hidden = !HOSTED; });
+}
+document.getElementById("kalert").addEventListener("click", async ev => {
+  const b = ev.target.closest("button[data-krestart]"); if (!b || b.disabled) return;
+  const all = [...document.querySelectorAll("#kalert button")];
+  all.forEach(x => { x.disabled = true; });
+  await Act.restart(b.dataset.krestart);
+  setTimeout(() => all.forEach(x => { x.disabled = false; }), 5000);
+});
 // ---- Editable target temperatures: click any underlined target to open a small editor ----
 const tgtPop = document.getElementById("tgtpop"), tgtIn = document.getElementById("tgtin");
 let tgtHeater = "", tgtTitle = "";
@@ -2689,7 +2749,7 @@ async function tick() {
       }
     }
     const extra = tempObjs.filter(n => !/^extruder\d*$/.test(n)).concat(fanObjs).map(n => "&" + encodeURIComponent(n)).join("");
-    const base = ["toolhead", "print_stats", "virtual_sdcard", "gcode_move", "motion_report"].concat(Array.from({length: N}, (_, i) => exName(i)), tmcObjs);
+    const base = ["webhooks", "toolhead", "print_stats", "virtual_sdcard", "gcode_move", "motion_report"].concat(Array.from({length: N}, (_, i) => exName(i)), tmcObjs);
     if (CFG.provider === "u1") base.push("filament_detect", "filament_feed left", "filament_feed right");
     if (CFG.provider === "afc") base.push("AFC", ...afcLanes, ...afcParts);
     if (CFG.provider === "toolchanger") base.push("toolchanger");
@@ -2698,12 +2758,25 @@ async function tick() {
     const objs = base.map(n => encodeURIComponent(n)).join("&") + extra;
     const j = await jget(MR + "/printer/objects/query?" + objs);
     if (CFG.spoolman && Date.now() - spoolsAt > 15000) await loadSpools();
-    conn.textContent = "Connected";
-    conn.className = "pill on";
+    const wh = j.result.status.webhooks || {};
+    klippySet(wh.state, wh.state_message);                 // e.g. "shutdown" after an emergency stop, with Klipper's reason
+    conn.textContent = Klippy.state === "ready" ? "Connected" : "Klipper: " + Klippy.state;
+    conn.className = Klippy.state === "ready" ? "pill on" : "pill off";
     Status.publish(j.result.status);                       // every view updates itself (see Status)
   } catch (e) {
-    conn.textContent = "Offline";
-    conn.className = "pill off";
+    // the printer's status could not be read. If Moonraker answers, Klipper itself is not running properly (it could not start,
+    // a microcontroller is missing...): show what it says, with the restart buttons. Otherwise the printer is offline.
+    let info = null;
+    try { info = (await jget(MR + "/printer/info")).result; } catch (e2) { /* Moonraker is not answering either */ }
+    if (info && info.state && info.state !== "ready") {
+      klippySet(info.state, info.state_message);
+      conn.textContent = "Klipper: " + info.state; conn.className = "pill off";
+      // the views keep the last values they had, but no print runs now: say so (header, print card, print buttons)
+      if (Status.st) Status.publish(Object.assign({}, Status.st, {webhooks: {state: info.state, state_message: info.state_message},
+        print_stats: Object.assign({}, Status.st.print_stats, {state: "error", message: info.state_message}), virtual_sdcard: {progress: 0}}));
+    } else {
+      conn.textContent = "Offline"; conn.className = "pill off";
+    }
   }
 }
 // Camera: one JPEG frame at a time (the printer offers WebRTC only, no MJPEG), about once a second.
@@ -3099,17 +3172,11 @@ bootstrap();
   rstLock(); setInterval(rstLock, 2000);           // CONTROLS is only known once the page has asked the server
   document.addEventListener("click", async ev => {
     const b = ev.target.closest && ev.target.closest("button.rst"); if (!b || b.disabled) return;
-    const kind = b.dataset.restart, fw = kind === "firmware";
-    if (printState === "printing" || printState === "paused") { setNote("Not restarting: a print is running. Cancel it first.", true); $("conerr").textContent = "Not restarting: a print is running. Cancel it first."; return; }
-    if (!await ask((fw ? "Firmware restart" : "Restart Klipper") + "?\n\n" + (fw ? "Klipper and the printer's microcontrollers restart. " : "Klipper reloads its configuration (printer.cfg, macros). ") + "The printer is unavailable for a little while and may need homing again.", fw ? "Firmware restart" : "Restart Klipper")) return;
     const all = [...document.querySelectorAll("button.rst")], label = all.map(x => x.textContent);
     all.forEach(x => { x.disabled = true; x.dataset.sending = "1"; }); b.textContent = "Restarting...";
-    try {
-      await postControl({action: "restart", kind});
-      const m = (fw ? "Firmware restart" : "Klipper restart") + " sent. The printer reconnects in a few seconds.";
-      setNote(m); $("conerr").textContent = m;
-    } catch (e) { const m = "Restart failed: " + e.message; setNote(m, true); $("conerr").textContent = m; }
-    setTimeout(() => { all.forEach((x, i) => { x.dataset.sending = ""; x.textContent = label[i]; }); rstLock(); }, 8000);
+    const ok = await Act.restart(b.dataset.restart), m = notice.textContent;      // the action asks first and reports in the status pill
+    if (m) { setNote(m, !ok); $("conerr").textContent = m; }                        // and here, next to the buttons
+    setTimeout(() => { all.forEach((x, i) => { x.dataset.sending = ""; x.textContent = label[i]; }); rstLock(); }, ok ? 8000 : 0);
   });
   const conLock = () => {            // re-checked on every refresh: the page decides later whether it may send commands
     rstLock();
@@ -3821,6 +3888,7 @@ bootstrap();
   $("tp-filament").append($("afcbar"), $("grid"));
   $("tp-macros").appendChild($("v-macros")); $("v-macros").hidden = false;
   $("tp-console").appendChild($("con"));
+  $("tmain").prepend($("kalert"));            // Klipper not ready: above whichever section is open
 
   // ---- sections ----
   let panel = "home";

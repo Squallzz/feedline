@@ -376,6 +376,8 @@ The **Tune** tab shows the loaded bed mesh as a heatmap and a 3D surface. **Cali
 
 ## Console
 
+When Klipper is not ready (it could not start, for example because a microcontroller does not answer, or it shut down after an emergency stop), every page, including the touch view, shows what Klipper reports with **Restart**, **Firmware restart** and the Klipper and Moonraker logs, as Fluidd and Mainsail do. It goes away by itself once Klipper is ready again.
+
 The **Console** tab shows the printer's G-code log live and has an input box at the bottom: type one line of G-code (for example `M115`, `G28`, `SET_PIN PIN=led VALUE=1` or a macro name) and press Enter. Up and Down bring back earlier lines. Klipper's answer, including errors, shows up in the log. It works while a print is running too, so be careful with moves. Anything Klipper accepts is allowed except `RESTART`, `FIRMWARE_RESTART`, `SAVE_CONFIG`, `M112` (emergency stop), `SHUTDOWN`, firmware and flash commands, and `RUN_SHELL_COMMAND`; use the printer's own screen for those. The two restarts have their own buttons instead, **Restart Klipper** and **Firmware restart**, at the top of the Console tab and of the [Files tab](#settings-tab) (handy after editing `printer.cfg`). They ask first and refuse while a print is running or paused. Lines are limited to 500 characters and one command at a time. See [SECURITY.md](SECURITY.md): there is no login, so anyone who can open the page can send G-code.
 
 <sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
