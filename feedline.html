@@ -22,6 +22,9 @@
   /* icons (Lucide, from the inline sprite #icons: ico("name") in script). They take the text's color and size; in a button
      with a label they sit just before it. */
   svg.i{display:inline-block;width:1.2em;height:1.2em;margin:0;vertical-align:-.24em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  /* a tap or click on a button's icon belongs to the button: WPE WebKit (the touchscreen's browser) otherwise reports a tap on
+     an icon's <use> as landing inside the icon, where the button's handler cannot find its button */
+  :is(button,a) svg{pointer-events:none}
   :is(button,a) > svg.i{margin-right:.42em} :is(#tgtx,#tnum button) > svg.i{margin:0}      /* the label is a text node, so :only-child cannot tell icon-only buttons */
   input[type=file]::file-selector-button{background:#1f1b45;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:6px 12px;margin-right:10px;font:inherit;cursor:pointer}
   *{box-sizing:border-box}
