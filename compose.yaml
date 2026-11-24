@@ -3,7 +3,7 @@
 # Update:   docker compose pull && docker compose up -d
 services:
   feedline:
-    image: ${FEEDLINE_IMAGE:-ghcr.io/cl-tim/feedline:latest}
+    image: ${FEEDLINE_IMAGE:-ghcr.io/squallzz/feedline:latest}
     # build: .                       # or build from this folder instead of pulling the image
     container_name: feedline
     restart: unless-stopped
@@ -19,7 +19,7 @@ services:
 
   # Optional: add unknown Snapmaker U1 RFID tags to Spoolman.   docker compose --profile autoadd up -d
   feedline-autoadd:
-    image: ${FEEDLINE_IMAGE:-ghcr.io/cl-tim/feedline:latest}
+    image: ${FEEDLINE_IMAGE:-ghcr.io/squallzz/feedline:latest}
     # build: .
     container_name: feedline-autoadd
     profiles: ["autoadd"]

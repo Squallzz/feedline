@@ -241,10 +241,10 @@ add it to `allowed_hosts`. A blank printer page means Moonraker is unreachable f
 ## Install with Docker
 
 Another way to run it, instead of `install.sh` (pick one, not both: they both use port 8081). Nothing to clone: the image is
-`ghcr.io/cl-tim/feedline` and runs on amd64, arm64 and 32-bit ARM (Raspberry Pi). Put your printer's address in place of `PRINTER_ADDRESS`:
+`ghcr.io/squallzz/feedline` and runs on amd64, arm64 and 32-bit ARM (Raspberry Pi). Put your printer's address in place of `PRINTER_ADDRESS`:
 
     docker run -d --name feedline --restart unless-stopped -p 8081:8081 \
-      -e FEEDLINE_PRINTER=PRINTER_ADDRESS -v feedline-data:/data ghcr.io/cl-tim/feedline
+      -e FEEDLINE_PRINTER=PRINTER_ADDRESS -v feedline-data:/data ghcr.io/squallzz/feedline
 
 Then open `http://<this machine's address>:8081/`. Or with Docker Compose: download [`compose.yaml`](compose.yaml), set
 `FEEDLINE_PRINTER` in it (or in a `.env` file next to it), and run `docker compose up -d`.
@@ -276,7 +276,7 @@ plus an optional `config.json` for the other [config.json options](#configjson-a
 The Spoolman [auto-add helper](#auto-add-helper-optional) runs from the same image: `docker compose --profile autoadd up -d`,
 or `docker run` as above with `--name feedline-autoadd` and `autoadd` added after the image name.
 
-Update: `docker pull ghcr.io/cl-tim/feedline`, then remove and re-create the container (`docker compose pull && docker compose up -d` with Compose).
+Update: `docker pull ghcr.io/squallzz/feedline`, then remove and re-create the container (`docker compose pull && docker compose up -d` with Compose).
 The `/data` volume is kept. Logs: `docker logs feedline`. Build it yourself from a clone with `docker build -t feedline .`
 
 <sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>

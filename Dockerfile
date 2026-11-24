@@ -1,5 +1,5 @@
 # Feedline in a container. One way to run it; install.sh (systemd) stays the other.
-#   docker run -d -p 8081:8081 -e FEEDLINE_PRINTER=192.168.1.50 -v feedline-data:/data ghcr.io/cl-tim/feedline
+#   docker run -d -p 8081:8081 -e FEEDLINE_PRINTER=192.168.1.50 -v feedline-data:/data ghcr.io/squallzz/feedline
 # Settings, custom graphics, backups and an optional config.json live in /data.
 FROM python:3.13-alpine
 
