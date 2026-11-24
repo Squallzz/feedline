@@ -411,51 +411,76 @@
   .mcard .mh{display:flex;justify-content:space-between;gap:8px;align-items:center} .mcard .mh b{font-size:13px;word-break:break-all}
   .mcard .mp{display:flex;flex-wrap:wrap;gap:6px} .mcard .mp label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:2px;flex:1 1 90px} .mcard .mp input{width:100%}
 
-  /* ---- Touch mode (/touch): a printer touchscreen, KlipperScreen style. Status bar on top, big section buttons on the left,
-     one section at a time, nothing that needs hover or a keyboard. The Home sections are the same elements as on the
-     normal page, laid out flat (as on phones) and shown or hidden per section (.tpoff). ---- */
-  body:not(.touch) .tonly{display:none !important}
-  .tpoff{display:none !important}
-  body.touch{padding:56px 0 0 92px;height:100vh;overflow:hidden;font-size:15px;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+  /* ---- Touch mode (/touch): a printer touchscreen, KlipperScreen style: a status bar on top, big section buttons on the
+     left, one section at a time, nothing that needs hover or a keyboard. It has its own markup (#touch, built by the touch
+     script) whose buttons call the same actions (Act) and read the same status feed (Status) as the normal page. A few
+     widgets of the normal page are moved in and used as they are (filament cards, print details, macros, console, the
+     target editor, the question dialog); the body.touch rules at the end only make those bigger. ---- */
+  body.touch{padding:0;height:100vh;overflow:hidden;font-size:15px;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
   body.touch input{user-select:text;-webkit-user-select:text}
-  body.touch #nav,body.touch #foot,body.touch #cam > .box,body.touch #scene,body.touch #job,body.touch #conn.on{display:none !important}
-  body.touch header{position:fixed;top:0;left:0;right:0;height:56px;z-index:45;flex-wrap:nowrap;padding:0 10px 0 14px;gap:10px;background:#0d0b22;border-bottom:1px solid #231f4a}
-  body.touch h1{font-size:17px;white-space:nowrap}
-  body.touch #psel{margin-left:0;font-size:15px;padding:8px 10px}
+  body.touch > :is(#nav,header,#layout,#foot,.view){display:none !important}
+  #touch{display:grid;grid-template:56px minmax(0,1fr) / 92px minmax(0,1fr);height:100vh}
+  #tbar{grid-column:1 / -1;display:flex;align-items:center;gap:10px;padding:0 10px 0 14px;background:#0d0b22;border-bottom:1px solid #231f4a;min-width:0}
+  #tbar h1{font-size:17px;white-space:nowrap}
+  #tbar #conn.on{display:none}
   #ttemps{display:flex;gap:8px;flex:1;min-width:0;overflow:hidden}
   #ttemps > span{display:inline-flex;align-items:baseline;gap:6px;padding:7px 12px;border-radius:999px;background:#1D1A42;border:1px solid var(--edge);font-size:14px;white-space:nowrap;text-decoration:none}
   #ttemps > span small{color:var(--sub);font-size:12px} #ttemps > span.hot{border-color:#6b5320} #ttemps > span.hot b{color:var(--warn)}
-  body.touch #printctl button,body.touch #estopwrap button{min-height:42px;padding:8px 18px;font-size:14px;margin:0 0 0 6px}
-  body.touch #notice:not(:empty){position:fixed;left:calc(50% + 46px);bottom:14px;transform:translateX(-50%);z-index:90;font-size:14px;padding:8px 18px;background:#14122b;box-shadow:0 8px 30px #000a;max-width:80vw}
-  #trail{position:fixed;left:0;top:56px;bottom:0;width:92px;background:#0d0b22;border-right:1px solid #231f4a;display:flex;flex-direction:column;z-index:40}
+  .tbtn{min-height:44px;padding:8px 18px;border-radius:999px;border:1px solid var(--edge);background:#1D1A42;color:var(--text);font:inherit;font-size:14px;cursor:pointer;white-space:nowrap}
+  .tbtn.danger{color:var(--bad);border-color:#7a2c40} .tbtn.estop{background:#6b1424;color:#fff;border-color:#c2334f;font-weight:600} .tbtn.go{background:var(--violet);border-color:var(--violet);color:#fff}
+  .tbtn:disabled,.kb:disabled{opacity:.35;cursor:not-allowed}
+  #touch #notice:not(:empty){position:fixed;left:calc(50% + 46px);bottom:14px;transform:translateX(-50%);z-index:90;font-size:14px;padding:8px 18px;background:#14122b;box-shadow:0 8px 30px #000a;max-width:80vw}
+  #trail{display:flex;flex-direction:column;background:#0d0b22;border-right:1px solid #231f4a}
   #trail button{flex:1;border:0;background:none;color:var(--sub);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font:inherit;font-size:12.5px;cursor:pointer}
   #trail svg{width:28px;height:28px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   #trail button.on{color:#fff;background:#2a2360;box-shadow:inset 4px 0 0 #7A63F2}
-  body.touch #layout{height:calc(100vh - 56px);overflow:auto;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:var(--gap-section);padding:12px 14px;max-width:none;margin:0}
-  body.touch :is(#colL,#colR,#mid,#stage,#sceneWrap,#sideR,#cam){display:contents}
-  body.touch .view{height:calc(100vh - 56px);overflow:auto;max-width:none;margin:0;padding:12px 14px}
-  /* the print card (Status) */
-  #tjob{display:flex;gap:16px;align-items:center;background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:14px 16px}
+  #tmain{overflow:auto;padding:12px 14px}
+  #tmain > .tp{display:flex;flex-direction:column;gap:var(--gap-section)}
+  #tmain h2{font-size:15px;font-weight:600;margin:0 0 var(--gap-title);color:var(--muted)}
+  .tbox{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:14px 16px}
+  /* Status: the print card, a tile per heater (tap to set its target), presets */
+  #tjob{display:flex;gap:16px;align-items:center}
   #tjimg{width:96px;height:96px;object-fit:contain;border-radius:10px;background:#07060f;flex:none}
   .tjtxt{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
   .tjst{font-size:22px;font-weight:600} .tjst small{font-size:15px;font-weight:400;color:var(--muted);margin-left:8px}
   .tjfile{font-size:14px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tjbar{height:10px;background:#0a0818;border-radius:5px;overflow:hidden} .tjbar i{display:block;height:100%;background:var(--violet);border-radius:5px;transition:width .6s}
   .tjsub{font-size:13px;color:var(--sub)}
-  /* bigger targets everywhere */
+  .theat{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+  .th{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;text-decoration:none;color:var(--text);cursor:default}
+  .th.tgt{cursor:pointer} .th .nm{font-size:14px;color:var(--muted)} .th .v{font-size:30px;font-weight:600;font-variant-numeric:tabular-nums} .th .tg{font-size:14px;color:var(--sub)}
+  .th.hot{border-color:#6b5320} .th.hot .v{color:var(--warn)}
+  .th .bar{height:6px;border-radius:3px;background:#1D1A42;overflow:hidden;margin-top:4px} .th .bar i{display:block;height:100%;background:var(--warn)}
+  .tpre{display:flex;gap:10px;flex-wrap:wrap} .tpre .tbtn{flex:1;border-radius:12px;min-height:56px;font-size:16px}
+  /* Move: a direction pad, Z, step size, homing */
+  .tpos{display:flex;gap:22px;align-items:baseline;font-size:22px;font-variant-numeric:tabular-nums;flex-wrap:wrap} .tpos b{color:var(--sub);font-weight:500;margin-right:6px;font-size:16px}
+  .tpos .nh{color:var(--warn);font-size:16px} .tpos .tgt{text-decoration:underline dotted;text-underline-offset:4px;padding:4px 2px}
+  .tnote{font-size:14px;color:var(--warn)} .tnote:empty{display:none}
+  .tmove{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
+  .dpad{display:grid;grid-template-columns:repeat(3,84px);grid-auto-rows:84px;gap:8px} .zpad{display:grid;grid-auto-rows:84px;grid-template-columns:84px;gap:8px}
+  .kb{background:#1D1A42;border:1px solid var(--edge);border-radius:14px;color:var(--text);font:inherit;font-size:21px;font-weight:600;cursor:pointer}
+  .kb.home{font-size:13px;font-weight:500;color:var(--muted)}
+  .tside{flex:1;min-width:220px;display:flex;flex-direction:column;gap:10px} .tside .k{font-size:14px;color:var(--muted)}
+  .tside .tbtn{border-radius:12px;min-height:56px;font-size:16px}
+  .tsteps{display:flex;gap:6px} .tsteps button{flex:1;min-height:52px;background:#1D1A42;border:1px solid var(--edge);border-radius:10px;color:var(--text);font:inherit;font-size:16px;cursor:pointer}
+  .tsteps button.on{background:var(--violet);border-color:var(--violet);color:#fff}
+  /* Tune: steppers instead of sliders and number fields, and a tile per fan */
+  .tunes{display:flex;flex-direction:column;gap:12px}
+  .trow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .trow .k{min-width:150px;font-size:15px;color:var(--muted)}
+  .trow .val{min-width:120px;text-align:center;font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
+  .trow .tbtn{border-radius:12px;min-height:56px;min-width:88px;font-size:17px} .trow .tsteps{flex:1;max-width:420px}
+  .tfans{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
+  .tfan .nm{font-size:14px;color:var(--muted)} .tfan .v{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums}
+  .tfan .row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px} .tfan .row .tbtn{border-radius:10px;padding:8px 0;min-height:52px;font-size:15px}
+  .tfro{display:flex;flex-wrap:wrap;gap:8px} .tfro span{background:#0f0d24;border:1px solid #231f4a;border-radius:999px;padding:6px 12px;font-size:13px;color:var(--muted)} .tfro b{color:var(--text);margin-left:6px}
+  /* normal-page widgets used in touch mode, made bigger */
   body.touch #pgrid{grid-template-columns:repeat(4,1fr);padding:12px 14px;gap:10px 14px} body.touch #pgrid .p .v{font-size:17px}
-  body.touch #move{margin:0;padding:16px;background:var(--card);border:1px solid var(--edge);border-radius:16px}
-  body.touch .mv{gap:14px 18px} body.touch .mv .grp,body.touch .mv .steps{gap:8px;flex-wrap:wrap}
-  body.touch .mv button{min-width:66px;min-height:58px;padding:8px 14px;font-size:17px;border-radius:12px}
-  body.touch .mvpos{margin-left:0;width:100%;font-size:16px}
-  body.touch .tgt{display:inline-block;padding:4px 2px}
-  body.touch .ptbox{padding:14px 16px;gap:16px} body.touch .ptrow{gap:10px;font-size:15px} body.touch .ptrow .k{font-size:14px;min-width:84px}
-  body.touch .ptrow button,body.touch .ptsteps button{min-height:50px;padding:8px 16px;font-size:15px;border-radius:10px}
-  body.touch .ptrow input:not([type=range]){width:110px;font-size:18px;padding:10px}
-  body.touch input[type=range]{height:44px}
-  body.touch #fgrid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px} body.touch .f .v{font-size:19px} body.touch .f input[type=range]{height:40px}
+  body.touch #grid{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;max-width:none;margin:0;padding:0}
+  body.touch #afcbar{margin:0}
   body.touch .acts{gap:8px} body.touch .acts button{min-height:48px;font-size:14px;border-radius:10px}
-  body.touch #conlog{height:calc(100vh - 205px)}
+  body.touch #conlog{height:calc(100vh - 180px)}
+  body.touch #v-macros{max-width:none;margin:0;padding:0}
   body.touch #v-macros > .vcard:first-of-type,body.touch #macfilter,body.touch #macreload{display:none}
   body.touch .mgrid{grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}
   body.touch #v-macros button{min-height:48px;padding:8px 20px;font-size:15px} body.touch .mcard .mp input{font-size:16px;padding:10px}
@@ -486,7 +511,6 @@
 <header>
   <h1 id="pname">Printer</h1><select id="psel" hidden title="Switch printer"></select>
   <span id="conn" class="pill">Connecting...</span>
-  <div id="ttemps" class="tonly" aria-label="Temperatures"></div>
   <div id="job"></div>
   <span id="printctl" hidden>
     <button id="pbtn" data-print="pause">Pause</button>
@@ -495,18 +519,8 @@
   <span id="estopwrap" hidden><button id="ebtn" data-print="estop" class="danger estop" title="Emergency stop (M112) - always available">Emergency stop</button></span>
   <span id="notice"></span>
 </header>
-<nav id="trail" class="tonly" aria-label="Sections">
-  <button data-tp="home" class="on"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>Status</button>
-  <button data-tp="filament"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.5"/><path d="M12 3.5v6M12 14.5v6"/></svg>Filament</button>
-  <button data-tp="move"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>Move</button>
-  <button data-tp="tune"><svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Tune</button>
-  <button data-tp="macros"><svg viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></svg>Macros</button>
-  <button data-tp="console"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 10l3 2-3 2M13 15h4"/></svg>Console</button>
-</nav>
-<div id="tnum" class="tonly" hidden></div>
 <div id="layout">
 <div id="colL">
-<section id="tjob" class="tonly"><img id="tjimg" alt="" hidden><div class="tjtxt"><div id="tjst" class="tjst">Connecting...</div><div id="tjfile" class="tjfile"></div><div class="tjbar" id="tjbarw" hidden><i id="tjbar"></i></div><div id="tjsub" class="tjsub"></div></div></section>
 <section id="cam"><div class="box">
   <div class="hd"><span class="tn">Camera</span>
     <span><button id="cammode" class="badge" title="Switch between live video and 1 fps snapshots">Use snapshots</button>
@@ -2806,7 +2820,6 @@ async function applyConfig(c) {
   if (!canLive) camMode = "snap"; else if (!canSnap) camMode = "live";
   if (TOUCH) {          // the touchscreen sits at the printer: no camera, which also spares the small computer driving it
     camMode = "off"; camframe.src = "about:blank"; camlive.removeAttribute("src");
-    document.getElementById("cam").hidden = false;         // #cam also holds the move controls
   } else setCam(camMode);
   tempObjs = null; fanObjs = null;
   await applyGraphics();
@@ -3739,54 +3752,127 @@ bootstrap();
 })();
 </script>
 <script>
-// ---- Touch mode (/touch): sections on the left rail, a print card, temperatures in the status bar, an on-screen number pad ----
+// ---- Touch mode (/touch): a KlipperScreen-style layout for a touchscreen beside the printer. It builds its own markup with big
+// buttons; every button runs an action from Act, and every section draws itself from the status feed (Status), so it shares all
+// behaviour with the normal page without depending on its layout. A few normal-page widgets are moved in and used as they are. ----
 (() => {
   if (!TOUCH) return;
   const $ = id => document.getElementById(id);
-  const PANELS = {home: ["tjob", "pinfo", "temps"], filament: ["afcbar", "grid"], move: ["move"], tune: ["ptune", "fans"], macros: [], console: ["con"]};
-  const ALL = ["tjob", "pinfo", "temps", "afcbar", "grid", "move", "ptune", "fans", "con"];
+  const ICON = {
+    home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
+    filament: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.5"/><path d="M12 3.5v6M12 14.5v6"/>',
+    move: '<path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/>',
+    tune: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+    macros: '<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>',
+    console: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 10l3 2-3 2M13 15h4"/>'};
+  const SECTIONS = [["home", "Status"], ["filament", "Filament"], ["move", "Move"], ["tune", "Tune"], ["macros", "Macros"], ["console", "Console"]];
+  const MV_STEPS = [0.1, 1, 10, 50, 100], Z_STEPS = [0.005, 0.01, 0.025, 0.05];
+  const PRESETS = [["PLA", 210, 60], ["PETG", 240, 80], ["ABS / ASA", 260, 100]];      // nozzle °C, bed °C
+  let mvStep = 10, zStep = 0.01;
+  const steps = (list, cur, attr) => list.map(v => '<button data-' + attr + '="' + v + '"' + (v === cur ? ' class="on"' : "") + ">" + v + "</button>").join("");
+
+  const root = document.createElement("div");
+  root.id = "touch";
+  root.innerHTML =
+    '<div id="tbar"><h1 id="tname"></h1><div id="ttemps" aria-label="Temperatures"></div>' +
+      '<button class="tbtn" id="tpause" hidden></button><button class="tbtn danger" id="tcancel" hidden>Cancel</button>' +
+      '<button class="tbtn estop" id="testop" hidden>Emergency stop</button></div>' +
+    '<nav id="trail" aria-label="Sections">' + SECTIONS.map(([k, l]) => '<button data-tp="' + k + '"><svg viewBox="0 0 24 24">' + ICON[k] + "</svg>" + l + "</button>").join("") + "</nav>" +
+    '<main id="tmain">' +
+      '<section class="tp" id="tp-home">' +
+        '<div id="tjob" class="tbox"><img id="tjimg" alt="" hidden><div class="tjtxt"><div id="tjst" class="tjst">Connecting...</div><div id="tjfile" class="tjfile"></div>' +
+          '<div class="tjbar" id="tjbarw" hidden><i id="tjbar"></i></div><div id="tjsub" class="tjsub"></div></div></div>' +
+        '<div><h2>Temperatures</h2><div class="theat" id="theat"></div></div>' +
+        '<div class="tpre" id="tpre"><button class="tbtn" data-cool>Cool down</button>' + PRESETS.map(([n, e, b], i) => '<button class="tbtn" data-preset="' + i + '">' + n + " " + e + "° / " + b + "°</button>").join("") + "</div>" +
+      "</section>" +
+      '<section class="tp" id="tp-filament" hidden></section>' +
+      '<section class="tp" id="tp-move" hidden>' +
+        '<div class="tbox"><div class="tpos" id="tpos"></div><div class="tnote" id="tmvnote"></div></div>' +
+        '<div class="tmove">' +
+          '<div class="dpad"><span></span><button class="kb" data-jog="Y:1" title="Y+ (back)">Y+</button><span></span>' +
+            '<button class="kb" data-jog="X:-1" title="X- (left)">X&minus;</button><button class="kb home" data-home="xy">Home XY</button><button class="kb" data-jog="X:1" title="X+ (right)">X+</button>' +
+            '<span></span><button class="kb" data-jog="Y:-1" title="Y- (front)">Y&minus;</button><span></span></div>' +
+          '<div class="zpad"><button class="kb" data-jog="Z:1">Z+</button><button class="kb home" data-home="z">Home Z</button><button class="kb" data-jog="Z:-1">Z&minus;</button></div>' +
+          '<div class="tside"><span class="k">Step (mm)</span><div class="tsteps" id="tmvsteps">' + steps(MV_STEPS, mvStep, "step") + "</div>" +
+            '<button class="tbtn" data-home="all">Home all</button><button class="tbtn" data-motors>Motors off</button></div>' +
+        "</div>" +
+      "</section>" +
+      '<section class="tp" id="tp-tune" hidden>' +
+        '<div class="tbox tunes">' +
+          '<div class="trow"><span class="k">Z offset</span><button class="tbtn" data-z="-1">&#9660; Closer</button><span class="val" id="tz"></span><button class="tbtn" data-z="1">&#9650; Further</button><button class="tbtn" data-zreset>Reset</button></div>' +
+          '<div class="trow"><span class="k">Z step (mm)</span><div class="tsteps" id="tzsteps">' + steps(Z_STEPS, zStep, "zstep") + "</div></div>" +
+          '<div class="trow"><span class="k">Speed</span><button class="tbtn" data-f="speed:-10">&minus;10</button><span class="val" id="tspeed"></span><button class="tbtn" data-f="speed:10">+10</button><button class="tbtn" data-f="speed:=100">100%</button></div>' +
+          '<div class="trow"><span class="k">Flow</span><button class="tbtn" data-f="flow:-2">&minus;2</button><span class="val" id="tflow"></span><button class="tbtn" data-f="flow:2">+2</button><button class="tbtn" data-f="flow:=100">100%</button></div>' +
+          '<div class="trow"><span class="k">Pressure advance</span><button class="tbtn" data-f="pa:-0.005">&minus;0.005</button><span class="val" id="tpa"></span><button class="tbtn" data-f="pa:0.005">+0.005</button></div>' +
+          '<div class="trow"><span class="k">Smooth time</span><button class="tbtn" data-f="smooth:-0.005">&minus;0.005</button><span class="val" id="tsm"></span><button class="tbtn" data-f="smooth:0.005">+0.005</button></div>' +
+        "</div>" +
+        '<div><h2>Fans</h2><div class="tfans" id="tfans"></div><div class="tfro" id="tfro" style="margin-top:12px"></div></div>' +
+      "</section>" +
+      '<section class="tp" id="tp-macros" hidden></section>' +
+      '<section class="tp" id="tp-console" hidden></section>' +
+    "</main>" +
+    '<div id="tnum" hidden></div>';
+  document.body.appendChild(root);
+  // normal-page widgets used here as they are, and the indicators the shared code writes to
+  $("tbar").insertBefore($("conn"), $("ttemps"));
+  root.appendChild($("notice"));
+  document.body.appendChild($("tgtpop"));
+  $("tp-home").appendChild($("pinfo"));
+  $("tp-filament").append($("afcbar"), $("grid"));
+  $("tp-macros").appendChild($("v-macros")); $("v-macros").hidden = false;
+  $("tp-console").appendChild($("con"));
+
+  // ---- sections ----
   let panel = "home";
   function show(p) {
-    if (!PANELS[p]) p = "home";
+    if (!$("tp-" + p) || document.querySelector('#trail [data-tp="' + p + '"]').hidden) p = "home";
     panel = window.touchPanel = p;
-    ALL.forEach(id => $(id).classList.toggle("tpoff", !PANELS[p].includes(id)));
-    $("layout").classList.toggle("tpoff", p === "macros");
-    $("v-macros").hidden = p !== "macros";
-    if (p === "macros" && window.macrosLoad) window.macrosLoad();
+    for (const [k] of SECTIONS) $("tp-" + k).hidden = k !== p;
     document.querySelectorAll("#trail button").forEach(b => b.classList.toggle("on", b.dataset.tp === p));
-    $("layout").scrollTop = 0; $("v-macros").scrollTop = 0;
+    $("tmain").scrollTop = 0;
+    if (p === "macros" && window.macrosLoad) window.macrosLoad();
     try { sessionStorage.setItem("touchPanel", p); } catch (e) {}
-    Status.refresh();                 // sections that were hidden were not redrawn: bring the ones now shown up to date
+    Status.refresh();                 // a section that was hidden was not redrawn: bring it up to date now
   }
   $("trail").addEventListener("click", e => { const b = e.target.closest("button[data-tp]"); if (b) show(b.dataset.tp); });
-  // the normal page's section switcher runs first; take the page over from it
-  for (const k of ["printers", "jobs", "history", "tune", "console", "files", "settings", "macros"]) $("v-" + k).hidden = true;
   let start = "home"; try { start = sessionStorage.getItem("touchPanel") || "home"; } catch (e) {}
   show(start);
 
-  // status bar temperatures and the print card, from each status poll
+  // ---- status bar: name, temperatures, print buttons ----
   const STATE = {standby: "Ready", printing: "Printing", paused: "Paused", complete: "Finished", cancelled: "Cancelled", error: "Error"};
   const deg = v => typeof v === "number" ? Math.round(v) + "°" : "--";
-  Status.on(st => {                   // status bar: temperatures; the Move section only with controls
-    const mv = document.querySelector('#trail [data-tp="move"]'); mv.hidden = $("move").hidden;       // no move controls without the server
-    if (panel === "move" && mv.hidden) return show("home");
-    const chips = [], chip = (obj, label) => {
-      const h = st[obj]; if (!h || typeof h.temperature !== "number") return;
+  const tgtAttrs = (obj, label, target) => ' data-heater="' + escH(obj) + '" data-title="' + escH(label) + '" data-cur="' + Math.round(target || 0) + '"';
+  const heaterLabel = n => /^extruder\d*$/.test(n) ? (N > 1 ? "T" + (+n.replace("extruder", "") || 0) : "Nozzle") : n === "heater_bed" ? "Bed" : n === (CH && CH.sensor) ? "Chamber" : tempTitle(n);
+  Status.on(st => {
+    $("tname").textContent = CFG.name;
+    const mv = document.querySelector('#trail [data-tp="move"]');
+    mv.hidden = !CONTROLS;                                       // moves need the dashboard server
+    if (panel === "move" && mv.hidden) show("home");
+    const chips = [];
+    for (const [obj, label] of [...Array.from({length: N}, (_, i) => [exName(i), heaterLabel(exName(i))]), ["heater_bed", "Bed"], ...(CH && CH.sensor ? [[CH.sensor, "Chamber"]] : [])]) {
+      const h = st[obj]; if (!h || typeof h.temperature !== "number") continue;
       const tg = typeof h.target === "number" ? h.target : null, hot = tg > 0;
-      const attrs = CONTROLS && tg !== null ? ' class="tgt' + (hot ? " hot" : "") + '" data-heater="' + escH(obj) + '" data-title="' + escH(label) + '" data-cur="' + Math.round(tg) + '"' : (hot ? ' class="hot"' : "");
-      chips.push("<span" + attrs + "><small>" + escH(label) + "</small><b>" + deg(h.temperature) + "</b>" + (tg !== null ? "<small>/ " + (hot ? deg(tg) : "off") + "</small>" : "") + "</span>");
-    };
-    for (let i = 0; i < N; i++) chip(exName(i), N > 1 ? "T" + i : "Nozzle");
-    chip("heater_bed", "Bed");
-    if (CH && CH.sensor) chip(CH.sensor, "Chamber");
+      chips.push("<span" + (CONTROLS && tg !== null ? ' class="tgt' + (hot ? " hot" : "") + '"' + tgtAttrs(obj, label, tg) : hot ? ' class="hot"' : "") +
+        "><small>" + escH(label) + "</small><b>" + deg(h.temperature) + "</b>" + (tg !== null ? "<small>/ " + (hot ? deg(tg) : "off") + "</small>" : "") + "</span>");
+    }
     const html = chips.join("");
     if ($("ttemps").__h !== html) { $("ttemps").innerHTML = html; $("ttemps").__h = html; }
+    const act = PRINTING();
+    $("tpause").hidden = $("tcancel").hidden = !(act && CONTROLS);
+    $("tpause").textContent = printState === "paused" ? "Resume" : "Pause";
+    $("tpause").disabled = $("tcancel").disabled = pbusy;
+    $("testop").hidden = !CONTROLS;
   });
-  Status.on(st => {                   // the print card (Status section)
-    const ps = st.print_stats || {}, vs = st.virtual_sdcard || {}, active = ps.state === "printing" || ps.state === "paused";
+  $("tpause").addEventListener("click", () => Act.print(printState === "paused" ? "resume" : "pause"));
+  $("tcancel").addEventListener("click", () => Act.print("cancel"));
+  $("testop").addEventListener("click", () => Act.print("estop"));
+
+  // ---- Status: print card, heater tiles, presets ----
+  Status.on(st => {
+    const ps = st.print_stats || {}, vs = st.virtual_sdcard || {}, active = PRINTING();
     const tl = ps.info && ps.info.total_layer, cl = ps.info && ps.info.current_layer;
-    const prog = Math.max(0, Math.min(1, vs.progress || 0)), pct = Math.round(prog * 100);
-    $("tjst").innerHTML = escH(STATE[ps.state] || cap(ps.state || "")) + (active ? "<small>" + pct + "%</small>" : "");
+    const prog = Math.max(0, Math.min(1, vs.progress || 0));
+    $("tjst").innerHTML = escH(STATE[ps.state] || cap(ps.state || "")) + (active ? "<small>" + Math.round(prog * 100) + "%</small>" : "");
     $("tjfile").textContent = ps.filename ? String(ps.filename).split("/").pop() : "No file loaded";
     $("tjbarw").hidden = !active; $("tjbar").style.width = (prog * 100).toFixed(1) + "%";
     $("tjsub").textContent = active ? [tl ? "Layer " + (cl || 0) + " of " + tl : "", ps.print_duration ? "printing for " + fmtDur(ps.print_duration) : ""].filter(Boolean).join(" · ")
@@ -3794,10 +3880,90 @@ bootstrap();
     const im = $("tjimg"), src = ps.filename && thumbUrl ? thumbUrl : "";
     if (im.getAttribute("src") !== src) { if (src) im.src = src; else im.removeAttribute("src"); }
     im.hidden = !src;
-  }, {el: "tjob"});
+    // one tile per heater (tap to set its target), then the chamber sensor if it is not a heater
+    const names = [...Array.from({length: N}, (_, i) => exName(i)), "heater_bed", ...(tempObjs || []).filter(n => /^heater_generic /.test(n))];
+    if (CH && CH.sensor && !names.includes(CH.sensor)) names.push(CH.sensor);
+    const tiles = names.map(n => {
+      const h = st[n]; if (!h || typeof h.temperature !== "number") return "";
+      const tg = typeof h.target === "number" ? h.target : null, hot = tg > 0, label = heaterLabel(n);
+      return '<div class="th' + (hot ? " hot" : "") + (CONTROLS && tg !== null ? ' tgt"' + tgtAttrs(n, label, tg) : '"') + '><span class="nm">' + escH(label) + '</span><span class="v">' + (+h.temperature).toFixed(1) + "°</span>" +
+        '<span class="tg">' + (tg === null ? "sensor" : hot ? "target " + deg(tg) : "off") + "</span>" + (hot ? '<div class="bar"><i style="width:' + Math.round(heatProgress(h.temperature, tg) * 100) + '%"></i></div>' : "") + "</div>";
+    }).join("");
+    if ($("theat").__h !== tiles) { $("theat").innerHTML = tiles; $("theat").__h = tiles; }
+    $("tpre").hidden = !CONTROLS;
+    $("tpre").querySelectorAll("button").forEach(b => { b.disabled = active; b.title = active ? "Not while a print is running" : ""; });
+  }, {el: "tp-home"});
+  $("tpre").addEventListener("click", async e => {
+    const b = e.target.closest("button"); if (!b || b.disabled) return;
+    const st = Status.st || {};
+    if (b.dataset.cool != null) {                // every heater that is on, off
+      for (const n of [...Array.from({length: N}, (_, i) => exName(i)), "heater_bed", ...(tempObjs || []).filter(n => /^heater_generic /.test(n))])
+        if (st[n] && st[n].target > 0) await Act.setTemp(n, 0, heaterLabel(n));
+      return;
+    }
+    const [, e0, b0] = PRESETS[+b.dataset.preset], tool = (st.toolhead || {}).extruder || "extruder";      // the nozzle in use, and the bed
+    if (await Act.setTemp(tool, e0, heaterLabel(tool))) await Act.setTemp("heater_bed", b0, "Bed");
+  });
 
-  // number fields: a pad on the screen instead of a keyboard (inside the target editor, else floating at the right)
-  for (const id of ["tgtin", "ptpa", "ptsm"]) { const e = $(id); e.type = "text"; e.inputMode = "none"; }
+  // ---- Move: direction pad, Z, step size, homing ----
+  Status.on(st => {
+    const locked = !CONTROLS || running || PRINTING();
+    $("tp-move").querySelectorAll(".kb, [data-home], [data-motors]").forEach(b => { b.disabled = locked; });
+    const th = st.toolhead || {}, p = th.position || [], h = th.homed_axes || "";
+    $("tpos").innerHTML = ["x", "y", "z"].map((a, i) => "<span><b>" + a.toUpperCase() + "</b>" + (!h.includes(a) ? '<span class="nh">not homed</span>' : locked ? (+p[i]).toFixed(2) :
+      '<span class="tgt" data-axis="' + a.toUpperCase() + '" data-cur="' + (+p[i]).toFixed(1) + '" data-min="' + (th.axis_minimum || [])[i] + '" data-max="' + (th.axis_maximum || [])[i] + '">' + (+p[i]).toFixed(2) + "</span>") + "</span>").join("");
+    $("tmvnote").textContent = PRINTING() ? "Moves are locked while a print is running." : !h.includes("x") || !h.includes("y") ? "Home the printer before moving it." : "";
+  }, {el: "tp-move"});
+  $("tp-move").addEventListener("click", e => {
+    const s = e.target.closest("button[data-step]");
+    if (s) { mvStep = +s.dataset.step; $("tmvsteps").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === s)); return; }
+    const b = e.target.closest("button"); if (!b || b.disabled) return;
+    if (b.dataset.jog) { const [a, d] = b.dataset.jog.split(":"); Act.jog(a, +d * mvStep); }
+    else if (b.dataset.home) Act.home(b.dataset.home);
+    else if (b.dataset.motors != null) Act.motorsOff();
+  });
+
+  // ---- Tune: Z offset, speed, flow, pressure advance, smooth time; fans ----
+  const TUNE = {speed: ["Speed", 10, 300], flow: ["Flow", 50, 150], pa: ["Pressure advance", 0, 2], smooth: ["Smooth time", 0, 0.2]};
+  const tuneNow = {};
+  Status.on(st => {
+    const gm = st.gcode_move || {}, ex = st[(st.toolhead || {}).extruder] || st.extruder || {}, z = +((gm.homing_origin || [])[2]) || 0;
+    tuneNow.speed = Math.round((gm.speed_factor || 1) * 100); tuneNow.flow = Math.round((gm.extrude_factor || 1) * 100);
+    tuneNow.pa = typeof ex.pressure_advance === "number" ? ex.pressure_advance : null; tuneNow.smooth = typeof ex.smooth_time === "number" ? ex.smooth_time : null;
+    $("tz").textContent = (z > 0 ? "+" : "") + z.toFixed(3) + " mm";
+    $("tspeed").textContent = tuneNow.speed + "%"; $("tflow").textContent = tuneNow.flow + "%";
+    $("tpa").textContent = tuneNow.pa === null ? "-" : tuneNow.pa.toFixed(3); $("tsm").textContent = tuneNow.smooth === null ? "-" : tuneNow.smooth.toFixed(3);
+    $("tp-tune").querySelectorAll(".tunes .tbtn").forEach(b => { b.disabled = !CONTROLS; });
+    // fans: the ones that can be set get a tile with buttons, the others (hotend, controller fans) are listed
+    const fans = (fanObjs || []).filter(n => st[n] && fanSpeed(st[n]) !== null).map(n => ({n, t: fanTitle(n), s: fanSpeed(st[n])}))
+      .sort((a, b) => (a.n === "fan" ? -1 : 0) - (b.n === "fan" ? -1 : 0) || a.t.localeCompare(b.t));
+    const settable = f => CONTROLS && (f.n === "fan" || f.n.startsWith("fan_generic "));
+    const tiles = fans.filter(settable).map(f => '<div class="tbox tfan" data-fan="' + escH(fanKey(f.n)) + '" data-title="' + escH(f.t) + '" data-cur="' + Math.round(f.s * 100) + '"><div class="nm">' + escH(f.t) + '</div><div class="v">' + Math.round(f.s * 100) + "%</div>" +
+      '<div class="row"><button class="tbtn" data-fs="0">Off</button><button class="tbtn" data-fs="-10">&minus;10</button><button class="tbtn" data-fs="10">+10</button><button class="tbtn" data-fs="100">Max</button></div></div>').join("");
+    if (Date.now() >= fanHoldUntil && $("tfans").__h !== tiles) { $("tfans").innerHTML = tiles; $("tfans").__h = tiles; }
+    $("tfro").innerHTML = fans.filter(f => !settable(f)).map(f => "<span>" + escH(f.t) + "<b>" + Math.round(f.s * 100) + "%</b></span>").join("");
+  }, {el: "tp-tune"});
+  $("tp-tune").addEventListener("click", e => {
+    const zs = e.target.closest("button[data-zstep]");
+    if (zs) { zStep = +zs.dataset.zstep; $("tzsteps").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === zs)); return; }
+    const b = e.target.closest("button"); if (!b || b.disabled) return;
+    if (b.dataset.z) return Act.tune("z_adjust", +b.dataset.z * zStep, "Z offset");
+    if (b.dataset.zreset != null) return Act.zReset();
+    if (b.dataset.f) {                            // "what:step" changes by a step, "what:=value" sets it
+      const [what, arg] = b.dataset.f.split(":"), [label, lo, hi] = TUNE[what], cur = tuneNow[what];
+      if (cur === null || cur === undefined) return;
+      const v = arg[0] === "=" ? +arg.slice(1) : Math.round((cur + +arg) * 1000) / 1000;
+      return Act.tune(what, Math.max(lo, Math.min(hi, v)), label);
+    }
+    const tile = b.closest(".tfan");
+    if (tile && b.dataset.fs != null) {
+      const cur = +tile.dataset.cur, d = +b.dataset.fs, pct = d === 0 || d === 100 ? d : Math.max(0, Math.min(100, cur + d));
+      return Act.setFan(tile.dataset.fan, pct / 100, tile.dataset.title);
+    }
+  });
+
+  // ---- number fields: a pad on the screen instead of a keyboard (inside the target editor, else floating at the right) ----
+  const tgtIn = $("tgtin"); tgtIn.type = "text"; tgtIn.inputMode = "none";
   const pad = $("tnum");
   const KEYS = ["7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "back", "neg", "clear", "done"];
   const LBL = {back: "&#9003;", neg: "&plusmn;", clear: "Clear", done: "OK"};
@@ -3809,7 +3975,7 @@ bootstrap();
     if (!padFor(e.target)) return;
     target = e.target; fresh = true;
     const pop = target.closest("#tgtpop");
-    (pop || document.body).appendChild(pad); pad.classList.toggle("float", !pop); pad.hidden = false;
+    (pop || root).appendChild(pad); pad.classList.toggle("float", !pop); pad.hidden = false;
     target.inputMode = "none";
   });
   document.addEventListener("focusout", e => { if (e.target === target) setTimeout(() => { if (document.activeElement !== target) hide(); }, 0); });
