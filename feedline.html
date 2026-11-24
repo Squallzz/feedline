@@ -421,88 +421,100 @@
   .mcard .mp{display:flex;flex-wrap:wrap;gap:6px} .mcard .mp label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:2px;flex:1 1 90px} .mcard .mp input{width:100%}
 
   /* ---- Touch mode (/touch): a printer touchscreen, KlipperScreen style: a status bar on top, big section buttons on the
-     left, one section at a time, nothing that needs hover or a keyboard. It has its own markup (#touch, built by the touch
-     script) whose buttons call the same actions (Act) and read the same status feed (Status) as the normal page. A few
-     widgets of the normal page are moved in and used as they are (filament cards, print details, macros, console, the
-     target editor, the question dialog); the body.touch rules at the end only make those bigger. ---- */
-  body.touch{padding:0;height:100vh;overflow:hidden;font-size:15px;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+     left, one section at a time, nothing that needs hover or a keyboard, and text sized to be read at arm's length. It has its
+     own markup (#touch, built by the touch script) whose buttons call the same actions (Act) and read the same status feed
+     (Status) as the normal page. A few widgets of the normal page are moved in and used as they are (filament cards, print
+     details, macros, console, the Klipper alert, the target editor, the question dialog); the body.touch rules at the end
+     only make those bigger. ---- */
+  body.touch{padding:0;height:100vh;overflow:hidden;font-size:17px;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
   body.touch input{user-select:text;-webkit-user-select:text}
   body.touch > :is(#nav,header,#layout,#foot,.view){display:none !important}
-  #touch{display:grid;grid-template:56px minmax(0,1fr) / 92px minmax(0,1fr);height:100vh}
+  #touch{display:grid;grid-template:60px minmax(0,1fr) / 96px minmax(0,1fr);height:100vh}
   #tbar{grid-column:1 / -1;display:flex;align-items:center;gap:10px;padding:0 10px 0 14px;background:#0d0b22;border-bottom:1px solid #231f4a;min-width:0}
-  #tbar h1{font-size:17px;white-space:nowrap}
-  #tbar #conn.on{display:none}
+  #tbar h1{font-size:20px;white-space:nowrap}
+  #tbar #conn{font-size:14px} #tbar #conn.on{display:none}
   #ttemps{display:flex;gap:8px;flex:1;min-width:0;overflow:hidden}
-  #ttemps > span{display:inline-flex;align-items:baseline;gap:6px;padding:7px 12px;border-radius:999px;background:#1D1A42;border:1px solid var(--edge);font-size:14px;white-space:nowrap;text-decoration:none}
-  #ttemps > span small{color:var(--sub);font-size:12px} #ttemps > span.hot{border-color:#6b5320} #ttemps > span.hot b{color:var(--warn)}
-  .tbtn{min-height:44px;padding:8px 18px;border-radius:999px;border:1px solid var(--edge);background:#1D1A42;color:var(--text);font:inherit;font-size:14px;cursor:pointer;white-space:nowrap}
+  #ttemps > span{display:inline-flex;align-items:baseline;gap:6px;padding:7px 13px;border-radius:999px;background:#1D1A42;border:1px solid var(--edge);font-size:17px;white-space:nowrap;text-decoration:none}
+  #ttemps > span small{color:var(--sub);font-size:14px} #ttemps > span.hot{border-color:#6b5320} #ttemps > span.hot b{color:var(--warn)}
+  .tbtn{min-height:46px;padding:8px 18px;border-radius:999px;border:1px solid var(--edge);background:#1D1A42;color:var(--text);font:inherit;font-size:16px;cursor:pointer;white-space:nowrap}
   .tbtn.danger{color:var(--bad);border-color:#7a2c40} .tbtn.estop{background:#6b1424;color:#fff;border-color:#c2334f;font-weight:600} .tbtn.go{background:var(--violet);border-color:var(--violet);color:#fff}
   .tbtn:disabled,.kb:disabled{opacity:.35;cursor:not-allowed}
-  #touch #notice:not(:empty){position:fixed;left:calc(50% + 46px);bottom:14px;transform:translateX(-50%);z-index:90;font-size:14px;padding:8px 18px;background:#14122b;box-shadow:0 8px 30px #000a;max-width:80vw}
+  #touch #notice:not(:empty){position:fixed;left:calc(50% + 48px);bottom:14px;transform:translateX(-50%);z-index:90;font-size:16px;padding:10px 20px;background:#14122b;box-shadow:0 8px 30px #000a;max-width:80vw}
   #trail{display:flex;flex-direction:column;background:#0d0b22;border-right:1px solid #231f4a}
-  #trail button{flex:1;border:0;background:none;color:var(--sub);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font:inherit;font-size:12.5px;cursor:pointer}
-  #trail svg{width:28px;height:28px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  #trail button{flex:1;border:0;background:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font:inherit;font-size:14px;cursor:pointer}
+  #trail svg{width:30px;height:30px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
   #trail button.on{color:#fff;background:#2a2360;box-shadow:inset 4px 0 0 #7A63F2}
   #tmain{display:block;overflow:auto;padding:12px 14px}      /* not the card grid every other <main> is */
   #tmain > .tp{display:flex;flex-direction:column;gap:var(--gap-section)}
-  #tmain h2{font-size:15px;font-weight:600;margin:0 0 var(--gap-title);color:var(--muted)}
+  #tmain h2{font-size:18px;font-weight:600;margin:0 0 var(--gap-title);color:var(--muted)}
   .tbox{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:14px 16px}
   /* Status: the print card, a tile per heater (tap to set its target), presets */
   #tjob{display:flex;gap:16px;align-items:center}
-  #tjimg{width:96px;height:96px;object-fit:contain;border-radius:10px;background:#07060f;flex:none}
+  #tjimg{width:104px;height:104px;object-fit:contain;border-radius:10px;background:#07060f;flex:none}
   .tjtxt{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
-  .tjst{font-size:22px;font-weight:600} .tjst small{font-size:15px;font-weight:400;color:var(--muted);margin-left:8px}
-  .tjfile{font-size:14px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .tjbar{height:10px;background:#0a0818;border-radius:5px;overflow:hidden} .tjbar i{display:block;height:100%;background:var(--violet);border-radius:5px;transition:width .6s}
-  .tjsub{font-size:13px;color:var(--sub)}
-  .theat{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+  .tjst{font-size:27px;font-weight:600} .tjst small{font-size:19px;font-weight:400;color:var(--muted);margin-left:10px}
+  .tjfile{font-size:17px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tjbar{height:12px;background:#0a0818;border-radius:6px;overflow:hidden} .tjbar i{display:block;height:100%;background:var(--violet);border-radius:6px;transition:width .6s}
+  .tjsub{font-size:16px;color:var(--sub)}
+  .theat{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
   .th{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;text-decoration:none;color:var(--text);cursor:default}
-  .th.tgt{cursor:pointer} .th .nm{font-size:14px;color:var(--muted)} .th .v{font-size:30px;font-weight:600;font-variant-numeric:tabular-nums} .th .tg{font-size:14px;color:var(--sub)}
+  .th.tgt{cursor:pointer} .th .nm{font-size:17px;color:var(--muted)} .th .v{font-size:34px;font-weight:600;font-variant-numeric:tabular-nums} .th .tg{font-size:16px;color:var(--sub)}
   .th.hot{border-color:#6b5320} .th.hot .v{color:var(--warn)}
-  .th .bar{height:6px;border-radius:3px;background:#1D1A42;overflow:hidden;margin-top:4px} .th .bar i{display:block;height:100%;background:var(--warn)}
-  .tpre{display:flex;gap:10px;flex-wrap:wrap} .tpre .tbtn{flex:1;border-radius:12px;min-height:56px;font-size:16px}
+  .th .bar{height:7px;border-radius:4px;background:#1D1A42;overflow:hidden;margin-top:4px} .th .bar i{display:block;height:100%;background:var(--warn)}
+  .tpre{display:flex;gap:10px;flex-wrap:wrap} .tpre .tbtn{flex:1;border-radius:12px;min-height:60px;font-size:17px}
   /* Move: a direction pad, Z, step size, homing */
-  .tpos{display:flex;gap:22px;align-items:baseline;font-size:22px;font-variant-numeric:tabular-nums;flex-wrap:wrap} .tpos b{color:var(--sub);font-weight:500;margin-right:6px;font-size:16px}
-  .tpos .nh{color:var(--warn);font-size:16px} .tpos .tgt{text-decoration:underline dotted;text-underline-offset:4px;padding:4px 2px}
-  .tnote{font-size:14px;color:var(--warn)} .tnote:empty{display:none}
+  .tpos{display:flex;gap:24px;align-items:baseline;font-size:26px;font-variant-numeric:tabular-nums;flex-wrap:wrap} .tpos b{color:var(--sub);font-weight:500;margin-right:6px;font-size:18px}
+  .tpos .nh{color:var(--warn);font-size:18px} .tpos .tgt{text-decoration:underline dotted;text-underline-offset:4px;padding:4px 2px}
+  .tnote{font-size:16px;color:var(--warn)} .tnote:empty{display:none}
   .tmove{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
-  .dpad{display:grid;grid-template-columns:repeat(3,84px);grid-auto-rows:84px;gap:8px} .zpad{display:grid;grid-auto-rows:84px;grid-template-columns:84px;gap:8px}
-  .kb{background:#1D1A42;border:1px solid var(--edge);border-radius:14px;color:var(--text);font:inherit;font-size:21px;font-weight:600;cursor:pointer}
-  .kb.home{font-size:13px;font-weight:500;color:var(--muted)}
-  .tside{flex:1;min-width:220px;display:flex;flex-direction:column;gap:10px} .tside .k{font-size:14px;color:var(--muted)}
-  .tside .tbtn{border-radius:12px;min-height:56px;font-size:16px}
-  .tsteps{display:flex;gap:6px} .tsteps button{flex:1;min-height:52px;background:#1D1A42;border:1px solid var(--edge);border-radius:10px;color:var(--text);font:inherit;font-size:16px;cursor:pointer}
+  .dpad{display:grid;grid-template-columns:repeat(3,86px);grid-auto-rows:86px;gap:8px} .zpad{display:grid;grid-auto-rows:86px;grid-template-columns:86px;gap:8px}
+  .kb{background:#1D1A42;border:1px solid var(--edge);border-radius:14px;color:var(--text);font:inherit;font-size:24px;font-weight:600;cursor:pointer}
+  .kb.home{font-size:15px;font-weight:500;color:var(--muted)}
+  .tside{flex:1;min-width:220px;display:flex;flex-direction:column;gap:10px} .tside .k{font-size:16px;color:var(--muted)}
+  .tside .tbtn{border-radius:12px;min-height:60px;font-size:18px}
+  .tsteps{display:flex;gap:6px} .tsteps button{flex:1;min-height:56px;background:#1D1A42;border:1px solid var(--edge);border-radius:10px;color:var(--text);font:inherit;font-size:18px;cursor:pointer}
   .tsteps button.on{background:var(--violet);border-color:var(--violet);color:#fff}
   /* Tune: steppers instead of sliders and number fields, and a tile per fan */
   .tunes{display:flex;flex-direction:column;gap:12px}
   .trow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .trow .k{min-width:150px;font-size:15px;color:var(--muted)}
-  .trow .val{min-width:120px;text-align:center;font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
-  .trow .tbtn{border-radius:12px;min-height:56px;min-width:88px;font-size:17px} .trow .tsteps{flex:1;max-width:420px}
-  .tfans{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
-  .tfan .nm{font-size:14px;color:var(--muted)} .tfan .v{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums}
-  .tfan .row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px} .tfan .row .tbtn{border-radius:10px;padding:8px 0;min-height:52px;font-size:15px}
-  .tfro{display:flex;flex-wrap:wrap;gap:8px} .tfro span{background:#0f0d24;border:1px solid #231f4a;border-radius:999px;padding:6px 12px;font-size:13px;color:var(--muted)} .tfro b{color:var(--text);margin-left:6px}
+  .trow .k{min-width:170px;font-size:17px;color:var(--muted)}
+  .trow .val{min-width:126px;text-align:center;font-size:26px;font-weight:600;font-variant-numeric:tabular-nums}
+  .trow .tbtn{border-radius:12px;min-height:58px;min-width:92px;font-size:18px} .trow .tsteps{flex:1;max-width:440px}
+  .tfans{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+  .tfan .nm{font-size:17px;color:var(--muted)} .tfan .v{font-size:30px;font-weight:600;font-variant-numeric:tabular-nums}
+  .tfan .row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px} .tfan .row .tbtn{border-radius:10px;padding:8px 0;min-height:56px;font-size:17px}
+  .tfro{display:flex;flex-wrap:wrap;gap:8px} .tfro span{background:#0f0d24;border:1px solid #231f4a;border-radius:999px;padding:7px 14px;font-size:15px;color:var(--muted)} .tfro b{color:var(--text);margin-left:6px}
   /* normal-page widgets used in touch mode, made bigger */
-  body.touch #pgrid{grid-template-columns:repeat(4,1fr);padding:12px 14px;gap:10px 14px} body.touch #pgrid .p .v{font-size:17px}
+  body.touch #pgrid{grid-template-columns:repeat(4,1fr);padding:12px 14px;gap:12px 14px} body.touch #pgrid .p .k{font-size:14px} body.touch #pgrid .p .v{font-size:20px} body.touch #pgrid .p .s{font-size:13px}
+  body.touch #afcbar{margin:0;gap:10px} body.touch #afcbar .pill{font-size:15px;padding:6px 14px}
+  /* filament cards: larger type, a smaller spool picture, and Load / Unload / Eject stacked full width so each is easy to tap */
   body.touch #grid{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;max-width:none;margin:0;padding:0}
-  body.touch #afcbar{margin:0}
-  body.touch #kalert{margin:0 0 var(--gap-section)} body.touch .kbtns > *{flex:1 1 180px;min-height:54px;font-size:16px;border-radius:12px}
-  body.touch .acts{gap:8px} body.touch .acts button{min-height:48px;font-size:14px;border-radius:10px}
-  body.touch #conlog{height:calc(100vh - 180px)}
-  body.touch #v-macros{max-width:none;margin:0;padding:0}
+  body.touch .tool{padding:12px 12px 14px;border-radius:18px}
+  body.touch .tool .tn{font-size:19px} body.touch .tool .tn small{font-size:14px} body.touch .tool .badge{font-size:13px;padding:3px 10px}
+  body.touch .tool .slotsvg.afcspool{height:92px;margin:6px auto 8px}
+  body.touch .tool .mat{font-size:18px} body.touch .tool .brand{font-size:15px;min-height:20px}
+  body.touch .tool .stats{font-size:12.5px;gap:4px;margin-top:10px} body.touch .tool .stats b{font-size:14px}
+  body.touch .acts{grid-template-columns:1fr;gap:8px;margin-top:12px}
+  body.touch .acts button{min-height:58px;font-size:18px;font-weight:600;border-radius:12px;padding:8px 0}
+  body.touch #kalert{margin:0 0 var(--gap-section)} body.touch #kalert .kh{font-size:20px} body.touch #kmsg{font-size:16px}
+  body.touch .kbtns > *{flex:1 1 180px;min-height:58px;font-size:17px;border-radius:12px}
+  body.touch #con h2{font-size:18px} body.touch #conlog{height:calc(100vh - 190px);font-size:14.5px}
+  body.touch #v-macros{max-width:none;margin:0;padding:0} body.touch #v-macros h2{font-size:22px}
   body.touch #v-macros > .vcard:first-of-type,body.touch #macfilter,body.touch #macreload{display:none}
-  body.touch .mgrid{grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:12px}
-  body.touch #v-macros button{min-height:48px;padding:8px 20px;font-size:15px} body.touch .mcard .mp input{font-size:16px;padding:10px}
-  body.touch #askmodal .dlg{max-width:560px;padding:22px 24px} body.touch #askmsg{font-size:17px} body.touch #askmodal button{min-height:54px;padding:10px 28px;font-size:16px;min-width:130px}
-  body.touch #tgtpop{left:50% !important;top:50% !important;transform:translate(-50%,-50%);width:330px;padding:16px;z-index:85}
-  body.touch #tgtpop .tt{font-size:16px} body.touch #tgtpop input{flex:1;width:auto;min-width:0;font-size:26px;padding:8px 12px} body.touch #tgtunit{font-size:18px;color:var(--muted)}
-  body.touch #tgtpop button{flex:1;min-height:52px;font-size:16px}
+  body.touch #v-macros .vcard h3{font-size:18px} body.touch #v-macros .sub{font-size:14px}
+  body.touch .mgrid{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+  body.touch .mcard .mh b{font-size:16px} body.touch .mcard .mp label{font-size:14px}
+  body.touch #v-macros button{min-height:52px;padding:8px 22px;font-size:17px} body.touch .mcard .mp input{font-size:18px;padding:10px}
+  body.touch #askmodal .dlg{max-width:600px;padding:24px 26px} body.touch #askmsg{font-size:19px} body.touch #askmodal button{min-height:58px;padding:10px 28px;font-size:18px;min-width:140px}
+  body.touch #tgtpop{left:50% !important;top:50% !important;transform:translate(-50%,-50%);width:340px;padding:16px;z-index:85}
+  body.touch #tgtpop .tt{font-size:18px} body.touch #tgtpop input{flex:1;width:auto;min-width:0;font-size:28px;padding:8px 12px} body.touch #tgtunit{font-size:20px;color:var(--muted)}
+  body.touch #tgtpop button{flex:1;min-height:54px;font-size:18px}
+  body.touch #spmodal .dlg{max-width:560px;font-size:16px} body.touch #spmodal h2{font-size:20px} body.touch #spmodal table{font-size:16px}
   /* on-screen number pad: inside the target editor, or floating beside any other number field */
   #tnum{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
-  #tnum button{height:54px;font:inherit;font-size:21px;background:#1D1A42;border:1px solid var(--edge);color:var(--text);border-radius:10px;cursor:pointer}
-  #tnum button.go{background:#7A63F2;border-color:#7A63F2;color:#fff;font-size:16px} #tnum button.sm{font-size:15px;color:var(--muted)}
-  #tnum.float{position:fixed;right:14px;top:68px;width:270px;z-index:85;background:#14122b;border:1px solid #352F6B;border-radius:14px;padding:10px;margin:0;box-shadow:0 12px 40px #000c}
+  #tnum button{height:56px;font:inherit;font-size:23px;background:#1D1A42;border:1px solid var(--edge);color:var(--text);border-radius:10px;cursor:pointer}
+  #tnum button.go{background:#7A63F2;border-color:#7A63F2;color:#fff;font-size:18px} #tnum button.sm{font-size:16px;color:var(--muted)}
+  #tnum.float{position:fixed;right:14px;top:72px;width:280px;z-index:85;background:#14122b;border:1px solid #352F6B;border-radius:14px;padding:10px;margin:0;box-shadow:0 12px 40px #000c}
 </style>
 </head>
 <body>
