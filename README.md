@@ -187,6 +187,7 @@ Notes:
 - Made for 1024×600 and up. Nothing needs hover or a keyboard: number fields bring up a number pad on the screen.
 - The camera and the drawn printer are left out, and the screen updates every 4 seconds (every 2 on the normal page), to keep the load low on the small computer that drives the screen. A button press still updates at once.
 - Any browser in kiosk mode works. On a Raspberry Pi, [Cog](https://github.com/Igalia/cog) (WPE WebKit) is light and needs no desktop: `cog --platform=drm --platform-params=renderer=gles http://<feedline>/touch`, run as a user in the `video`, `render` and `input` groups (with KlipperScreen and any desktop stopped, so Cog can take the screen).
+- Everything looks stretched sideways? Many small panels have pixels that are not square: a 7" 1024×600 panel's pixels are about 5 % wider than tall. Add `&aspect=1.05` (one pixel's width divided by its height) to the address, for example `/touch?p=main&aspect=1.05`, and the page is squeezed to match, so round things look round again.
 
 <sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
