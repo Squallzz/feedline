@@ -394,6 +394,8 @@ Lists every user-facing macro (names not starting with `_`) with its description
 
 `tests/test_server.py` covers the server's decisions that need no printer: model detection, filament-system detection, the command each tool button builds, print-tuning limits, heater caps, macro parameters, and the path and address checks. Standard library only; printer answers are faked and nothing opens a network connection. The page has no automated tests.
 
+**Icons** are [Lucide](https://lucide.dev) (ISC licence; the icons that come from Feather are MIT), kept inside `feedline.html` as one small inline sprite, so the page needs no internet and stays a single file. Only the icons Feedline uses are included. To add one, put its name in `NAMES` in `tools/build_icons.py`, unpack the `lucide-static` npm package (`npm pack lucide-static@<version>`, then `tar -xzf` it) and run `python3 tools/build_icons.py package`. In the page, `ico("name")` draws an icon.
+
 <sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
 ## Not covered
