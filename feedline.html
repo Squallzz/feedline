@@ -2909,19 +2909,47 @@ const camframe = document.getElementById("camframe"), camlive = document.getElem
 let camMode = "live";
 try { camMode = localStorage.getItem("camMode") || "live"; } catch (e) {}
 function setCam(m) {
+  const again = m !== camMode || !camOpen;
   camMode = m;
   try { localStorage.setItem("camMode", m); } catch (e) {}
-  const live = m === "live", mjpeg = !!(CFG && CFG.camera && CFG.camera.mode === "mjpeg");
+  const live = m === "live", mjpeg = camMjpeg();
   camframe.hidden = !live || mjpeg; camlive.hidden = !live || !mjpeg; camimg.hidden = live;
-  const fsrc = live && !mjpeg ? CAM_PAGE : "about:blank";       // blank frame closes the WebRTC session
-  if (camframe.getAttribute("src") !== fsrc) camframe.src = fsrc;
-  if (live && mjpeg) { if (camlive.getAttribute("src") !== CAM_PAGE) camlive.src = CAM_PAGE; }
-  else camlive.removeAttribute("src");                           // no src: the browser stops reading the stream
   cambtn.textContent = live ? "Use snapshots" : "Use live video";
-  camstat.textContent = live ? (mjpeg ? "Connecting" : "Live (WebRTC)") : "Loading";
+  if (again || camKey !== live + CAM_PAGE) camStart(); else camLayout();    // settings saved: keep a stream that is running
+}
+// Live video looks after itself: it stops while the page is hidden (a minimised window or a background tab, where the
+// browser lets an MJPEG stream stall and a WebRTC session drop) and starts afresh when the page is back. A stream that
+// fails, or shows no picture within 15 s, is opened again, waiting a little longer each time (up to 30 s), so a camera
+// that comes up late or drops out reconnects without a page reload.
+const camMjpeg = () => !!(CFG && CFG.camera && CFG.camera.mode === "mjpeg");
+let camOpen = false, camKey = "", camTries = 0, camWait = null;
+function camStop() {
+  clearTimeout(camWait); camOpen = false; camKey = "";
+  if (camframe.getAttribute("src") !== "about:blank") camframe.src = "about:blank";    // a blank frame closes the WebRTC session
+  camlive.removeAttribute("src");                                                    // no src: the browser stops reading the stream
+}
+function camStart() {
+  camStop();
+  if (camMode !== "live" || !CAM_PAGE) { if (camMode === "snap") camstat.textContent = "Loading"; camOff(false); camLayout(); return; }
+  if (document.hidden) return;                                     // opened when the page is shown
+  camOpen = true; camKey = "true" + CAM_PAGE;
+  if (camMjpeg()) {                                                // a fresh address, so the browser opens a new connection
+    camlive.src = CAM_PAGE + (CAM_PAGE.includes("?") ? "&" : "?") + "_t=" + Date.now();
+    camstat.textContent = camTries ? "Reconnecting" : "Connecting";
+    camWait = setTimeout(camRetry, 15000);                         // no picture yet: try again
+  } else { camframe.src = CAM_PAGE; camstat.textContent = "Live (WebRTC)"; }
   camOff(false);
   camLayout();
 }
+function camRetry() {
+  if (camMode !== "live" || document.hidden) return;
+  camStop(); camstat.textContent = "Unavailable"; camOff(true);
+  camWait = setTimeout(camStart, Math.min(30000, 2000 * 2 ** camTries++));
+}
+document.addEventListener("visibilitychange", () => {
+  if (camMode !== "live") return;
+  if (document.hidden) camStop(); else { camTries = 0; camStart(); }
+});
 // The camera view. The box keeps the picture's own shape (4:3, 16:9, ...) so it fills it without bars, and the picture is
 // turned as configured: rotation in quarter turns clockwise, then mirrored left-right / top-bottom as seen on screen (the
 // same order Mainsail uses, so Moonraker's webcam settings look the same here). After a quarter turn the box is the
@@ -2943,10 +2971,10 @@ const camShape = im => { if (im.naturalWidth && im.naturalHeight) { camNat = [im
 function camOff(off) {
   const v = document.getElementById("camview");
   v.classList.toggle("off", off);
-  v.dataset.msg = off ? "Camera unavailable" + (camMode === "live" ? " - try Use snapshots" : " - retrying") : "";
+  v.dataset.msg = off ? "Camera unavailable - " + (camMode === "live" ? "reconnecting" : "retrying") : "";
 }
-camlive.addEventListener("load", () => { camShape(camlive); camOff(false); if (camMode === "live") camstat.textContent = "Live (MJPEG)"; });
-camlive.addEventListener("error", () => { if (camMode === "live" && camlive.getAttribute("src")) { camstat.textContent = "Unavailable"; camOff(true); } });
+camlive.addEventListener("load", () => { if (!camlive.getAttribute("src")) return; clearTimeout(camWait); camTries = 0; camShape(camlive); camOff(false); if (camMode === "live") camstat.textContent = "Live (MJPEG)"; });
+camlive.addEventListener("error", () => { if (camMode === "live" && camlive.getAttribute("src")) { clearTimeout(camWait); camRetry(); } });
 cambtn.onclick = () => setCam(camMode === "live" ? "snap" : "live");
 function camNext() {
   if (document.hidden || camMode !== "snap") return setTimeout(camNext, 1000);
@@ -3012,7 +3040,7 @@ async function applyConfig(c) {
   cambtn.hidden = !(canLive && canSnap);
   if (!canLive) camMode = "snap"; else if (!canSnap) camMode = "live";
   if (TOUCH) {          // the touchscreen sits at the printer: no camera, which also spares the small computer driving it
-    camMode = "off"; camframe.src = "about:blank"; camlive.removeAttribute("src");
+    camMode = "off"; camStop();
   } else setCam(camMode);
   tempObjs = null; fanObjs = null;
   await applyGraphics();
