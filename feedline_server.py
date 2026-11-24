@@ -75,6 +75,8 @@ DEFAULT_CFG = {
     "allow_embed": False,            # true = the page may be shown inside a frame on another site (e.g. a Home Assistant dashboard card)
     "mesh_bed_temp": 60,             # Calibrate bed mesh heats a cold bed to this (C) first and switches it off after; 0 = do not heat
     "allow_config_edit": True,      # false = the Files tab is read-only (config files can then not be changed from the browser)
+    "printers": None,                # more printers besides "printer": ["host", {"name": "Voron", "host": "voron.lan", "provider": "auto"}];
+                                     # shown like ones added in Settings > Printers, but cannot be removed there
 }
 HOST_SUFFIXES = (".local", ".lan", ".home.arpa", ".internal", ".localdomain", ".ts.net")
 # Drawn printer models (the page draws them; see MODELS in index.html). Original, simplified drawings in each model's
@@ -210,6 +212,148 @@ def load_json(path, default):
         return default
 
 
+PRINTER_HOST = re.compile(r"[a-z0-9]([a-z0-9.\-]{0,251}[a-z0-9])?")
+
+
+def printer_id(name_or_host, taken):
+    """A printer id (PACK_ID shape) from its name or host, not clashing with the ids in `taken`."""
+    base = re.sub(r"[^a-z0-9]+", "-", str(name_or_host).lower()).strip("-")[:30] or "printer"
+    pid, n = base, 2
+    while pid in taken:
+        pid, n = "%s-%d" % (base, n), n + 1
+    return pid
+
+
+def parse_printers(spec, main_host=None):
+    """Printers the admin set besides the main one: config.json "printers" (a list of hosts or {"name", "host", "provider"})
+    or --printers / FEEDLINE_PRINTERS ("host, Name=host, ..."). Returns [{"id", "name", "host", "provider", "fixed": True}].
+    Bad entries, repeats and the main printer itself are skipped with a log line; nothing is looked up on the network."""
+    if isinstance(spec, str):
+        items = []
+        for part in spec.split(","):
+            part = part.strip()
+            if part:
+                name, _, host = part.rpartition("=")
+                items.append({"name": name.strip(), "host": host})
+    else:
+        items = [{"host": x} if isinstance(x, str) else x for x in (spec or [])]
+    out, taken, hosts = [], {"main"}, {str(main_host or "").lower()}
+    for it in items:
+        if not isinstance(it, dict):
+            logging.warning("printers: ignoring %r (expected a host or {\"host\": ...})", it)
+            continue
+        host = str(it.get("host") or "").strip().lower()
+        if not PRINTER_HOST.fullmatch(host):
+            logging.warning("printers: ignoring %r (not a host name or IP address: no http://, no port)", it.get("host"))
+            continue
+        if host in hosts:
+            continue
+        name = str(it.get("name") or "").strip()[:60] or host
+        provider = str(it.get("provider") or "auto")
+        pid = str(it.get("id") or "")
+        if not PACK_ID.fullmatch(pid) or pid in taken:          # ?p=<id>: from the name, else the host's first label (whole IP)
+            short = host if re.fullmatch(r"[0-9.]+", host) else host.split(".")[0]
+            pid = printer_id(it.get("name") or short, taken)
+        taken.add(pid)
+        hosts.add(host)
+        out.append({"id": pid, "name": name, "host": host, "provider": provider, "fixed": True})
+    return out
+
+
+def color_hex(c):
+    """A filament color as "#RRGGBB": from "#rrggbb", "rrggbbaa" or a 24-bit number; None when there is none."""
+    if isinstance(c, bool):
+        return None
+    if isinstance(c, int):
+        return "#%06X" % (c & 0xFFFFFF)
+    m = re.match(r"#?([0-9a-fA-F]{6})", str(c or "").strip())
+    return "#" + m.group(1).upper() if m else None
+
+
+def ex_name(i):
+    return "extruder" if i == 0 else "extruder%d" % i
+
+
+def filament_objects(provider, objs, tools=1):
+    """The Klipper objects filament_slots needs for this filament system (asked for together on the Printers page)."""
+    if provider == "u1":
+        return ["toolhead", "filament_detect", "filament_feed left", "filament_feed right"]
+    if provider == "afc":
+        return ["AFC"] + [o for o in objs if re.match(r"AFC_(stepper|lane) \S", o)]
+    if provider == "qidibox":
+        return ["multi_color_controller", "save_variables", "box_extras", "filament_switch_sensor fila"]
+    if provider == "toolchanger":
+        return ["toolhead", "toolchanger"]
+    return ["toolhead"] if tools > 1 else []
+
+
+def filament_slots(provider, st, names=(), tools=1, table=None):
+    """What each filament slot holds, compactly, for one card on the Printers page:
+    [{"label", "title", "color", "loaded", "active"}] (title and color only when known). The same rules as the Home page,
+    without Spoolman (which the Home page adds per spool). `names`: AFC lanes or QIDI Box slots; `table`: box_table()."""
+    st, out = st or {}, []
+    if provider == "qidibox":
+        M = st.get("multi_color_controller") or {}
+        V = (st.get("save_variables") or {}).get("variables") or {}
+        sl = M.get("slots") or {}
+        states, mats, T = sl.get("states") or {}, sl.get("materials") or {}, table or {}
+
+        def state(n):
+            v = states.get(n)
+            v = V.get(n) if v is None else v
+            try:
+                return int(v or 0)
+            except (TypeError, ValueError):
+                return 0
+
+        def material(n):
+            if isinstance(mats.get(n), dict):
+                return mats[n]
+            if not T:
+                return {}
+            return {"filament": {"filament": (T.get("fila") or {}).get(V.get("filament_" + n))},
+                    "color": (T.get("color") or {}).get(V.get("color_" + n)), "vendor": (T.get("vendor") or {}).get(V.get("vendor_" + n))}
+
+        box_loaded = any(state(n) == 2 for n in names if n != "slot16")
+        ex, be, sw = M.get("extruder") or {}, st.get("box_extras") or {}, st.get("filament_switch_sensor fila") or {}
+        at_head = (ex["filament_detected"] if isinstance(ex.get("filament_detected"), bool)
+                   else be["e_endstop_state"] == 1 if isinstance(be.get("e_endstop_state"), (int, float)) else bool(sw.get("filament_detected")))
+        for n in names:
+            ext, num = n == "slot16", int(re.sub(r"\D", "", n) or 0)
+            m = material(n)
+            f = m.get("filament") if isinstance(m.get("filament"), dict) else {}
+            s = (2 if at_head and not box_loaded else 1 if f.get("filament") or f.get("type") else 0) if ext else state(n)
+            if ext and not s:
+                continue                                      # an external spool nobody set up says nothing
+            out.append({"label": "Ext" if ext else "%d%s" % (num // 4 + 1, "ABCD"[num % 4]), "loaded": s > 0, "active": s == 2,
+                        "title": str(f.get("filament") or f.get("type") or "") if s else "", "color": color_hex(m.get("color")) if s else None})
+    elif provider == "afc":
+        cur = (st.get("AFC") or {}).get("current_load")
+        for n in names:
+            L = st.get("AFC_stepper " + n) or st.get("AFC_lane " + n) or {}
+            loaded = bool(L.get("prep") or L.get("load") or L.get("tool_loaded"))
+            out.append({"label": n, "loaded": loaded, "active": bool(L.get("tool_loaded")) or cur == n,
+                        "title": str(L.get("filament_name") or L.get("material") or "") if loaded else "", "color": color_hex(L.get("color")) if loaded else None})
+    elif provider == "u1":
+        info, cur = (st.get("filament_detect") or {}).get("info") or [], (st.get("toolhead") or {}).get("extruder")
+        for i in range(tools):
+            d = info[i] if i < len(info) and isinstance(info[i], dict) else {}
+            ch = (st.get("filament_feed " + ("left" if i < 2 else "right")) or {}).get("extruder%d" % i)
+            loaded = bool(ch.get("filament_detected")) if isinstance(ch, dict) else bool(d.get("MAIN_TYPE")) and d.get("MAIN_TYPE") != "NONE"
+            typ = " ".join(str(d.get(k) or "") for k in ("MAIN_TYPE", "SUB_TYPE")).strip() if d.get("MAIN_TYPE") not in (None, "", "NONE") else ""
+            out.append({"label": "T%d" % i, "loaded": loaded, "active": cur == ex_name(i), "title": typ if loaded else "",
+                        "color": color_hex(d.get("RGB_1")) if loaded and d.get("RGB_1") is not None else None})
+    elif provider == "toolchanger":
+        n = (st.get("toolchanger") or {}).get("tool_number")
+        for i in range(tools):
+            out.append({"label": "T%d" % i, "loaded": True, "active": n == i, "title": "", "color": None})
+    elif tools > 1:
+        cur = (st.get("toolhead") or {}).get("extruder")
+        for i in range(tools):
+            out.append({"label": "T%d" % i, "loaded": True, "active": cur == ex_name(i), "title": "", "color": None})
+    return out
+
+
 def write_json_atomic(path, obj):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
@@ -220,6 +364,7 @@ def write_json_atomic(path, obj):
 
 class Handler(http.server.BaseHTTPRequestHandler):
     printer = spoolman = spoolman_cfg = root = None
+    fixed_printers = []             # set by the admin (config.json "printers", --printers): see parse_printers
     state = "/var/lib/feedline"
     cfg = dict(DEFAULT_CFG)
     _cache = {}
@@ -329,12 +474,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
             msg = None
         return str(msg).strip()[:400] if msg else str(e)
 
-    # ---- several printers: "main" comes from config.json; the others are added in the UI and kept in printers.json ----
+    # ---- several printers: "main" comes from config.json; config.json "printers" / --printers add fixed ones; ----
+    # ---- the others are added in the UI and kept in printers.json                                             ----
     pid = "main"
 
-    def extra_printers(self):
+    def ui_printers(self):
+        """Printers added in Settings > Printers (printers.json), the only ones the UI may add or remove."""
         out = load_json(os.path.join(self.state, "printers.json"), {}).get("printers", [])
         return [p for p in out if isinstance(p, dict) and PACK_ID.fullmatch(str(p.get("id", ""))) and p.get("host")]
+
+    def extra_printers(self):
+        """Every printer besides the main one: the admin's fixed ones first, then the UI's. A UI entry for a printer the
+        admin has since fixed in config is hidden (the fixed one, with the same id when it was derived the same way, wins)."""
+        fixed = list(Handler.fixed_printers)
+        ids, hosts = {p["id"] for p in fixed}, {p["host"] for p in fixed} | {str(Handler.printer or "").lower()}
+        return fixed + [p for p in self.ui_printers() if p["id"] not in ids and str(p["host"]).lower() not in hosts]
 
     def select_printer(self):
         want = self.headers.get("X-Printer") or ""
@@ -538,7 +692,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         out = [main]
         for p in self.extra_printers():
             n = load_json(os.path.join(self.state, "settings-%s.json" % p["id"]), {}).get("name") or p.get("name") or p["host"]
-            out.append({"id": p["id"], "name": n, "host": p["host"], "main": False})
+            out.append({"id": p["id"], "name": n, "host": p["host"], "main": False, "fixed": bool(p.get("fixed"))})
         for p in out:
             p["active"] = p["id"] == self.pid
         return out
@@ -590,6 +744,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     row["camera"] = self.clean_view(ui) if isinstance(ui, dict) else cam["view"]
             except Exception:  # noqa: BLE001
                 pass                                          # the extras are optional: the row still shows the state
+            try:                                              # what each filament slot holds (Box slots, AFC lanes, U1 channels, tools)
+                prov = h.provider()
+                tools = len(h.tc_tools()) if prov == "toolchanger" else h.tool_count()
+                names = h.afc_lanes() if prov == "afc" else h.qidi_slots() + ["slot16"] if prov == "qidibox" else []
+                objs = filament_objects(prov, h.objects(), tools)
+                fst = h.mget("/printer/objects/query?" + "&".join(urllib.parse.quote(o) for o in objs), 4)["result"]["status"] if objs else {}
+                need_table = prov == "qidibox" and not ((fst.get("multi_color_controller") or {}).get("slots") or {}).get("materials")
+                row.update(provider=prov, filament=filament_slots(prov, fst, names, tools, h.box_table() if need_table else None))
+            except Exception:  # noqa: BLE001
+                pass
 
         threads = [threading.Thread(target=ask, args=(r,), daemon=True) for r in rows]
         for t in threads:
@@ -601,7 +765,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def add_printer(self, req):
         name = str(req.get("name") or "").strip()[:60]
         host = str(req.get("host") or "").strip().lower()
-        if not re.fullmatch(r"[a-z0-9]([a-z0-9.\-]{0,251}[a-z0-9])?", host):
+        if not PRINTER_HOST.fullmatch(host):
             return self.jreply(400, {"error": "enter the printer's IP address or hostname (no http://, no port)"})
         try:
             addrs = {ipaddress.ip_address(a[4][0]) for a in socket.getaddrinfo(host, 7125, type=socket.SOCK_STREAM)}
@@ -609,8 +773,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.jreply(400, {"error": "cannot resolve " + host})
         if any(a.is_loopback or a.is_link_local or a.is_unspecified or a.is_multicast for a in addrs):
             return self.jreply(400, {"error": "that address is not allowed"})
-        lst = self.extra_printers()
-        if len(lst) >= 11 or any(p["host"] == host for p in lst) or host == str(Handler.printer).lower():
+        shown, lst = self.extra_printers(), self.ui_printers()
+        if len(lst) >= 11 or any(p["host"] == host for p in shown) or host == str(Handler.printer).lower():
             return self.jreply(409, {"error": "too many printers, or that printer is already added"})
         try:
             with urllib.request.urlopen("http://%s:7125/server/info" % host, timeout=5) as r:
@@ -626,11 +790,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             detected["afc"] = "AFC" in objs and any(re.match(r"AFC_(stepper|lane) \S", o) for o in objs)
         except Exception:  # noqa: BLE001
             pass
-        base = re.sub(r"[^a-z0-9]+", "-", (name or host).lower()).strip("-")[:30] or "printer"
-        ids = {p["id"] for p in lst} | {"main"}
-        pid, n = base, 2
-        while pid in ids:
-            pid, n = "%s-%d" % (base, n), n + 1
+        pid = printer_id(name or host, {p["id"] for p in shown + lst} | {"main"})
         lst.append({"id": pid, "name": name or host, "host": host, "provider": "u1" if detected["u1"] else "afc" if detected["afc"] else "auto"})
         write_json_atomic(os.path.join(self.state, "printers.json"), {"printers": lst})
         logging.info("added printer %s (%s)", pid, host)
@@ -638,7 +798,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def remove_printer(self, req):
         pid = str(req.get("id") or "")
-        lst = self.extra_printers()
+        if any(p["id"] == pid for p in Handler.fixed_printers):
+            return self.jreply(403, {"error": "this printer is set in the server's config (\"printers\" in config.json, or FEEDLINE_PRINTERS); remove it there"})
+        lst = self.ui_printers()
         if pid == "main" or pid not in [p["id"] for p in lst]:
             return self.jreply(404, {"error": "no such printer (the main printer is set in config.json)"})
         write_json_atomic(os.path.join(self.state, "printers.json"), {"printers": [p for p in lst if p["id"] != pid]})
@@ -1811,15 +1973,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self.logs_export(urllib.parse.urlparse(path).query)
         elif route == "/config/read":
             return self.config_read(urllib.parse.urlparse(path).query)
-        elif route in ("/", "/index.html"):
+        elif route in ("/", "/index.html", "/touch", "/touch/"):     # /touch: the same page, laid out for a printer's touchscreen
             with open(os.path.join(self.root, "index.html"), "rb") as f:
                 return self.reply(200, "text/html; charset=utf-8", f.read())
         elif route == "/manifest.webmanifest":              # makes the page installable as an app (Chrome / Android "Install app")
             return self.reply(200, "application/manifest+json", json.dumps(PWA_MANIFEST).encode(), {"Cache-Control": "no-cache"})
         elif route == "/sw.js":
             return self.reply(200, "text/javascript; charset=utf-8", PWA_SW.encode(), {"Cache-Control": "no-cache"})
-        elif route in ("/printer/objects/query", "/printer/objects/list", "/server/gcode_store", "/server/files/metadata",
-                     "/server/history/list", "/server/history/totals", "/server/spoolman/status"):            # job history (read-only)
+        elif route in ("/printer/objects/query", "/printer/objects/list", "/printer/info", "/server/gcode_store", "/server/files/metadata",
+                     "/server/history/list", "/server/history/totals", "/server/spoolman/status"):            # status, Klipper's state, job history (read-only)
             url = "http://%s:7125%s" % (self.printer, path)
         elif (re.fullmatch(r"/server/files/gcodes/(?:%s/)*\.thumbs/%s\.png" % (THUMB_SEG, THUMB_SEG), urllib.parse.unquote(route))
               and not any(s in (".", "..") for s in urllib.parse.unquote(route).split("/"))):      # no stepping out of the gcodes folder
@@ -1933,6 +2095,7 @@ def main():
     ap.add_argument("--bind", default="0.0.0.0", help="address to listen on (127.0.0.1 = this machine only, e.g. behind a reverse proxy)")
     ap.add_argument("--printer", help="Moonraker host (overrides config.json)")
     ap.add_argument("--spoolman", help="Spoolman host:port (overrides config.json)")
+    ap.add_argument("--printers", help="more printers besides the main one, \"host, Name=host, ...\" (overrides \"printers\" in config.json)")
     ap.add_argument("--root", default="/opt/feedline", help="folder holding index.html and graphics/")
     ap.add_argument("--config", help="admin config file (default: <root>/config.json)")
     ap.add_argument("--state", default="/var/lib/feedline", help="writable folder for settings.json, custom graphics and config backups")
@@ -1946,6 +2109,9 @@ def main():
     if not Handler.printer:
         ap.error("no printer: set \"printer\" in config.json or pass --printer HOST")
     Handler.cfg, Handler.root, Handler.state = cfg, a.root, a.state
+    Handler.fixed_printers = parse_printers(a.printers if a.printers is not None else cfg.get("printers"), Handler.printer)
+    for p in Handler.fixed_printers:
+        logging.info("printer %s: %s (%s), set in config", p["id"], p["name"], p["host"])
     Handler.backups = os.path.join(a.state, "backups")
     if cfg.get("events", True):
         threading.Thread(target=watch_printers, daemon=True).start()

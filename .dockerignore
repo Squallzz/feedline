@@ -1,0 +1,7 @@
+*
+!feedline.html
+!feedline_server.py
+!graphics/
+!tools/spoolman_autoadd.py
+!config.example.json
+!docker-entrypoint.sh

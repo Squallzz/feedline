@@ -7,10 +7,10 @@ Works with any Klipper + Moonraker printer; ships with a drawn Snapmaker U1 view
 
 | 🚀 Get started | 🧩 Connect things | 🖥️ Using it | 📚 Reference |
 | --- | --- | --- | --- |
-| [Install (Linux)](#install-linux-about-two-minutes) | [🧵 Spoolman](#spoolman-on-the-snapmaker-u1) | [Settings tab](#settings-tab) | [config.json options](#configjson-admin-only-edited-on-the-server) |
+| [Install (Linux)](#install-linux-about-two-minutes) · [🐳 Docker](#install-with-docker) | [🧵 Spoolman](#spoolman-on-the-snapmaker-u1) | [Settings tab](#settings-tab) | [config.json options](#configjson-admin-only-edited-on-the-server) |
 | [Where to run it](#where-to-run-it) | [Spoolman auto-add helper](#auto-add-helper-optional) | [Filament systems](#filament-systems) | [Run by hand](#run) |
 | [📱 Android app](#android-app-apk) | [🏠 Home Assistant](#home-assistant) | [Print tuning](#print-tuning) | [Security](SECURITY.md) |
-| [Install as an app (PWA)](#install-as-an-app-android-iphone-desktop) | [📺 Remote touchscreen](#remote-touchscreen-snapmaker-u1-with-the-paxx-firmware) | [Tune tab: bed mesh](#tune-tab-bed-mesh) | [Tests](#tests) |
+| [Install as an app (PWA)](#install-as-an-app-android-iphone-desktop) · [👆 Touchscreen at the printer](#touchscreen-at-the-printer-touch) | [📺 Remote touchscreen](#remote-touchscreen-snapmaker-u1-with-the-paxx-firmware) | [Tune tab: bed mesh](#tune-tab-bed-mesh) | [Tests](#tests) |
 | | | [Console](#console) · [Macros](#macros-tab) | [Not covered](#not-covered) |
 
 **Features at a glance**
@@ -116,6 +116,7 @@ Feedline is one small Python process (it used about 20 MB of memory on the test 
 | **A small VM or LXC container** (Proxmox, ESXi, Hyper-V, a cloud-free home server) | Recommended. Debian or Ubuntu, 1 vCPU and a few hundred MB of RAM is plenty. Isolated from the printer, easy to snapshot, and a good place to run Spoolman and the auto-add helper too. This is how it was developed and tested. |
 | **The machine that already runs Spoolman** | Same idea without a new VM: install it next to Spoolman. Then Spoolman's address is simply `127.0.0.1:7912`. |
 | **A Raspberry Pi or other always-on Linux box** | Fine, including the Pi that runs Klipper and Moonraker for a non-Snapmaker printer. Not tested on every board, but it needs only Python 3.8+ and systemd. |
+| **Any machine that already runs Docker** (NAS, home server, Unraid, Portainer) | Fine: see [Install with Docker](#install-with-docker). The container needs the same network access as below. |
 | **A Windows or Mac PC** | Works for trying it out (`python feedline_server.py ...`, see Run), but `install.sh` and the service file are Linux only, and the dashboard is down whenever the PC sleeps. |
 | **On the printer itself** | Not recommended. On the Snapmaker U1 the system is rebuilt on every boot, so an install would not survive without changing how the printer boots, memory is tight (about 500 MB free when idle), and a firmware update can wipe it. On a Klipper Pi it is fine (see above). |
 
@@ -178,6 +179,17 @@ Notes:
 
 <sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
+## Touchscreen at the printer (`/touch`)
+
+`http://<feedline>/touch` is the same dashboard laid out for a small touchscreen next to the printer, in place of KlipperScreen. Add `?p=<id>` for a printer other than the main one, for example `/touch?p=qidi2`.
+
+- A status bar with the temperatures (tap one to set its target), Pause / Cancel and Emergency stop, and big section buttons on the left: Status (print card with thumbnail and progress, print details, all temperatures), Filament, Move, Tune (print tuning and fans), Macros and Console.
+- Made for 1024×600 and up. Nothing needs hover or a keyboard: number fields bring up a number pad on the screen.
+- The camera and the drawn printer are left out, and the screen updates every 4 seconds (every 2 on the normal page), to keep the load low on the small computer that drives the screen. A button press still updates at once.
+- Any browser in kiosk mode works. On a Raspberry Pi, [Cog](https://github.com/Igalia/cog) (WPE WebKit) is light and needs no desktop: `cog --platform=drm --platform-params=renderer=gles http://<feedline>/touch`, run as a user in the `video`, `render` and `input` groups (with KlipperScreen and any desktop stopped, so Cog can take the screen).
+
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
+
 ## Install as an app (Android, iPhone, desktop)
 
 Feedline is an installable web app (PWA), so it gets its own icon and a full-screen window with no browser bar:
@@ -226,6 +238,49 @@ add it to `allowed_hosts`. A blank printer page means Moonraker is unreachable f
 
 <sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 
+## Install with Docker
+
+Another way to run it, instead of `install.sh` (pick one, not both: they both use port 8081). Nothing to clone: the image is
+`ghcr.io/squallzz/feedline` and runs on amd64, arm64 and 32-bit ARM (Raspberry Pi). Put your printer's address in place of `PRINTER_ADDRESS`:
+
+    docker run -d --name feedline --restart unless-stopped -p 8081:8081 \
+      -e FEEDLINE_PRINTER=PRINTER_ADDRESS -v feedline-data:/data ghcr.io/squallzz/feedline
+
+Then open `http://<this machine's address>:8081/`. Or with Docker Compose: download [`compose.yaml`](compose.yaml), set
+`FEEDLINE_PRINTER` in it (or in a `.env` file next to it), and run `docker compose up -d`.
+
+| Environment variable | Meaning |
+| --- | --- |
+| `FEEDLINE_PRINTER` | Printer IP or host name, where Moonraker runs (port 7125). Required unless `config.json` sets `printer`. |
+| `FEEDLINE_PRINTERS` | Optional, more printers besides the main one, comma-separated: `voron.lan, Second QIDI=192.168.1.51` (`Name=` is optional). They show on the Printers page like ones added in Settings, but can only be removed here. |
+| `FEEDLINE_SPOOLMAN` | Optional Spoolman address, e.g. `192.168.1.20:7912`. |
+| `FEEDLINE_PORT` | Port inside the container (default 8081). To change the outside port, change `-p` instead. |
+| `FEEDLINE_CA_CERTS` | Optional extra certificate authorities to trust: file paths inside the container (comma-separated), or the PEM text itself. See below. |
+
+**Your own certificate authority.** If a camera, Spoolman or printer is served over `https://` with a certificate from your own
+(home or company) CA, the container has to trust that CA or those connections fail (a blank camera, for example). Mount the
+CA certificates into `/certs` (every `.crt`, `.pem` and `.cer` file there is used), or pass them in `FEEDLINE_CA_CERTS`:
+
+    docker run ... -v /path/to/ca-folder:/certs:ro ...                       # or
+    docker run ... -e FEEDLINE_CA_CERTS="$(cat home-root.crt)" ...
+
+They are added to the system CAs, not used instead of them. The log says `trusting N extra CA certificate(s)` at startup; a
+file without a valid certificate stops the container with a message rather than failing later. Only add CAs you trust.
+
+The `/data` volume holds what `/var/lib/feedline` holds in the Linux install (UI settings, uploaded graphics, added printers, config backups),
+plus an optional `config.json` for the other [config.json options](#configjson-admin-only-edited-on-the-server). To add one, start from the example in the image:
+
+    docker cp feedline:/app/config.example.json config.json      # edit it, then:
+    docker cp config.json feedline:/data/config.json && docker restart feedline
+
+The Spoolman [auto-add helper](#auto-add-helper-optional) runs from the same image: `docker compose --profile autoadd up -d`,
+or `docker run` as above with `--name feedline-autoadd` and `autoadd` added after the image name.
+
+Update: `docker pull ghcr.io/squallzz/feedline`, then remove and re-create the container (`docker compose pull && docker compose up -d` with Compose).
+The `/data` volume is kept. Logs: `docker logs feedline`. Build it yourself from a clone with `docker build -t feedline .`
+
+<sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
+
 ## Run
 
     python3 feedline_server.py --port 8081 --root /opt/feedline --state /var/lib/feedline [--bind 127.0.0.1]
@@ -242,6 +297,7 @@ See `config.example.json`. Only `printer` is required. Anything the browser coul
 | key | meaning |
 | --- | --- |
 | `printer` | Moonraker host (port 7125) |
+| `printers` | optional, more printers besides `printer`, e.g. `["voron.lan", {"name": "Second QIDI", "host": "192.168.1.51", "provider": "auto"}]`. They show on the Printers page like ones added in Settings > Printers, but cannot be removed there. `--printers "voron.lan, Second QIDI=192.168.1.51"` (or `FEEDLINE_PRINTERS` in Docker) overrides it |
 | `name` | header text (can also be changed in Settings) |
 | `allowed_hosts` | extra Host names the server answers to (anti DNS-rebinding). IP addresses, single-label names and `.local/.lan/.home.arpa/.internal/.ts.net` always work |
 | `allow_embed` | optional; normally use Settings > Home Assistant and other pages. `true` lets another site show the page in a frame (e.g. a Home Assistant card); default refuses framing |
@@ -320,6 +376,8 @@ The **Tune** tab shows the loaded bed mesh as a heatmap and a 3D surface. **Cali
 
 ## Console
 
+When Klipper is not ready (it could not start, for example because a microcontroller does not answer, or it shut down after an emergency stop), every page, including the touch view, shows what Klipper reports with **Restart**, **Firmware restart** and the Klipper and Moonraker logs, as Fluidd and Mainsail do. It goes away by itself once Klipper is ready again.
+
 The **Console** tab shows the printer's G-code log live and has an input box at the bottom: type one line of G-code (for example `M115`, `G28`, `SET_PIN PIN=led VALUE=1` or a macro name) and press Enter. Up and Down bring back earlier lines. Klipper's answer, including errors, shows up in the log. It works while a print is running too, so be careful with moves. Anything Klipper accepts is allowed except `RESTART`, `FIRMWARE_RESTART`, `SAVE_CONFIG`, `M112` (emergency stop), `SHUTDOWN`, firmware and flash commands, and `RUN_SHELL_COMMAND`; use the printer's own screen for those. The two restarts have their own buttons instead, **Restart Klipper** and **Firmware restart**, at the top of the Console tab and of the [Files tab](#settings-tab) (handy after editing `printer.cfg`). They ask first and refuse while a print is running or paused. Lines are limited to 500 characters and one command at a time. See [SECURITY.md](SECURITY.md): there is no login, so anyone who can open the page can send G-code.
 
 <sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
@@ -335,6 +393,8 @@ Lists every user-facing macro (names not starting with `_`) with its description
     python -m unittest discover -s tests -v
 
 `tests/test_server.py` covers the server's decisions that need no printer: model detection, filament-system detection, the command each tool button builds, print-tuning limits, heater caps, macro parameters, and the path and address checks. Standard library only; printer answers are faked and nothing opens a network connection. The page has no automated tests.
+
+**Icons** are [Lucide](https://lucide.dev) (ISC licence; the icons that come from Feather are MIT), kept inside `feedline.html` as one small inline sprite, so the page needs no internet and stays a single file. Only the icons Feedline uses are included. To add one, put its name in `NAMES` in `tools/build_icons.py`, unpack the `lucide-static` npm package (`npm pack lucide-static@<version>`, then `tar -xzf` it) and run `python3 tools/build_icons.py package`. In the page, `ico("name")` draws an icon.
 
 <sub>[⬆ Back to top](#feedline-a-klipper-printer-dashboard) · [Jump to](#jump-to)</sub>
 

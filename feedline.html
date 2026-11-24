@@ -10,10 +10,23 @@
 <link rel="apple-touch-icon" href="/graphics/feedline-192.png">
 <style>
   :root{--bg:#0A0814;--card:#13112A;--edge:#352F6B;--text:#DEDCFA;--muted:#A29EDB;--sub:#8985C4;
-        --violet:#7A63F2;--blue:#3B82F6;--good:#4ADE80;--warn:#E8B04F;--bad:#F0577A;color-scheme:dark;accent-color:#7A63F2}
+        --violet:#7A63F2;--blue:#3B82F6;--good:#4ADE80;--warn:#E8B04F;--bad:#F0577A;color-scheme:dark;accent-color:#7A63F2;
+        /* vertical rhythm, used everywhere a block is spaced from the next: change these, not individual margins */
+        --gap-section:16px;     /* between sections and cards (columns, views, stacked cards) */
+        --gap-title:10px}       /* from a section's title to its content */
+  /* section titles on Home ("Print", "Print tuning", "Console", "Fan speeds", "Temperatures") share one style */
+  #layout section > h2{font-size:15px;font-weight:600;margin:0 0 var(--gap-title);color:var(--muted)}
   /* global: keyboard focus ring, disabled look, file-picker button that matches the app buttons */
   :is(button,select,input,textarea,a,[role=button],[tabindex]):focus-visible{outline:2px solid #9580FF;outline-offset:2px}
   button:disabled,input:disabled,select:disabled{opacity:.45;cursor:not-allowed}
+  /* icons (Lucide, from the inline sprite #icons: ico("name") in script). They take the text's color and size; in a button
+     with a label they sit just before it. */
+  svg.i{display:inline-block;width:1.2em;height:1.2em;margin:0;vertical-align:-.24em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  /* the sprite itself takes no room and no taps: WPE WebKit (the touchscreen's browser) still hit-tests the symbols of a
+     0x0 svg, so it took taps meant for whatever sits at the page's top left (the touch view's Status button) */
+  #icons{position:absolute;top:0;left:0;width:0;height:0;overflow:hidden;pointer-events:none}
+  :is(button,a) svg{pointer-events:none}          /* a tap or click on a button's icon is the button's */
+  :is(button,a) > svg.i{margin-right:.42em} :is(#tgtx,#tnum button) > svg.i{margin:0}      /* the label is a text node, so :only-child cannot tell icon-only buttons */
   input[type=file]::file-selector-button{background:#1f1b45;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:6px 12px;margin-right:10px;font:inherit;cursor:pointer}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 "Segoe UI",system-ui,sans-serif}
@@ -21,12 +34,12 @@
   h1{font-size:20px;margin:0;font-weight:600}
   .pill{padding:3px 12px;border-radius:999px;font-size:12px;background:#1D1A42;border:1px solid var(--edge);color:var(--muted)}
   .pill.on{color:var(--good);border-color:#2c6b48}
-  #afcbar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px} #afcbar[hidden]{display:none} #afcbar .pill{display:inline-flex;align-items:center;gap:6px} #afcbar .pill i{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor} #afcbar .pill.dim i{opacity:.35;box-shadow:none}
+  #afcbar{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 var(--gap-title)} #afcbar[hidden]{display:none} #afcbar .pill{display:inline-flex;align-items:center;gap:6px} #afcbar .pill i{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor} #afcbar .pill.dim i{opacity:.35;box-shadow:none}
   .pill.off{color:var(--bad);border-color:#7a2c40}
   #job{flex:1;min-width:200px;color:var(--muted);font-size:13px}
-  #layout{display:flex;flex-wrap:wrap;align-items:flex-start;gap:18px;max-width:1800px;margin:0 auto;padding:16px 24px 18px}
-  #colL{flex:0 0 clamp(585px,38vw,860px);min-width:0;display:flex;flex-direction:column;gap:14px}
-  #colR{flex:1 1 620px;min-width:0;display:flex;flex-direction:column;gap:18px}
+  #layout{display:flex;flex-wrap:wrap;align-items:flex-start;gap:var(--gap-section) 18px;max-width:1800px;margin:0 auto;padding:16px 24px 18px}
+  #colL{flex:0 0 clamp(585px,38vw,860px);min-width:0;display:flex;flex-direction:column;gap:var(--gap-section)}
+  #colR{flex:1 1 620px;min-width:0;display:flex;flex-direction:column;gap:var(--gap-section)}
   @media (max-width:1180px){#colL,#colR{flex:1 1 100%}}
   main{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
   /* Front view of the printer; each card sits under its toolhead's real dock position (X = 35, 102.7, 170.2, 237.7 mm) */
@@ -86,6 +99,8 @@
   #stage .tool{margin:0}
   #stage.u1layout .tool{margin:0 5px}
   .slotsvg{width:100%;height:auto;display:block}
+  .slotsvg.afcspool{width:auto;max-width:100%;height:clamp(84px,11vw,124px);margin:4px auto 6px}   /* the spool keeps its shape and leaves room for the text under it */
+  .tn small{font-size:11px;font-weight:500;color:var(--sub);margin-left:6px}
   #pname.vh{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0} /* the drop-down already shows the name; keep the h1 for screen readers */
   #psel{background:#14122b;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:5px 8px;font:inherit;font-size:14px;margin-left:10px}
   .stool{transition:transform 1.8s linear}
@@ -111,15 +126,15 @@
   .stats .sw{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px;border:1px solid #fff4}
   #notice:not(:empty){padding:3px 12px;border-radius:999px;font-size:12px;background:#1D1A42;border:1px solid var(--edge);color:var(--muted)}
   #notice.on{color:var(--good);border-color:#2c6b48} #notice.off{color:var(--bad);border-color:#7a2c40}
-  .acts{display:grid;grid-template-columns:repeat(auto-fit,minmax(44px,1fr));gap:5px;margin-top:9px}      /* two, three or four buttons share one row when they fit */
+  .acts{display:grid;grid-template-columns:repeat(auto-fit,minmax(38px,1fr));gap:5px;margin-top:9px}      /* two, three or four buttons share one row when they fit */
   .acts button{background:#1D1A42;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:4px 0;font:inherit;font-size:11px;cursor:pointer}
   .acts button:hover:not(:disabled){border-color:var(--violet);background:#2a2560}
+  .acts button{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px} .acts button > svg.i{margin:0}      /* narrow: icon above the label */
   .acts button:disabled{opacity:.35;cursor:not-allowed}
   .acts button.rfid{grid-column:1/-1;opacity:.85}      /* U1 "Re-read tag" gets its own full-width row under Load / Unload / Park / Pickup */
   .acts button.rfid:disabled{opacity:.6;cursor:default}
   .glow{animation:pulse 1.6s ease-in-out infinite}
   @keyframes pulse{50%{opacity:.45}}
-  #temps h2,#fans h2,#con h2{font-size:15px;font-weight:600;margin:0 0 10px;color:var(--muted)}
   #fgrid{background:var(--card);border:1px solid var(--edge);border-radius:20px;padding:12px;
          display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px}
   .f{background:#0f0d24;border:1px solid #231f4a;border-radius:12px;padding:8px 9px}
@@ -197,25 +212,24 @@
   #tgtpop input{width:80px;background:#0a0818;border:1px solid #352F6B;border-radius:8px;color:#fff;font:inherit;font-size:16px;padding:5px 8px}
   #tgtpop button{background:#1D1A42;border:1px solid #352F6B;color:#e8e6ff;border-radius:8px;padding:5px 10px;cursor:pointer;font:inherit;font-size:13px}
   #tgtpop button.go{background:#7A63F2;border-color:#7A63F2;color:#fff}
-  #sideR{position:absolute;left:calc(80.5% + 6px);top:16%;width:max-content;display:flex;flex-direction:column;gap:16px}
+  #sideR{position:absolute;left:calc(80.5% + 6px);top:16%;width:max-content;display:flex;flex-direction:column;gap:var(--gap-section)}
   #sideR #fans{width:auto}
   #sideR #fgrid{grid-template-columns:repeat(2,minmax(100px,1fr));gap:10px 14px;border-radius:14px;padding:12px 14px}
   #sideR .f{background:none;border:0;padding:0}
   #mid #stage{margin:0 0 0 max(-100px,calc((100% - 855px) / 2 - 100px));pointer-events:none}
   #stage .tool,#stage #scene *,#sideR,#spmodal,#scrmodal,#tgtpop{pointer-events:auto}
-  @container (max-width:845px){#sideR{position:static;width:auto;margin-top:10px}#sceneWrap #temps,#sceneWrap #fans{position:static;width:auto;max-width:none;margin-top:10px}
+  /* #temps sits inside #sideR, which carries the gap; a margin on #temps as well would double it */
+  @container (max-width:845px){#sideR{position:static;width:auto;margin-top:var(--gap-section)}#sceneWrap #temps,#sceneWrap #fans{position:static;width:auto;max-width:none;margin-top:0}
     #mid #stage{margin:0 auto}}
   /* picture-based layouts (generic printer, AFC) are not shifted over the left column and keep temps/fans below the picture */
   #mid #stage:not(.u1layout){margin:0 auto}
-  #stage:not(.u1layout) #sideR{position:static;width:auto;margin-top:10px}
-  #stage:not(.u1layout) #sceneWrap #temps,#stage:not(.u1layout) #sceneWrap #fans{position:static;width:auto;max-width:none;margin-top:10px}
-  #pinfo h2{font-size:15px;font-weight:600;margin:0 0 10px;color:var(--muted)}
+  #stage:not(.u1layout) #sideR{position:static;width:auto;margin-top:var(--gap-section)}
+  #stage:not(.u1layout) #sceneWrap #temps,#stage:not(.u1layout) #sceneWrap #fans{position:static;width:auto;max-width:none;margin-top:0}
   #pgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px 12px;background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:8px 12px}
   #pgrid .p{min-width:0} #pgrid .p .k{font-size:11px;color:var(--sub)} #pgrid .p .v{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #pgrid .p .s{font-size:10.5px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:13px}
   #pgrid .wide{grid-column:span 2}
   /* Print tuning: one row per setting */
-  #ptune{margin-top:14px} #ptune h2{font-size:15px;font-weight:600;margin:0 0 10px;color:var(--muted)}
   .ptbox{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:10px 12px;display:flex;flex-direction:column;gap:10px}
   .ptrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px} .ptrow .k{color:var(--sub);font-size:12px;min-width:64px}
   .ptrow b{font-weight:600;min-width:58px;font-variant-numeric:tabular-nums} .ptrow input[type=range]{flex:1 1 120px;min-width:100px}
@@ -244,6 +258,8 @@
   [hidden]{display:none !important}
   /* the camera picture sits centred in #camview, which takes the picture's shape as shown (after any quarter turn) */
   #camview{position:relative;width:100%;aspect-ratio:16/9;margin:0 auto;overflow:hidden;background:#07060f;border-radius:12px}
+  #camview.off > *{visibility:hidden}
+  #camview.off::after{content:attr(data-msg);position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;text-align:center;color:var(--sub);font-size:13px}
   #camview > *{position:absolute;top:50%;left:50%;width:100%;height:100%;border:0;display:block;object-fit:contain;transform:translate(-50%,-50%)}
   #cam button.badge{background:#1f1b45;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:4px 12px;cursor:pointer;font:inherit;font-size:12px;margin-right:8px} /* the mode toggle is a button; #camstat stays a plain badge */
   #cam button.badge:hover{border-color:#9580FF}
@@ -256,13 +272,13 @@
   #nav button:hover{color:var(--text);background:#17143a}
   #nav button.on{color:#fff;background:#2a2360;box-shadow:inset 3px 0 0 #7A63F2}
   body{padding-left:60px}
-  #layout{padding:16px 6px 18px 8px;gap:8px}
+  #layout{padding:16px 6px 18px 8px;column-gap:8px}
   #colL{flex-basis:clamp(550px,36vw,860px)}
   /* Phone: flatten both columns (display:contents) so every Home block is a direct flex item of #layout and can be ordered freely:
      camera, print info, status + filament cards + drawing, temperatures, move controls, fans, console.
      Without a box #colR is no longer the size container, so the container-query rules (2 columns, drawing hidden) stop applying; the 2-column cards are set here. */
   @media (max-width:700px){
-    #layout{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:14px}
+    #layout{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:var(--gap-section)}
     #colL,#colR,#mid,#stage,#sceneWrap,#sideR,#cam{display:contents}
     #cam .box{order:1;background:var(--card);border:1px solid var(--edge);border-radius:20px;padding:14px}
     #pinfo,#ptune{order:2} #afcbar{order:3;margin:0} #grid{order:4} #scene{order:5;flex:none} #temps{order:6}
@@ -278,14 +294,14 @@
     .acts button{min-height:38px;padding:6px 0}
   }
   .view{padding:16px 24px 30px;max-width:1300px;margin:0 auto}
-  .view h2{font-size:18px;font-weight:600;margin:0 0 14px}
-  .sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px}
+  .view h2{font-size:18px;font-weight:600;margin:0 0 var(--gap-title)}
+  .sgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:var(--gap-section)}
   .stat{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:14px 16px}
   .stat .k{font-size:12px;color:var(--muted)} .stat .n{font-size:26px;font-weight:600;margin-top:4px} .stat .s{font-size:12px;color:var(--sub);margin-top:2px}
-  .vcard{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:14px 16px;margin-bottom:16px}
-  .vcard h3{margin:0 0 10px;font-size:14px;font-weight:600;color:var(--muted)}
+  .vcard{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:14px 16px;margin-bottom:var(--gap-section)}
+  .vcard h3{margin:0 0 var(--gap-title);font-size:14px;font-weight:600;color:var(--muted)}
   /* Printers overview: one card per printer */
-  #ovgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+  #ovgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--gap-section)}
   .ovcard{background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:12px;cursor:pointer;display:flex;flex-direction:column;gap:10px;text-align:left;color:var(--text);font:inherit}
   .ovcard:hover,.ovcard:focus-visible{border-color:#9580FF;outline:none} .ovcard.here{box-shadow:inset 0 0 0 1px #7A63F2}
   .ovcard.off{opacity:.6}
@@ -299,22 +315,34 @@
   .ovbar{height:7px;background:#0a0818;border-radius:4px;overflow:hidden} .ovbar i{display:block;height:100%;background:#7A63F2;border-radius:4px}
   .ovrow{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--muted)} .ovrow b{color:var(--text);font-weight:600}
   .ovsub{font-size:11.5px;color:var(--sub)} .ovnote{font-size:12px;color:var(--sub);margin-top:14px} .ovbody{display:flex;flex-direction:column;gap:7px}
+  .ovfils{display:flex;flex-wrap:wrap;gap:5px}
+  .ovfil{display:inline-flex;align-items:center;gap:5px;max-width:100%;padding:2px 8px 2px 5px;border-radius:999px;background:#1D1A42;border:1px solid var(--edge);font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ovfil i{flex:none;width:11px;height:11px;border-radius:50%;border:1px solid #0006;background:#808080} .ovfil b{color:var(--text);font-weight:600}
+  .ovfil.empty{opacity:.55} .ovfil.empty i{background:transparent;border:1px dashed var(--sub)} .ovfil.on{border-color:#7A63F2;color:var(--text);box-shadow:inset 0 0 0 1px #7A63F2}
+  .ovctl{display:flex;gap:6px} .ovctl button{flex:1;padding:5px 8px;border-radius:8px;border:1px solid var(--edge);background:#1D1A42;color:var(--text);font:inherit;font-size:12.5px;cursor:pointer}
+  .ovctl button:hover{border-color:#9580FF} .ovctl button.danger{color:var(--bad);border-color:#7a2c40} .ovctl button:disabled{opacity:.5;cursor:default}
   .jobtbl{width:100%;border-collapse:collapse}
   .jobtbl th{font-size:12px;font-weight:500;color:var(--sub);text-align:left;padding:6px 10px;border-bottom:1px solid #231f4a}
   .jobtbl td{padding:8px 10px;border-bottom:1px solid #1a1740;vertical-align:middle;white-space:nowrap}      /* dates and times stay on one line; only the file name gives way */
   .jobtbl th{white-space:nowrap}
   .jobtbl tr:hover td{background:#17143a}
+  .jobtbl .jsub{display:none}
+  @media (max-width:700px){      /* phones: file and status only; when it started and how long it took go under the file name */
+    .jobtbl .jx{display:none}
+    .jobtbl .jsub{display:block;font-size:11.5px;color:var(--sub);margin-top:4px} .jobtbl .jsub .st{font-size:10.5px;padding:1px 8px;margin-right:4px}
+    .jobtbl td.fn{min-width:0;white-space:normal;overflow-wrap:anywhere}
+  }
   .jobtbl img{width:44px;height:44px;border-radius:8px;background:#07060f;object-fit:contain;display:block}
   .jobtbl .fn{width:100%;max-width:0;min-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}   /* max-width:0 + width:100% = take the free width, truncate only when the table is narrow */
   .st{white-space:nowrap;display:inline-block;padding:2px 10px;border-radius:999px;font-size:11.5px;border:1px solid var(--edge);color:var(--muted)}
-  .st.completed{color:var(--good);border-color:#2c6b48} .st.cancelled,.st.interrupted,.st.klippy_shutdown,.st.klippy_disconnect,.st.error{color:var(--bad);border-color:#7a2c40} .st.in_progress{color:var(--warn);border-color:#7a5f2c}
+  .st.completed{color:var(--good);border-color:#2c6b48} .st.cancelled,.st.interrupted,.st.klippy_shutdown,.st.klippy_disconnect,.st.error{color:var(--bad);border-color:#7a2c40} .st.in_progress,.st.printing,.st.paused{color:var(--warn);border-color:#7a5f2c}
   .chip{display:inline-flex;align-items:center;gap:5px;margin:2px 6px 2px 0;padding:2px 9px 2px 6px;border-radius:999px;background:#1D1A42;border:1px solid var(--edge);color:var(--text);font:inherit;font-size:12px;cursor:pointer}
   .chip:hover{border-color:#9580FF;background:#2a2360} .chip i{width:11px;height:11px;border-radius:50%;border:1px solid #0006;display:block}
   .dots{display:inline-flex;gap:3px;vertical-align:middle} .dots i{width:11px;height:11px;border-radius:50%;border:1px solid #0006;display:block}
   .seg{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
   .seg button{background:#1D1A42;border:1px solid var(--edge);color:var(--muted);border-radius:999px;padding:4px 14px;cursor:pointer;font:inherit;font-size:12.5px}
   .seg button.on{background:#7A63F2;border-color:#7A63F2;color:#fff}
-  #fconlog{margin:0;height:calc(100vh - 150px);min-height:300px;overflow:auto;background:#07060f;border:1px solid var(--edge);border-radius:12px;padding:10px 14px;font:12.5px/1.5 Consolas,"Cascadia Mono",monospace;color:#c9c6f0;white-space:pre-wrap;word-break:break-word}
+  #fconlog{margin:0;height:calc(100vh - 255px);   /* leaves room for the title row above and the Send box below, so the page does not scroll */min-height:300px;overflow:auto;background:#07060f;border:1px solid var(--edge);border-radius:12px;padding:10px 14px;font:12.5px/1.5 Consolas,"Cascadia Mono",monospace;color:#c9c6f0;white-space:pre-wrap;word-break:break-word}
   #fconlog .cmd{color:#7fb2ff} #fconlog .err{color:var(--bad)} #fconlog .dim{color:var(--sub)}
   .fwrap{display:flex;gap:14px;align-items:stretch;height:calc(100vh - 170px);min-height:420px}   /* viewport minus header, title row and padding, so only the two panes scroll */
   .fside{flex:0 0 330px;display:flex;flex-direction:column;background:var(--card);border:1px solid var(--edge);border-radius:14px;padding:10px;min-width:0}
@@ -330,6 +358,9 @@
   .fbar .fp{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
   .fbar button{background:#1D1A42;border:1px solid var(--edge);color:var(--text);border-radius:8px;padding:5px 14px;cursor:pointer;font:inherit;font-size:13px}
   button.rst{background:#1D1A42;border:1px solid var(--edge);color:var(--text);border-radius:8px;padding:4px 12px;cursor:pointer;font:inherit;font-size:12.5px} button.rst:hover:not(:disabled){border-color:#e8b04f} button.rst:disabled{opacity:.5;cursor:default}
+  /* buttons that had no style of their own (they showed as grey browser buttons) */
+  #meshcal,#consend{background:#1D1A42;border:1px solid var(--edge);color:var(--text);border-radius:8px;padding:6px 14px;cursor:pointer;font:inherit;font-size:13px}
+  #meshcal:hover:not(:disabled),#consend:hover:not(:disabled){border-color:#9580FF} #consend{background:var(--violet);border-color:var(--violet);color:#fff}
   .fbar button.go{background:#7A63F2;border-color:#7A63F2;color:#fff} .fbar button:disabled{opacity:.4;cursor:default}
   .fedit{flex:1;display:flex;min-height:0;background:#07060f}
   #edgut{margin:0;padding:10px 8px 10px 10px;text-align:right;color:var(--sub);font:12.5px/1.5 Consolas,"Cascadia Mono",monospace;overflow:hidden;user-select:none;border-right:1px solid #1a1740;min-width:44px}
@@ -343,17 +374,17 @@
   #edhl .hn{color:#f0a97a} #edhl .hq{color:#8bd58b} #edhl .hj{color:#c792ea} #edhl .hg{color:#4ade80} #edhl .hb{color:#f0577a}
   .fmsg{padding:30px;color:var(--sub)}
   @media (max-width:900px){.fwrap{flex-direction:column;height:auto}.fside{flex-basis:auto;max-height:300px}.fedit{height:60vh}}
-  .meshrow{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start}
+  .meshrow{display:flex;flex-wrap:wrap;gap:var(--gap-section);align-items:flex-start}
   .meshrow .vcard{flex:1 1 420px;margin-bottom:0}
   .meshrow svg{width:100%;height:auto;display:block}
   .seg-b{text-decoration:none;display:inline-block;background:#1D1A42;border:1px solid var(--edge);color:var(--muted);border-radius:999px;padding:3px 12px;cursor:pointer;font:inherit;font-size:12px}
   .legend{height:10px;border-radius:5px;margin-top:10px;background:linear-gradient(90deg,#3b6fe0,#43b8b0,#4ade80,#e8d44f,#f0577a)}
   .legend + div{display:flex;justify-content:space-between;font-size:11.5px;color:var(--sub);margin-top:3px}
-  @media (max-width:700px){#nav .brand{display:none}#nav{width:100%;height:calc(60px + env(safe-area-inset-bottom,0px));top:auto;bottom:0;right:0;flex-direction:row;justify-content:flex-start;overflow-x:auto;border-right:0;border-top:1px solid #231f4a;padding:4px 4px env(safe-area-inset-bottom,0px)}#nav button{width:auto;flex:0 0 auto;min-width:56px;height:52px;padding:6px 8px;font-size:11px}body{padding-left:0;padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
+  @media (max-width:700px){#nav .brand{display:none}#nav{width:100%;height:calc(60px + env(safe-area-inset-bottom,0px));top:auto;bottom:0;right:0;flex-direction:row;justify-content:flex-start;overflow-x:auto;border-right:0;border-top:1px solid #231f4a;padding:4px 4px env(safe-area-inset-bottom,0px)}#nav button{width:auto;flex:1 1 0;min-width:36px;height:52px;padding:6px 0;font-size:9.5px;white-space:nowrap}#nav button svg{width:20px;height:20px}body{padding-left:0;padding-bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
 
   #v-settings{max-width:900px}
-  #v-settings .vcard{margin-bottom:16px;padding:14px 16px}
-  #v-settings h3{margin:0 0 10px;font-size:15px} #v-settings h4{margin:14px 0 6px;font-size:13px;color:var(--muted)}
+  #v-settings .vcard{margin-bottom:var(--gap-section);padding:14px 16px}
+  #v-settings h3{margin:0 0 var(--gap-title);font-size:15px} #v-settings h4{margin:14px 0 6px;font-size:13px;color:var(--muted)}
   #v-settings .srow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
   #v-settings label{font-size:13px;color:var(--muted)} #v-settings label + select{margin-left:10px}#v-settings .rad{display:inline-flex;gap:4px;align-items:center;margin-right:8px}
   #v-settings input[type=text],#v-settings input:not([type]),#v-settings select{background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:inherit;font-size:13px;padding:6px 10px;min-width:160px}
@@ -379,7 +410,16 @@
   #pkov text{pointer-events:none}
   .badge:empty{display:none}.badge.bad{background:#4a1d28;color:#ff9aa8}
 
-  #v-macros{max-width:1100px} #v-macros .vcard{margin-bottom:16px;padding:14px 16px} #v-macros h3{margin:0 0 10px;font-size:15px}
+  /* Klipper not ready (error, shutdown, starting): what it says, with Restart / Firmware restart and the logs, on every page */
+  #kalert{margin:12px 8px 0;background:#241018;border:1px solid #7a2c40;border-left:4px solid var(--bad);border-radius:14px;padding:14px 16px}
+  #kalert .kh{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:600;color:var(--bad)}
+  #kalert .kh svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+  #kmsg{margin:10px 0 14px;white-space:pre-wrap;word-break:break-word;font:14px/1.5 Consolas,"Cascadia Mono",monospace;color:#ff9aa8;user-select:text;-webkit-user-select:text}
+  #kmsg:empty{display:none}
+  .kbtns{display:flex;flex-wrap:wrap;gap:8px}
+  .kbtns > *{display:inline-flex;align-items:center;justify-content:center;background:#1D1A42;border:1px solid #7a2c40;color:#ff9aa8;border-radius:8px;padding:7px 16px;font:inherit;font-size:13.5px;cursor:pointer;text-decoration:none}
+  .kbtns > :hover:not(:disabled){border-color:var(--bad);color:#fff} .kbtns > :disabled{opacity:.45;cursor:default}
+  #v-macros{max-width:1100px} #v-macros .vcard{margin-bottom:var(--gap-section);padding:14px 16px} #v-macros h3{margin:0 0 var(--gap-title);font-size:15px}
   #v-macros .srow{display:flex;gap:10px;align-items:center;flex-wrap:wrap} #v-macros .sub{font-size:12px;color:var(--sub)} #v-macros code{background:#0a0818;padding:1px 5px;border-radius:4px;font-size:11.5px}
   #v-macros input{background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:inherit;font-size:13px;padding:6px 10px;min-width:0}
   #v-macros button{background:#1f1b45;color:var(--text);border:1px solid var(--edge);border-radius:8px;padding:6px 12px;font:inherit;font-size:13px;cursor:pointer} #v-macros button:hover:not(:disabled){border-color:#9580FF} #v-macros button:disabled{opacity:.45;cursor:not-allowed}
@@ -388,32 +428,228 @@
   .mcard{background:#0e0c22;border:1px solid var(--edge);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}
   .mcard .mh{display:flex;justify-content:space-between;gap:8px;align-items:center} .mcard .mh b{font-size:13px;word-break:break-all}
   .mcard .mp{display:flex;flex-wrap:wrap;gap:6px} .mcard .mp label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:2px;flex:1 1 90px} .mcard .mp input{width:100%}
+
+  /* ---- Touch mode (/touch): a printer touchscreen, KlipperScreen style: a status bar on top, big section buttons on the
+     left, one section at a time, nothing that needs hover or a keyboard, and text sized to be read at arm's length. It has its
+     own markup (#touch, built by the touch script) whose buttons call the same actions (Act) and read the same status feed
+     (Status) as the normal page. A few widgets of the normal page are moved in and used as they are (filament cards, print
+     details, macros, console, the Klipper alert, the target editor, the question dialog); the body.touch rules at the end
+     only make those bigger. ---- */
+  body.touch{padding:0;height:100vh;overflow:hidden;font-size:17px;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+  body.touch input{user-select:text;-webkit-user-select:text}
+  body.touch > :is(#nav,header,#layout,#foot,.view){display:none !important}
+  #touch{display:grid;grid-template:60px minmax(0,1fr) / 96px minmax(0,1fr);height:100vh}
+  #tbar{grid-column:1 / -1;display:flex;align-items:center;gap:10px;padding:0 10px 0 14px;background:#0d0b22;border-bottom:1px solid #231f4a;min-width:0}
+  #tbar h1{font-size:20px;white-space:nowrap}
+  #tbar #conn{font-size:14px} #tbar #conn.on{display:none}
+  #ttemps{display:flex;gap:8px;flex:1;min-width:0;overflow:hidden}
+  #ttemps > span{display:inline-flex;align-items:baseline;gap:6px;padding:7px 13px;border-radius:999px;background:#1D1A42;border:1px solid var(--edge);font-size:17px;white-space:nowrap;text-decoration:none}
+  #ttemps > span small{color:var(--sub);font-size:14px} #ttemps > span.hot{border-color:#6b5320} #ttemps > span.hot b{color:var(--warn)}
+  .tbtn{min-height:46px;padding:8px 18px;border-radius:999px;border:1px solid var(--edge);background:#1D1A42;color:var(--text);font:inherit;font-size:16px;cursor:pointer;white-space:nowrap}
+  .tbtn.danger{color:var(--bad);border-color:#7a2c40} .tbtn.estop{background:#6b1424;color:#fff;border-color:#c2334f;font-weight:600} .tbtn.go{background:var(--violet);border-color:var(--violet);color:#fff}
+  .tbtn:disabled,.kb:disabled{opacity:.35;cursor:not-allowed}
+  #touch #notice:not(:empty){position:fixed;left:calc(50% + 48px);bottom:14px;transform:translateX(-50%);z-index:90;font-size:16px;padding:10px 20px;background:#14122b;box-shadow:0 8px 30px #000a;max-width:80vw}
+  #trail{display:flex;flex-direction:column;background:#0d0b22;border-right:1px solid #231f4a}
+  #trail button{flex:1;border:0;background:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;font:inherit;font-size:14px;cursor:pointer}
+  #trail svg{width:30px;height:30px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  #trail button.on{color:#fff;background:#2a2360;box-shadow:inset 4px 0 0 #7A63F2}
+  #tmain{display:block;overflow:auto;padding:12px 14px}      /* not the card grid every other <main> is */
+  #tmain > .tp{display:flex;flex-direction:column;gap:var(--gap-section)}
+  #tmain h2{font-size:18px;font-weight:600;margin:0 0 var(--gap-title);color:var(--muted)}
+  .tbox{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:14px 16px}
+  /* Status: the print card, a tile per heater (tap to set its target), presets */
+  #tjob{display:flex;gap:16px;align-items:center}
+  #tjimg{width:104px;height:104px;object-fit:contain;border-radius:10px;background:#07060f;flex:none}
+  .tjtxt{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+  .tjst{font-size:27px;font-weight:600} .tjst small{font-size:19px;font-weight:400;color:var(--muted);margin-left:10px}
+  .tjfile{font-size:17px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tjbar{height:12px;background:#0a0818;border-radius:6px;overflow:hidden} .tjbar i{display:block;height:100%;background:var(--violet);border-radius:6px;transition:width .6s}
+  .tjsub{font-size:16px;color:var(--sub)}
+  .theat{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+  .th{background:var(--card);border:1px solid var(--edge);border-radius:16px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;text-decoration:none;color:var(--text);cursor:default}
+  .th.tgt{cursor:pointer} .th .nm{font-size:17px;color:var(--muted)} .th .v{font-size:34px;font-weight:600;font-variant-numeric:tabular-nums} .th .tg{font-size:16px;color:var(--sub)}
+  .th.hot{border-color:#6b5320} .th.hot .v{color:var(--warn)}
+  .th .bar{height:7px;border-radius:4px;background:#1D1A42;overflow:hidden;margin-top:4px} .th .bar i{display:block;height:100%;background:var(--warn)}
+  .tpre{display:flex;gap:10px;flex-wrap:wrap} .tpre .tbtn{flex:1;border-radius:12px;min-height:60px;font-size:17px}
+  /* Move: a direction pad, Z, step size, homing */
+  .tpos{display:flex;gap:24px;align-items:baseline;font-size:26px;font-variant-numeric:tabular-nums;flex-wrap:wrap} .tpos b{color:var(--sub);font-weight:500;margin-right:6px;font-size:18px}
+  .tpos .nh{color:var(--warn);font-size:18px} .tpos .tgt{text-decoration:underline dotted;text-underline-offset:4px;padding:4px 2px}
+  .tnote{font-size:16px;color:var(--warn)} .tnote:empty{display:none}
+  .tmove{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
+  .dpad{display:grid;grid-template-columns:repeat(3,86px);grid-auto-rows:86px;gap:8px} .zpad{display:grid;grid-auto-rows:86px;grid-template-columns:86px;gap:8px}
+  .kb{background:#1D1A42;border:1px solid var(--edge);border-radius:14px;color:var(--text);font:inherit;font-size:24px;font-weight:600;cursor:pointer}
+  .kb.home{font-size:15px;font-weight:500;color:var(--muted)}
+  .kb{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px} .kb > svg.i{width:30px;height:30px;margin:0} .kb.home > svg.i{width:24px;height:24px}
+  .kb span{font-size:17px} .kb.home span{font-size:14px}
+  .tside{flex:1;min-width:220px;display:flex;flex-direction:column;gap:10px} .tside .k{font-size:16px;color:var(--muted)}
+  .tside .tbtn{border-radius:12px;min-height:60px;font-size:18px}
+  .tsteps{display:flex;gap:6px} .tsteps button{flex:1;min-height:56px;background:#1D1A42;border:1px solid var(--edge);border-radius:10px;color:var(--text);font:inherit;font-size:18px;cursor:pointer}
+  .tsteps button.on{background:var(--violet);border-color:var(--violet);color:#fff}
+  /* Tune: steppers instead of sliders and number fields, and a tile per fan */
+  .tunes{display:flex;flex-direction:column;gap:12px}
+  .trow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .trow .k{min-width:170px;font-size:17px;color:var(--muted)}
+  .trow .val{min-width:126px;text-align:center;font-size:26px;font-weight:600;font-variant-numeric:tabular-nums}
+  .trow .tbtn{border-radius:12px;min-height:58px;min-width:92px;font-size:18px} .trow .tsteps{flex:1;max-width:440px}
+  .tfans{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px}
+  .tfan .nm{font-size:17px;color:var(--muted)} .tfan .v{font-size:30px;font-weight:600;font-variant-numeric:tabular-nums}
+  .tfan .row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px} .tfan .row .tbtn{border-radius:10px;padding:8px 0;min-height:56px;font-size:17px}
+  .tfro{display:flex;flex-wrap:wrap;gap:8px} .tfro span{background:#0f0d24;border:1px solid #231f4a;border-radius:999px;padding:7px 14px;font-size:15px;color:var(--muted)} .tfro b{color:var(--text);margin-left:6px}
+  /* normal-page widgets used in touch mode, made bigger */
+  body.touch #pgrid{grid-template-columns:repeat(4,1fr);padding:12px 14px;gap:12px 14px} body.touch #pgrid .p .k{font-size:14px} body.touch #pgrid .p .v{font-size:20px} body.touch #pgrid .p .s{font-size:13px}
+  body.touch #afcbar{margin:0;gap:10px} body.touch #afcbar .pill{font-size:15px;padding:6px 14px}
+  /* filament cards: larger type, a smaller spool picture, and Load / Unload / Eject stacked full width so each is easy to tap */
+  body.touch #grid{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;max-width:none;margin:0;padding:0}
+  body.touch .tool{padding:12px 12px 14px;border-radius:18px}
+  body.touch .tool .tn{font-size:19px} body.touch .tool .tn small{font-size:14px} body.touch .tool .badge{font-size:13px;padding:3px 10px}
+  body.touch .tool .slotsvg.afcspool{height:92px;margin:6px auto 8px}
+  body.touch .tool .mat{font-size:18px} body.touch .tool .brand{font-size:15px;min-height:20px}
+  body.touch .tool .stats{font-size:12.5px;gap:4px;margin-top:10px} body.touch .tool .stats b{font-size:14px}
+  body.touch .acts{grid-template-columns:1fr;gap:8px;margin-top:12px}
+  body.touch .acts button{min-height:58px;font-size:18px;font-weight:600;border-radius:12px;padding:8px 0;flex-direction:row;gap:10px}
+  body.touch #kalert{margin:0 0 var(--gap-section)} body.touch #kalert .kh{font-size:20px} body.touch #kmsg{font-size:16px}
+  body.touch .kbtns > *{flex:1 1 180px;min-height:58px;font-size:17px;border-radius:12px}
+  body.touch #con h2{font-size:18px} body.touch #conlog{height:calc(100vh - 190px);font-size:14.5px}
+  body.touch #v-macros{max-width:none;margin:0;padding:0} body.touch #v-macros h2{font-size:22px}
+  body.touch #v-macros > .vcard:first-of-type,body.touch #macfilter,body.touch #macreload{display:none}
+  body.touch #v-macros .vcard h3{font-size:18px} body.touch #v-macros .sub{font-size:14px}
+  body.touch .mgrid{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+  body.touch .mcard .mh b{font-size:16px} body.touch .mcard .mp label{font-size:14px}
+  body.touch #v-macros button{min-height:52px;padding:8px 22px;font-size:17px} body.touch .mcard .mp input{font-size:18px;padding:10px}
+  body.touch #askmodal .dlg{max-width:600px;padding:24px 26px} body.touch #askmsg{font-size:19px} body.touch #askmodal button{min-height:58px;padding:10px 28px;font-size:18px;min-width:140px}
+  body.touch #tgtpop{left:50% !important;top:50% !important;transform:translate(-50%,-50%);width:340px;padding:16px;z-index:85}
+  body.touch #tgtpop .tt{font-size:18px} body.touch #tgtpop input{flex:1;width:auto;min-width:0;font-size:28px;padding:8px 12px} body.touch #tgtunit{font-size:20px;color:var(--muted)}
+  body.touch #tgtpop button{flex:1;min-height:54px;font-size:18px}
+  body.touch #spmodal .dlg{max-width:560px;font-size:16px} body.touch #spmodal h2{font-size:20px} body.touch #spmodal table{font-size:16px}
+  /* on-screen number pad: inside the target editor, or floating beside any other number field */
+  #tnum{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+  #tnum button{height:56px;font:inherit;font-size:23px;background:#1D1A42;border:1px solid var(--edge);color:var(--text);border-radius:10px;cursor:pointer}
+  #tnum button.go{background:#7A63F2;border-color:#7A63F2;color:#fff;font-size:18px} #tnum button.sm{font-size:16px;color:var(--muted)}
+  #tnum.float{position:fixed;right:14px;top:72px;width:280px;z-index:85;background:#14122b;border:1px solid #352F6B;border-radius:14px;padding:10px;margin:0;box-shadow:0 12px 40px #000c}
 </style>
 </head>
 <body>
+<!-- icons:start (made by tools/build_icons.py from lucide-static 1.71.0, https://lucide.dev: edit NAMES there, not here)
+
+ISC License
+
+Copyright (c) 2026 Lucide Icons and Contributors
+
+Permission to use, copy, modify, and/or distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+- --
+
+The following Lucide icons are derived from the Feather project:
+
+airplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circle, arrow-down-left, arrow-down-right, arrow-down, arrow-left-circle, arrow-left, arrow-right-circle, arrow-right, arrow-up-circle, arrow-up-left, arrow-up-right, arrow-up, at-sign, calendar, cast, check, chevron-down, chevron-left, chevron-right, chevron-up, chevrons-down, chevrons-left, chevrons-right, chevrons-up, circle, clipboard, clock, code, columns, command, compass, corner-down-left, corner-down-right, corner-left-down, corner-left-up, corner-right-down, corner-right-up, corner-up-left, corner-up-right, crosshair, database, divide-circle, divide-square, dollar-sign, download, external-link, feather, frown, hash, headphones, help-circle, info, italic, key, layout, life-buoy, link-2, link, loader, lock, log-in, log-out, maximize, meh, minimize, minimize-2, minus-circle, minus-square, minus, monitor, moon, more-horizontal, more-vertical, move, music, navigation-2, navigation, octagon, pause-circle, percent, plus-circle, plus-square, plus, power, radio, rss, search, server, share, shopping-bag, sidebar, smartphone, smile, square, table-2, tablet, target, terminal, trash-2, trash, triangle, tv, type, upload, x-circle, x-octagon, x-square, x, zoom-in, zoom-out
+
+The MIT License (MIT) (for the icons listed above)
+
+Copyright (c) 2013-present Cole Bemis
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+-->
+<svg id="icons" width="0" height="0" style="position:absolute" aria-hidden="true">
+<symbol id="i-house" viewBox="0 0 24 24"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="i-layout-grid" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></symbol>
+<symbol id="i-list" viewBox="0 0 24 24"><path d="M3 5h.01"/><path d="M3 12h.01"/><path d="M3 19h.01"/><path d="M8 5h13"/><path d="M8 12h13"/><path d="M8 19h13"/></symbol>
+<symbol id="i-chart-column" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></symbol>
+<symbol id="i-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></symbol>
+<symbol id="i-square-terminal" viewBox="0 0 24 24"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+<symbol id="i-zap" viewBox="0 0 24 24"><path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></symbol>
+<symbol id="i-disc-3" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M6 12c0-1.7.7-3.2 1.8-4.2"/><circle cx="12" cy="12" r="2"/><path d="M18 12c0 1.7-.7 3.2-1.8 4.2"/></symbol>
+<symbol id="i-move" viewBox="0 0 24 24"><path d="M12 2v20"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><path d="M2 12h20"/><path d="m5 9-3 3 3 3"/><path d="m9 5 3-3 3 3"/></symbol>
+<symbol id="i-sliders-horizontal" viewBox="0 0 24 24"><path d="M10 5H3"/><path d="M12 19H3"/><path d="M14 3v4"/><path d="M16 17v4"/><path d="M21 12h-9"/><path d="M21 19h-5"/><path d="M21 5h-7"/><path d="M8 10v4"/><path d="M8 12H3"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+<symbol id="i-octagon-x" viewBox="0 0 24 24"><path d="m15 9-6 6"/><path d="M2.586 16.726A2 2 0 0 1 2 15.312V8.688a2 2 0 0 1 .586-1.414l4.688-4.688A2 2 0 0 1 8.688 2h6.624a2 2 0 0 1 1.414.586l4.688 4.688A2 2 0 0 1 22 8.688v6.624a2 2 0 0 1-.586 1.414l-4.688 4.688a2 2 0 0 1-1.414.586H8.688a2 2 0 0 1-1.414-.586z"/><path d="m9 9 6 6"/></symbol>
+<symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></symbol>
+<symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></symbol>
+<symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
+<symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+<symbol id="i-chevrons-up" viewBox="0 0 24 24"><path d="m17 11-5-5-5 5"/><path d="m17 18-5-5-5 5"/></symbol>
+<symbol id="i-chevrons-down" viewBox="0 0 24 24"><path d="m7 6 5 5 5-5"/><path d="m7 13 5 5 5-5"/></symbol>
+<symbol id="i-power-off" viewBox="0 0 24 24"><path d="M18.36 6.64A9 9 0 0 1 20.77 15"/><path d="M6.16 6.16a9 9 0 1 0 12.68 12.68"/><path d="M12 2v4"/><path d="m2 2 20 20"/></symbol>
+<symbol id="i-power" viewBox="0 0 24 24"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></symbol>
+<symbol id="i-arrow-down-to-line" viewBox="0 0 24 24"><path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/></symbol>
+<symbol id="i-arrow-up-from-line" viewBox="0 0 24 24"><path d="m18 9-6-6-6 6"/><path d="M12 3v14"/><path d="M5 21h14"/></symbol>
+<symbol id="i-rotate-ccw" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+<symbol id="i-rotate-cw" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
+<symbol id="i-snowflake" viewBox="0 0 24 24"><path d="m10 20-1.25-2.5L6 18"/><path d="M10 4 8.75 6.5 6 6"/><path d="m14 20 1.25-2.5L18 18"/><path d="m14 4 1.25 2.5L18 6"/><path d="m17 21-3-6h-4"/><path d="m17 3-3 6 1.5 3"/><path d="M2 12h6.5L10 9"/><path d="m20 10-1.5 2 1.5 2"/><path d="M22 12h-6.5L14 15"/><path d="m4 10 1.5 2L4 14"/><path d="m7 21 3-6-1.5-3"/><path d="m7 3 3 6h4"/></symbol>
+<symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 3q1 4 4 6.5t3 5.5a1 1 0 0 1-14 0 5 5 0 0 1 1-3 1 1 0 0 0 5 0c0-2-1.5-3-1.5-5q0-2 2.5-4"/></symbol>
+<symbol id="i-eject" viewBox="0 0 24 24"><path d="M4 13a1 1 0 0 1-.72-1.695l7.257-7.668a2 2 0 0 1 2.926 0l7.256 7.668A1 1 0 0 1 20 13z"/><rect x="3" y="17" width="18" height="4" rx="1"/></symbol>
+<symbol id="i-square-parking" viewBox="0 0 24 24"><path d="M9 12h4a2 2 0 0 0 0-4H9.5a.5.5 0 0 0-.5.5V16"/><rect width="18" height="18" x="3" y="3" rx="2"/></symbol>
+<symbol id="i-hand-grab" viewBox="0 0 24 24"><path d="M18 11.5V9a2 2 0 0 0-2-2a2 2 0 0 0-2 2v1.4"/><path d="M14 10V8a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 9.9V9a2 2 0 0 0-2-2a2 2 0 0 0-2 2v5"/><path d="M6 14a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-4a8 8 0 0 1-8-8 2 2 0 1 1 4 0"/></symbol>
+<symbol id="i-repeat" viewBox="0 0 24 24"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></symbol>
+<symbol id="i-nfc" viewBox="0 0 24 24"><path d="M6 8.32a7.43 7.43 0 0 1 0 7.36"/><path d="M9.46 6.21a11.76 11.76 0 0 1 0 11.58"/><path d="M12.91 4.1a15.91 15.91 0 0 1 .01 15.8"/><path d="M16.37 2a20.16 20.16 0 0 1 0 20"/></symbol>
+<symbol id="i-triangle-alert" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+<symbol id="i-cpu" viewBox="0 0 24 24"><path d="M12 20v2"/><path d="M12 2v2"/><path d="M17 20v2"/><path d="M17 2v2"/><path d="M2 12h2"/><path d="M2 17h2"/><path d="M2 7h2"/><path d="M20 12h2"/><path d="M20 17h2"/><path d="M20 7h2"/><path d="M7 20v2"/><path d="M7 2v2"/><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/></symbol>
+<symbol id="i-download" viewBox="0 0 24 24"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></symbol>
+<symbol id="i-delete" viewBox="0 0 24 24"><path d="M10 5a2 2 0 0 0-1.344.519l-6.328 5.74a1 1 0 0 0 0 1.481l6.328 5.741A2 2 0 0 0 10 19h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="m12 9 6 6"/><path d="m18 9-6 6"/></symbol>
+<symbol id="i-save" viewBox="0 0 24 24"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></symbol>
+<symbol id="i-undo-2" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></symbol>
+<symbol id="i-refresh-cw" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+<symbol id="i-send" viewBox="0 0 24 24"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></symbol>
+</svg>
+<!-- icons:end -->
 <nav id="nav" aria-label="Sections">
   <div class="brand" title="Feedline"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7A63F2" stroke-width="2.6" stroke-linecap="round"><circle cx="5" cy="5" r="2.2" fill="#7A63F2" stroke="none"/><path d="M6.8 7l10 10" stroke-dasharray="0.1 3.4"/><circle cx="19" cy="19" r="2.2" fill="#E8B04F" stroke="none"/></svg><b>Feedline</b></div>
-  <button data-view="home" class="on" title="Home"><svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></svg>Home</button>
-  <button data-view="printers" id="navprinters" hidden title="All printers at a glance"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/></svg>Printers</button>
-  <button data-view="jobs" title="Previous jobs"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>Jobs</button>
-  <button data-view="history" title="Print statistics"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>History</button>
-  <button data-view="tune" title="Bed mesh"><svg viewBox="0 0 24 24"><path d="M3 9l9-5 9 5-9 5z"/><path d="M3 14l9 5 9-5"/></svg>Tune</button>
-  <button data-view="console" title="Full console"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 10l3 2-3 2M13 15h4"/></svg>Console</button>
-  <button data-view="files" title="Config file browser and editor"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Files</button>
-  <button data-view="macros" id="navmacros" hidden title="Printer macros"><svg viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></svg>Macros</button>
-  <button data-view="settings" id="navsettings" hidden title="Name, graphics and printers"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.7a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.4 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.7a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.5c.1-.4.1-.8.1-1.2z"/></svg>Settings</button>
+  <button data-view="home" class="on" title="Home"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-house"/></svg>Home</button>
+  <button data-view="printers" id="navprinters" hidden title="All printers at a glance"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-layout-grid"/></svg>Printers</button>
+  <button data-view="jobs" title="Previous jobs"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-list"/></svg>Jobs</button>
+  <button data-view="history" title="Print statistics"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chart-column"/></svg>History</button>
+  <button data-view="tune" title="Bed mesh"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-layers"/></svg>Tune</button>
+  <button data-view="console" title="Full console"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-square-terminal"/></svg>Console</button>
+  <button data-view="files" title="Config file browser and editor"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-folder"/></svg>Files</button>
+  <button data-view="macros" id="navmacros" hidden title="Printer macros"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-zap"/></svg>Macros</button>
+  <button data-view="settings" id="navsettings" hidden title="Name, graphics and printers"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-settings"/></svg>Settings</button>
 </nav>
 <header>
   <h1 id="pname">Printer</h1><select id="psel" hidden title="Switch printer"></select>
   <span id="conn" class="pill">Connecting...</span>
   <div id="job"></div>
   <span id="printctl" hidden>
-    <button id="pbtn" data-print="pause">Pause</button>
-    <button id="cbtn" data-print="cancel" class="danger">Cancel print</button>
+    <button id="pbtn" data-print="pause"><svg class="i" aria-hidden="true"><use href="#i-pause"/></svg>Pause</button>
+    <button id="cbtn" data-print="cancel" class="danger"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg>Cancel print</button>
   </span>
-  <span id="estopwrap" hidden><button id="ebtn" data-print="estop" class="danger estop" title="Emergency stop (M112) - always available">Emergency stop</button></span>
+  <span id="estopwrap" hidden><button id="ebtn" data-print="estop" class="danger estop" title="Emergency stop (M112) - always available"><svg class="i" aria-hidden="true"><use href="#i-octagon-x"/></svg>Emergency stop</button></span>
   <span id="notice"></span>
 </header>
+<section id="kalert" role="alert" hidden>
+  <div class="kh"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-triangle-alert"/></svg>Klipper reports: <b id="kstate"></b></div>
+  <pre id="kmsg"></pre>
+  <div class="kbtns"><button type="button" data-krestart="klipper" title="Restart Klipper: reloads printer.cfg and macros"><svg class="i" aria-hidden="true"><use href="#i-rotate-cw"/></svg>Restart</button><button type="button" data-krestart="firmware" title="Firmware restart: also restarts the printer's microcontrollers"><svg class="i" aria-hidden="true"><use href="#i-cpu"/></svg>Firmware restart</button>
+    <a href="/logs/export?name=klippy.log" download title="Current Klipper log"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>Klipper log</a><a href="/logs/export?name=moonraker.log" download title="Current Moonraker log"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>Moonraker log</a></div>
+</section>
 <div id="layout">
 <div id="colL">
 <section id="cam"><div class="box">
@@ -462,7 +698,7 @@
     <main id="grid"></main>
     <div id="tgtpop" hidden role="dialog" aria-label="Set target temperature"><div class="tt"></div>
       <div class="row"><input type="number" id="tgtin" min="0" step="1" inputmode="numeric"><span id="tgtunit">°C</span></div>
-      <div class="row"><button id="tgtset" class="go">Set</button><button id="tgtoff">Off</button><button id="tgtx" aria-label="Cancel">&times;</button></div></div>
+      <div class="row"><button id="tgtset" class="go">Set</button><button id="tgtoff">Off</button><button id="tgtx" aria-label="Cancel"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg></button></div></div>
     <div id="scrmodal" hidden role="dialog" aria-modal="true"><div class="dlg"><div class="hd"><span>Printer touchscreen - live and interactive</span><button data-close aria-label="Close">&times;</button></div><div id="scrwrap"><iframe id="scrframe" title="Printer touchscreen"></iframe></div></div></div>
     <div id="spmodal" hidden role="dialog" aria-modal="true"><div class="dlg"><button class="x" data-close aria-label="Close">&times;</button><div id="spmodal-body"></div></div></div>
     <div id="sceneWrap">
@@ -488,12 +724,12 @@
   <div class="jobsmount" data-limit="10"></div>
 </section>
 <section id="v-files" class="view" hidden style="max-width:none">
-  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px"><h2 style="margin:0">Files - printer config</h2><span class="rstgrp" style="margin-left:auto;display:flex;gap:8px;align-items:center"><button class="rst" data-restart="klipper" title="Restart Klipper: reloads printer.cfg and macros. A running print would be lost.">Restart Klipper</button><button class="rst" data-restart="firmware" title="Firmware restart: also restarts the printer's MCUs. A running print would be lost.">Firmware restart</button></span><span style="display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--muted)">Export latest logs: <a class="seg-b" href="/logs/export?name=klippy.log" download title="Current Klipper log">klippy.log</a><a class="seg-b" href="/logs/export?name=moonraker.log" download title="Current Moonraker log">moonraker.log</a><a class="seg-b" href="/logs/export?name=all" download title="Both logs in one zip">Both (.zip)</a></span></div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px"><h2 style="margin:0">Files - printer config</h2><span class="rstgrp" style="margin-left:auto;display:flex;gap:8px;align-items:center"><button class="rst" data-restart="klipper" title="Restart Klipper: reloads printer.cfg and macros. A running print would be lost."><svg class="i" aria-hidden="true"><use href="#i-rotate-cw"/></svg>Restart Klipper</button><button class="rst" data-restart="firmware" title="Firmware restart: also restarts the printer's MCUs. A running print would be lost."><svg class="i" aria-hidden="true"><use href="#i-cpu"/></svg>Firmware restart</button></span><span style="display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--muted)">Export latest logs: <a class="seg-b" href="/logs/export?name=klippy.log" download title="Current Klipper log"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>klippy.log</a><a class="seg-b" href="/logs/export?name=moonraker.log" download title="Current Moonraker log"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>moonraker.log</a><a class="seg-b" href="/logs/export?name=all" download title="Both logs in one zip"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>Both (.zip)</a></span></div>
   <div class="fwrap">
     <div class="fside"><input id="ffilter" type="search" placeholder="Search files..."><div id="ftree"></div></div>
     <div class="fmain">
       <div class="fbar"><span id="fpath" class="fp">No file open</span><span id="fbadge" class="badge" hidden></span><span id="fdirty" style="color:var(--warn)" hidden>&bull; Unsaved</span>
-        <span style="margin-left:auto;display:flex;gap:8px"><button id="frevert" disabled>Revert</button><button id="freload" disabled>Reload</button><button id="fsave" class="go" disabled>Save (Ctrl+S)</button></span></div>
+        <span style="margin-left:auto;display:flex;gap:8px"><button id="frevert" disabled><svg class="i" aria-hidden="true"><use href="#i-undo-2"/></svg>Revert</button><button id="freload" disabled><svg class="i" aria-hidden="true"><use href="#i-refresh-cw"/></svg>Reload</button><button id="fsave" class="go" disabled><svg class="i" aria-hidden="true"><use href="#i-save"/></svg>Save (Ctrl+S)</button></span></div>
       <div id="fnote" style="padding:6px 14px;font-size:12px;color:var(--sub);border-bottom:1px solid #231f4a">Pick a file on the left. Saving keeps a copy of the previous version on the dashboard server, and changes only take effect after Klipper is restarted (use the Restart Klipper button above). JSON and factory files are view-only.</div>
       <div class="fedit"><pre id="edgut">1</pre><div class="edwrap"><pre id="edhl" aria-hidden="true"></pre><textarea id="edta" spellcheck="false" wrap="off" readonly></textarea></div></div>
     </div>
@@ -504,18 +740,18 @@
     <input id="confilter" type="search" placeholder="Filter lines..." style="background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:inherit;font-size:13px;padding:5px 10px;width:220px">
     <label style="font-size:12.5px;color:var(--muted);display:flex;gap:6px;align-items:center"><input id="conhidetemp" type="checkbox"> Hide temperature reports</label>
     <span id="concount" style="font-size:12px;color:var(--sub);margin-left:auto"></span>
-    <span class="rstgrp" style="display:flex;gap:8px"><button class="rst" data-restart="klipper" title="Restart Klipper: reloads printer.cfg and macros. A running print would be lost.">Restart Klipper</button><button class="rst" data-restart="firmware" title="Firmware restart: also restarts the printer's MCUs. A running print would be lost.">Firmware restart</button></span></div>
+    <span class="rstgrp" style="display:flex;gap:8px"><button class="rst" data-restart="klipper" title="Restart Klipper: reloads printer.cfg and macros. A running print would be lost."><svg class="i" aria-hidden="true"><use href="#i-rotate-cw"/></svg>Restart Klipper</button><button class="rst" data-restart="firmware" title="Firmware restart: also restarts the printer's MCUs. A running print would be lost."><svg class="i" aria-hidden="true"><use href="#i-cpu"/></svg>Firmware restart</button></span></div>
   <pre id="fconlog"></pre>
   <form id="congo" autocomplete="off" style="display:flex;gap:8px;margin-top:10px;align-items:center">
     <input id="conin" type="text" maxlength="500" spellcheck="false" autocapitalize="characters" placeholder="Send G-code, for example M115 or G28 (Up / Down = earlier commands)" aria-label="G-code to send" style="flex:1;min-width:0;background:#0a0818;border:1px solid var(--edge);border-radius:8px;color:var(--text);font:13px ui-monospace,monospace;padding:8px 10px">
-    <button id="consend" type="submit">Send</button>
+    <button id="consend" type="submit"><svg class="i" aria-hidden="true"><use href="#i-send"/></svg>Send</button>
   </form>
   <div id="conerr" role="status" style="font-size:12.5px;color:var(--muted);margin-top:6px;min-height:1.3em"></div>
 </section>
 <section id="v-settings" class="view" hidden></section>
 <section id="v-macros" class="view" hidden></section>
 <section id="v-printers" class="view" hidden><h2>Printers <span id="ovstat" class="badge"></span></h2><div id="ovgrid"></div>
-  <div class="ovnote">Click a printer to open it. This page only shows status; controls are on each printer's own page.</div></section>
+  <div class="ovnote">Click a printer to open it. A printer that is printing can be paused, resumed or cancelled from its card; everything else is on each printer's own page.</div></section>
 <section id="v-tune" class="view" hidden>
   <h2>Tune - bed mesh</h2>
   <div class="srow" style="margin:0 0 14px"><button id="meshcal" type="button" title="Probe the bed with BED_MESH_CALIBRATE (printer idle and homed)">Calibrate bed mesh</button><span id="meshcalmsg" role="status" style="color:var(--muted);font-size:13px"></span></div>
@@ -529,6 +765,11 @@
 <div id="askmodal" hidden role="alertdialog" aria-modal="true" aria-labelledby="askmsg"><div class="dlg"><p id="askmsg"></p><div class="row"><button id="askno" type="button">Cancel</button><button id="askok" type="button">OK</button></div></div></div>
 <script>
 const q = new URLSearchParams(location.search);
+// an icon from the inline sprite (#icons, made by tools/build_icons.py); takes the color and size of the text around it
+const ico = (name, cls) => '<svg class="i' + (cls ? " " + cls : "") + '" aria-hidden="true"><use href="#i-' + name + '"/></svg>';
+// Touch mode (/touch, or ?touch): the layout for a touchscreen beside the printer (the script at the end of the page)
+const TOUCH = /^\/touch\/?$/.test(location.pathname) || q.has("touch");
+if (TOUCH) document.body.classList.add("touch");
 let SPOOLMAN = q.get("spoolman") || "";          // browser-reachable Spoolman host:port (for the "Open in Spoolman" link)
 // Served from the printer itself: use same-origin Moonraker (nginx proxies /printer and /server).
 // Opened from a file or another host: pass ?printer=IP (defaults to the host the page was loaded from).
@@ -751,27 +992,26 @@ let CONTROLS = HOSTED && !SAME;
 let printState = "", running = false;
 const LABEL = {load: "Load", unload: "Unload", park: "Park", pickup: "Pickup"};
 const QB_LABEL = {load: "Load", unload: "Unload", park: "Eject"};      // QIDI Box: Eject pulls a waiting filament out of its slot (Fluidd calls it Uninstall)
+// the label of a slot button with its icon in front (Act.tool reads the label back from the button's text)
+const ACT_ICON = {"Load": "arrow-down-to-line", "Unload": "arrow-up-from-line", "Eject": "eject", "Park": "square-parking", "Pickup": "hand-grab", "Change to": "repeat"};
+const actLabel = l => (ACT_ICON[l] ? ico(ACT_ICON[l]) : "") + escH(l);
 function actions(i, loaded, isActive, ex, s) {
   const offered = ((CFG && CFG.actions) || []);
   // Snapmaker U1: ask the printer to read this channel's RFID tag again (after a tag was written, or when it was missed)
-  const reread = CONTROLS && CFG.provider === "u1" ? '<button class="rfid" data-act="rfid" data-tool="' + i + '" title="Ask the printer to read the RFID tag in this channel again">Re-read tag</button>' : "";
+  const reread = CONTROLS && CFG.provider === "u1" ? '<button class="rfid" data-act="rfid" data-tool="' + i + '" title="Ask the printer to read the RFID tag in this channel again">' + ico("nfc") + "Re-read tag</button>" : "";
   if (!CONTROLS || !offered.length || (s && s.ext)) return reread ? '<div class="acts">' + reread + '</div>' : "";      // the external spool is loaded by hand
   const locked = running || printState === "printing" || printState === "paused";
   const afc = CFG.provider === "afc", qb = CFG.provider === "qidibox";      // QIDI Box: Load a waiting slot, Unload the one in the toolhead; the button carries the slot number
   const can = afc ? {load: loaded && !isActive, unload: loaded, park: isActive, pickup: loaded && !isActive} : qb ? {load: loaded && !isActive, unload: isActive, park: loaded && !isActive} : {load: loaded, unload: loaded, park: isActive, pickup: !isActive};
   return '<div class="acts">' + (afc ? ["park", "load", "unload"] : ["load", "unload", "park", "pickup"]).filter(a => offered.includes(a)).map(a =>
-    '<button data-act="' + a + '" data-tool="' + (qb ? s.slot : i) + '"' + (afc ? ' data-lane="' + escH(s.lane) + '"' : "") + (s && s.label ? ' data-who="' + escH(s.label) + '"' : "") + (qb ? ' data-direct="1"' : "") + (locked || !can[a] ? " disabled" : "") + '>' + (afc ? AFC_LABEL[a] : qb ? QB_LABEL[a] : LABEL[a]) + '</button>').join("") + reread +
+    '<button data-act="' + a + '" data-tool="' + (qb ? s.slot : i) + '"' + (afc ? ' data-lane="' + escH(s.lane) + '"' : "") + (s && s.label ? ' data-who="' + escH(s.label) + '"' : "") + (qb ? ' data-direct="1"' : "") + (locked || !can[a] ? " disabled" : "") + '>' + actLabel(afc ? AFC_LABEL[a] : qb ? QB_LABEL[a] : LABEL[a]) + '</button>').join("") + reread +
     '</div>';
 }
 async function rereadTag(btn) {
-  const t = btn.textContent;
+  const t = btn.innerHTML;
   btn.disabled = true; btn.textContent = "Reading...";
-  try {
-    await postControl({action: "tag_reread", channel: +btn.dataset.tool});
-    btn.textContent = "Asked printer";
-    setTimeout(tick, 2500);                     // the printer needs a moment to scan; refresh the cards after that
-  } catch (e) { flashError(String(e.message || e), 6000); btn.textContent = t; }
-  setTimeout(() => { btn.disabled = false; btn.textContent = t; }, 3000);
+  if (await Act.rereadTag(+btn.dataset.tool)) btn.textContent = "Asked printer"; else btn.innerHTML = t;
+  setTimeout(() => { btn.disabled = false; btn.innerHTML = t; }, 3000);
 }
 const CONFIRM = {
   load: t => "Load filament into T" + t + "?\nThe printer will heat the nozzle and feed filament.",
@@ -785,27 +1025,188 @@ function flashError(text, ms) {
   notice.className = "pill off"; notice.textContent = text;
   setTimeout(() => { notice.textContent = ""; notice.className = ""; }, ms);
 }
-async function control(action, tool, lane, name, label, noAsk) {
-  const who = name || lane || "T" + tool, lbl = label || (lane ? AFC_LABEL[action] : LABEL[action]);
-  // Load and Unload act at once, without a question: their buttons are only live when that action is possible (and never
-  // while printing). So do all three QIDI Box buttons, as on the printer's own Box card. Buttons that move a toolhead or
-  // eject an AFC lane still ask first.
-  const direct = noAsk || lbl === "Load" || lbl === "Unload";
-  const cur = lane && action === "load" ? (SLOTSNOW.find(s => s.isActive && s.lane !== lane) || {}).lane : null;
-  if (running || !direct && !await ask(lane ? (cur ? "Swap to " + lane + "?\n" + cur + " is loaded, so it is unloaded first, then " + lane + " is loaded.\nThe printer moves filament." : lbl + " " + lane + "?\nThe printer runs its AFC lane macro and moves filament.") : CONFIRM[action](tool))) return;
-  running = true;
-  if (window.__st) render(window.__st);                       // the tool buttons go inactive at once, not at the next poll
-  notice.className = "pill"; notice.textContent = lbl + " " + who + " - running...";
-  try {
-    const j = await postControl({action: action, tool: tool, lane: lane});
-    notice.className = "pill on"; notice.textContent = lbl + " " + who + " done";
-  } catch (e) {
-    notice.className = "pill off"; notice.textContent = lbl + " " + who + " failed: " + e.message;
-  }
-  running = false;
-  tick();
-  setTimeout(() => { if (!running) { notice.textContent = ""; notice.className = ""; } }, 15000);
+// ---- Printer actions: every command a button on Home, Macros or the touch view sends, in one place. Each one asks first
+// where it should, keeps to one command at a time, reports in the status pill (#notice) and refreshes the status after.
+// Views only decide which action a button runs, so a new view gets the same behaviour by calling these. The server
+// checks every action again (allow-list, printer state, limits). Each resolves to true when it was sent and accepted,
+// false when it was declined at the question, refused or failed (already reported). ----
+const PRINTING = () => printState === "printing" || printState === "paused";
+const noticeClear = ms => setTimeout(() => { if (!running && !pbusy) { notice.textContent = ""; notice.className = ""; } }, ms);
+const Act = {
+  // Filament / tool buttons: load, unload, park (QIDI Box: eject), pickup. lane: AFC lane; who / label: the wording in the pill.
+  async tool(action, tool, {lane, who, label, noAsk} = {}) {
+    who = who || lane || "T" + tool;
+    const lbl = label || (lane ? AFC_LABEL[action] : LABEL[action]);
+    // Load and Unload act at once, without a question: their buttons are only live when that action is possible (and never
+    // while printing). So do all three QIDI Box buttons, as on the printer's own Box card. Buttons that move a toolhead or
+    // eject an AFC lane still ask first.
+    const direct = noAsk || lbl === "Load" || lbl === "Unload";
+    const cur = lane && action === "load" ? (SLOTSNOW.find(s => s.isActive && s.lane !== lane) || {}).lane : null;
+    if (running || !direct && !await ask(lane ? (cur ? "Swap to " + lane + "?\n" + cur + " is loaded, so it is unloaded first, then " + lane + " is loaded.\nThe printer moves filament." : lbl + " " + lane + "?\nThe printer runs its AFC lane macro and moves filament.") : CONFIRM[action](tool))) return false;
+    running = true;
+    Status.refresh();                                           // the tool buttons go inactive at once, not at the next poll
+    notice.className = "pill"; notice.textContent = lbl + " " + who + " - running...";
+    let ok = true;
+    try {
+      await postControl({action, tool, lane});
+      notice.className = "pill on"; notice.textContent = lbl + " " + who + " done";
+    } catch (e) {
+      ok = false; notice.className = "pill off"; notice.textContent = lbl + " " + who + " failed: " + e.message;
+    }
+    running = false;
+    tick(); noticeClear(15000);
+    return ok;
+  },
+  // Snapmaker U1: ask the printer to read one channel's RFID tag again
+  async rereadTag(channel) {
+    try { await postControl({action: "tag_reread", channel}); }
+    catch (e) { flashError(String(e.message || e), 6000); return false; }
+    setTimeout(tick, 2500);                     // the printer needs a moment to scan; refresh the cards after that
+    return true;
+  },
+
+  // Moves (idle only)
+  async move(body, what) {
+    if (running) return false;
+    running = true; renderMove(window.__st);
+    notice.className = "pill"; notice.textContent = what + " ...";
+    let ok = true;
+    try {
+      await postControl(body);
+      notice.textContent = ""; notice.className = "";
+    } catch (e) {
+      ok = false; notice.className = "pill off"; notice.textContent = what + " failed: " + e.message;
+      setTimeout(() => { if (!running) { notice.textContent = ""; notice.className = ""; } }, 8000);
+    }
+    running = false;
+    tick();
+    return ok;
+  },
+  jog(axis, dist) {                             // relative move in mm; Z moves at most 10 mm at a time
+    if (axis === "Z") dist = Math.sign(dist) * Math.min(Math.abs(dist), 10);
+    return Act.move({action: "jog", axis, dist}, "Move " + axis);
+  },
+  goto(axis, pos) { return Act.move({action: "goto", axis, pos}, "Move " + axis); },
+  async home(axes = "all") {
+    if (!await ask("Home " + (axes === "all" ? "all axes" : axes.toUpperCase()) + "?\nThe toolhead/bed will move.", "Home")) return false;
+    return Act.move({action: "home", axes}, "Homing");
+  },
+  async motorsOff() {
+    if (!await ask("Turn the stepper motors off?\nThe printer will lose its homed position.", "Motors off")) return false;
+    return Act.move({action: "motors_off"}, "Motors off");
+  },
+
+  // Heaters, fans, light
+  async setTemp(heater, target, title) {        // target in °C, 0 = off; asks first while a print is running
+    if (PRINTING() && !await ask("A print is running. Change the " + title + " target to " + (target ? target + "°C" : "off") + "?")) return false;
+    let ok = true;
+    try { await postControl({action: "temp", heater, target}); }
+    catch (e) { ok = false; flashError(title + " target failed: " + e.message, 8000); }
+    tick();
+    return ok;
+  },
+  async setFan(fan, speed, title) {             // speed 0..1
+    fanHoldUntil = Date.now() + 3000;
+    let ok = true;
+    try { await postControl({action: "fan", fan, speed}); }
+    catch (e) { ok = false; flashError((title || "Fan") + " failed: " + e.message, 8000); }
+    fanHoldUntil = 0; tick();
+    return ok;
+  },
+  async light(on) {
+    let ok = true;
+    try { await postControl({action: "light", on}); }
+    catch (e) { ok = false; flashError("Light failed: " + e.message, 8000); }
+    tick();
+    return ok;
+  },
+
+  // Print: pause, resume, cancel, estop (always asks)
+  async print(action) {
+    if (pbusy || !await ask(PCONFIRM[action])) return false;
+    pbusy = true; renderPrintCtl(printState);
+    notice.className = "pill"; notice.textContent = PLABEL[action] + " - sending...";
+    let ok = true;
+    try {
+      await postControl({action});
+      notice.className = "pill on"; notice.textContent = PLABEL[action] + " sent";
+    } catch (e) {
+      ok = false; notice.className = "pill off"; notice.textContent = PLABEL[action] + " failed: " + e.message;
+    }
+    pbusy = false;
+    tick(); noticeClear(15000);
+    return ok;
+  },
+
+  // Print tuning (meant for use during a print): z_adjust (mm), speed / flow (%), pa, smooth
+  async tune(what, value, label) {
+    if (ptBusy) return false;
+    ptBusy = true; ptHold = Date.now() + 4000;
+    let ok = true;
+    try { await postControl({action: "tune", what, value}); }
+    catch (e) { ok = false; flashError(label + " failed: " + e.message, 8000); }
+    ptBusy = false; ptHold = 0; tick();
+    return ok;
+  },
+  async zReset() {
+    if (!await ask("Set the Z offset back to 0?\nThe nozzle moves by the current offset straight away.", "Reset")) return false;
+    return Act.tune("z_reset", 0, "Z offset");
+  },
+
+  // Macros: asks with the full command line. Resolves to the server's reply (null when declined) and throws the server's
+  // message, so the caller shows the outcome where it wants.
+  async runMacro(name, params = {}) {
+    const line = name + Object.entries(params).map(([k, v]) => " " + k + "=" + v).join("");
+    if (!await ask("Run this macro on " + CFG.name + "?\n\n" + line + "\n\nIt runs on the printer immediately and macros can move or heat it.")) return null;
+    running = true;
+    try { return await postControl({action: "run_macro", name, params}); }
+    finally { running = false; }
+  },
+
+  // Restart Klipper ("klipper") or a firmware restart ("firmware"). Not while a print runs; when Klipper is not ready there is
+  // no print, and this is how it is brought back (the server checks the print state again).
+  async restart(kind) {
+    const fw = kind === "firmware", what = fw ? "Firmware restart" : "Restart Klipper";
+    if (Klippy.state === "ready" && PRINTING()) { flashError("Not restarting: a print is running. Cancel it first.", 8000); return false; }
+    if (!await ask(what + "?\n\n" + (fw ? "Klipper and the printer's microcontrollers restart. " : "Klipper reloads its configuration (printer.cfg, macros). ") +
+        "The printer is unavailable for a little while and may need homing again.", what)) return false;
+    notice.className = "pill"; notice.textContent = what + " - sending...";
+    let ok = true;
+    try {
+      await postControl({action: "restart", kind});
+      notice.className = "pill on"; notice.textContent = (fw ? "Firmware restart" : "Klipper restart") + " sent. The printer reconnects in a few seconds.";
+    } catch (e) {
+      ok = false; notice.className = "pill off"; notice.textContent = "Restart failed: " + e.message;
+    }
+    setTimeout(tick, 3000); noticeClear(15000);
+    return ok;
+  },
+};
+
+// ---- Klipper's own state: "ready", or "startup", "shutdown" (after an emergency stop or an MCU error) or "error" (it could
+// not start, e.g. a microcontroller does not answer). Anything but ready shows what Klipper says, with Restart / Firmware restart
+// and the logs (#kalert), on every page of the normal and the touch view. Set from each poll (see tick). ----
+const Klippy = {state: "ready", message: ""};
+function klippySet(state, message) {
+  state = String(state || "ready"); message = String(message || "").trim();
+  const was = Klippy.state;
+  Klippy.state = state; Klippy.message = message;
+  if (was !== "ready" && state === "ready") tempObjs = null;      // back from an error: list the printer's objects again (heaters, fans...)
+  const box = document.getElementById("kalert");
+  box.hidden = state === "ready";
+  if (box.hidden) return;
+  document.getElementById("kstate").textContent = state.toUpperCase();
+  document.getElementById("kmsg").textContent = message;
+  box.querySelectorAll("[data-krestart]").forEach(b => { b.hidden = !CONTROLS; });
+  box.querySelectorAll("a").forEach(a => { a.hidden = !HOSTED; });
 }
+document.getElementById("kalert").addEventListener("click", async ev => {
+  const b = ev.target.closest("button[data-krestart]"); if (!b || b.disabled) return;
+  const all = [...document.querySelectorAll("#kalert button")];
+  all.forEach(x => { x.disabled = true; });
+  await Act.restart(b.dataset.krestart);
+  setTimeout(() => all.forEach(x => { x.disabled = false; }), 5000);
+});
 // ---- Editable target temperatures: click any underlined target to open a small editor ----
 const tgtPop = document.getElementById("tgtpop"), tgtIn = document.getElementById("tgtin");
 let tgtHeater = "", tgtTitle = "";
@@ -842,33 +1243,21 @@ function tgtOpen(el) {
   tgtPop.style.top = Math.max(8, Math.min(innerHeight - 130, r.bottom + 8)) + "px";
   tgtIn.focus(); tgtIn.select();
 }
-async function tgtApply(v) {
+function tgtApply(v) {                            // the editor checks the number; the action does the rest
   const n = +v;
   if (tgtFan) {
     if (v === "" || !(n >= 0 && n <= 100)) { tgtIn.focus(); return; }
-    tgtPop.hidden = true; fanHoldUntil = Date.now() + 3000;
-    try {
-      await postControl({action: "fan", fan: tgtFan, speed: n / 100});
-    } catch (e) {
-      flashError(tgtTitle + " failed: " + e.message, 8000);
-    }
-    fanHoldUntil = 0; tick();
-    return;
+    tgtPop.hidden = true;
+    return Act.setFan(tgtFan, n / 100, tgtTitle);
   }
   if (tgtAxis) {                                   // absolute axis move (server re-checks idle + homed + limits)
     if (v === "" || !(n >= tgtLim[0] && n <= tgtLim[1])) { tgtIn.focus(); return; }
     tgtPop.hidden = true;
-    return mvSend({action: "goto", axis: tgtAxis, pos: n}, "Move " + tgtAxis);
+    return Act.goto(tgtAxis, n);
   }
   if (!(n >= 0 && n <= tgtMax(tgtHeater))) { tgtIn.focus(); return; }
-  if ((printState === "printing" || printState === "paused") && !await ask("A print is running. Change the " + tgtTitle + " target to " + (n ? n + "°C" : "off") + "?")) return;
   tgtPop.hidden = true;
-  try {
-    await postControl({action: "temp", heater: tgtHeater, target: n});
-  } catch (e) {
-    flashError(tgtTitle + " target failed: " + e.message, 8000);
-  }
-  tick();
+  return Act.setTemp(tgtHeater, n, tgtTitle);
 }
 document.addEventListener("click", ev => {
   const t = ev.target.closest && ev.target.closest(".tgt");
@@ -890,15 +1279,9 @@ function lightApply() {
 async function lightToggle() {
   if (!CONTROLS) return;
   const want = !lightOn;
-  lightOn = want; lightHold = Date.now() + 4000;
+  lightOn = want; lightHold = Date.now() + 4000;          // the drawing shows the new state straight away
   lightApply();
-  try {
-    await postControl({action: "light", on: want});
-  } catch (e) {
-    lightOn = !want; lightHold = 0;
-    flashError("Light failed: " + e.message, 8000);
-  }
-  tick();
+  if (!await Act.light(want)) { lightOn = !want; lightHold = 0; lightApply(); }
 }
 document.getElementById("scene").addEventListener("click", ev => { if (ev.target.closest("#slight")) lightToggle(); });
 document.getElementById("scene").addEventListener("keydown", ev => { if ((ev.key === "Enter" || ev.key === " ") && ev.target.closest("#slight")) { ev.preventDefault(); lightToggle(); } });
@@ -920,30 +1303,15 @@ document.getElementById("scene").addEventListener("keydown", ev => { if ((ev.key
 let mvStep = 10;
 const mvEl = document.getElementById("move");
 document.getElementById("mvsteps").innerHTML = [0.1, 1, 10, 50, 100].map(s => '<button data-step="' + s + '" class="' + (s === mvStep ? "on" : "") + '">' + s + '</button>').join("");
-async function mvSend(body, what) {
-  if (running) return;
-  running = true; renderMove(window.__st);
-  notice.className = "pill"; notice.textContent = what + " ...";
-  try {
-    const j = await postControl(body);
-    notice.textContent = "";
-    notice.className = "";
-  } catch (e) {
-    notice.className = "pill off"; notice.textContent = what + " failed: " + e.message;
-    setTimeout(() => { if (!running) { notice.textContent = ""; notice.className = ""; } }, 8000);
-  }
-  running = false;
-  tick();
-}
 mvEl.addEventListener("click", ev => {
   const st = ev.target.closest("button[data-step]");
   if (st) { mvStep = +st.dataset.step; mvEl.querySelectorAll("[data-step]").forEach(b => b.classList.toggle("on", b === st)); return; }
   const b = ev.target.closest("button[data-mv]");
   if (!b || b.disabled) return;
   const [kind, a, d] = b.dataset.mv.split(":");
-  if (kind === "jog") mvSend({action: "jog", axis: a, dist: (+d) * (a === "Z" ? Math.min(mvStep, 10) : mvStep)}, "Move " + a);
-  else if (kind === "home") { ask("Home " + (a === "all" ? "all axes" : a.toUpperCase()) + "?\nThe toolhead/bed will move.", "Home").then(ok => { if (ok) mvSend({action: "home", axes: a}, "Homing"); }); }
-  else if (kind === "motors_off") { ask("Turn the stepper motors off?\nThe printer will lose its homed position.", "Motors off").then(ok => { if (ok) mvSend({action: "motors_off"}, "Motors off"); }); }
+  if (kind === "jog") Act.jog(a, (+d) * mvStep);
+  else if (kind === "home") Act.home(a);
+  else if (kind === "motors_off") Act.motorsOff();
 });
 function renderMove(st) {
   if (!CONTROLS || !st) return;
@@ -972,7 +1340,7 @@ document.getElementById("grid").addEventListener("click", ev => {
   if (s) return openSpool(+s.dataset.spool);
   const b = ev.target.closest("button[data-act]");
   if (b && !b.disabled && b.dataset.act === "rfid") return rereadTag(b);
-  if (b && !b.disabled) control(b.dataset.act, +b.dataset.tool, b.dataset.lane, b.dataset.who, b.textContent, b.dataset.direct === "1");
+  if (b && !b.disabled) Act.tool(b.dataset.act, +b.dataset.tool, {lane: b.dataset.lane, who: b.dataset.who, label: b.textContent, noAsk: b.dataset.direct === "1"});
 });
 
 // ---- Temperatures: every heater / temperature sensor the printer reports (discovered, like Fluidd) ----
@@ -987,7 +1355,12 @@ function tempTitle(n) {
   const m = n.match(/^extruder(\d+)$/);
   if (m) return "T" + m[1] + " nozzle";
   // Klipper object names use underscores: show them as words (the raw name goes in the row's tooltip)
-  const w = n.replace(/^(heater_generic|temperature_sensor|temperature_fan) /, "").replace(/_/g, " ");
+  return nameWords(n.replace(/^(heater_generic|temperature_sensor|temperature_fan) /, ""));
+}
+// "cpu_fan" -> "CPU fan", "mainboard_mcu" -> "Mainboard MCU": Klipper names as words, with the usual abbreviations in capitals
+const ACRONYMS = /^(cpu|mcu|psu|rpi|led|ssr|ntc|adc|pwm|tmc|usb|ebb|sb|nh|hbb)$/i;
+function nameWords(s) {
+  const w = String(s).replace(/_/g, " ").split(" ").filter(Boolean).map(x => ACRONYMS.test(x) ? x.toUpperCase() : x).join(" ");
   return w.charAt(0).toUpperCase() + w.slice(1);
 }
 function spark(arr, hot) {
@@ -996,6 +1369,14 @@ function spark(arr, hot) {
   const pts = arr.map((v, i) => (i / (HIST_MAX - 1) * 160).toFixed(1) + "," + (32 - (v - lo) / span * 30).toFixed(1)).join(" ");
   return '<svg viewBox="0 0 160 34" preserveAspectRatio="none"><polyline points="' + pts +
     '" fill="none" stroke="' + (hot ? "#E8B04F" : "#7A63F2") + '" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+}
+// 0..1: how far a heater has come from room temperature (25 °C) to its target. Within 1° of the target counts as there,
+// so the small swings while holding temperature do not move the bar.
+function heatProgress(t, target) {
+  if (!(target > 0) || typeof t !== "number") return 0;
+  if (t >= target - 1) return 1;
+  const room = Math.min(25, target - 2);
+  return Math.max(0, Math.min(1, (t - room) / (target - 1 - room)));
 }
 function renderTemps(st) {
   const heaters = [], sensors = [];
@@ -1006,9 +1387,13 @@ function renderTemps(st) {
     const hot = hasTarget && o.target > 0;
     const pw = typeof o.power === "number" ? Math.round(o.power * 100) : null;
     const tgt = /^(extruder\d*|heater_bed)$/.test(n) ? tgtSpan(n, tempTitle(n), o.target, false) : (o.target > 0 ? o.target.toFixed(0) + "°" : "off");
+    // The bar is how far the heater has got from room temperature to its target: empty when cold, full at temperature,
+    // steady while it holds there. (Not the heater's power: the controller pulses that between 0 and 100% every second.)
+    const prog = hot ? heatProgress(o.temperature, o.target) : 0;
+    const tip = hot ? (prog >= 1 ? "at target" : Math.round(prog * 100) + "% of the way to " + Math.round(o.target) + "°") + (pw !== null ? " · heater power " + pw + "%" : "") : "off";
     const row = '<div class="tr' + (hot ? " hot" : "") + '"><span class="nm" title="' + escH(n) + '">' + escH(tempTitle(n)) + '</span><span class="v">' + o.temperature.toFixed(1) + '°' +
       (hasTarget ? ' <small>/ ' + tgt + '</small>' : "") + '</span>' +
-      (pw !== null ? '<div class="bar" title="heater power ' + pw + '%"><i style="width:' + pw + '%"></i></div>' : "") + '</div>';
+      (hasTarget ? '<div class="bar" title="' + escH(tip) + '"><i style="width:' + (prog * 100).toFixed(1) + '%"></i></div>' : "") + '</div>';
     (hasTarget ? heaters : sensors).push({n, row});
   }
   const rank = n => n === "heater_bed" ? 0 : /^extruder\d*$/.test(n) ? 1 : 2;
@@ -1042,7 +1427,8 @@ function fanTitle(n) {
   if (m) return "T" + m[1] + " hotend fan";
   m = name.match(/^e(\d)_fan$/);
   if (m) return "T" + m[1] + " fan";
-  return name.replace(/_fan$/, "").replace(/_/g, " ").replace(/^./, c => c.toUpperCase()) + " fan";
+  const words = nameWords(name);                       // "hotend_fan3" -> "Hotend fan3", "board_fan_box1" -> "Board fan box1"
+  return /\bfans?\d*\b/i.test(words) ? words : words + " fan";
 }
 // Sliders only for the part fan and fan_generic fans; heater_fan (hotend / PSU) stay automatic and read-only.
 let fanHoldUntil = 0;     // skip re-rendering while a slider is being used
@@ -1106,17 +1492,10 @@ fgrid.addEventListener("input", ev => {            // live readout while draggin
   fanHoldUntil = Date.now() + 60000;
   el.parentElement.querySelector(".v").textContent = el.value + "%";
 });
-fgrid.addEventListener("change", async ev => {      // send on release / key press
+fgrid.addEventListener("change", ev => {            // send on release / key press
   const el = ev.target;
   if (!el.matches("input[type=range]") || !CONTROLS) return;
-  fanHoldUntil = Date.now() + 3000;
-  try {
-    const j = await postControl({action: "fan", fan: el.dataset.fan, speed: el.value / 100});
-  } catch (e) {
-    notice.className = "pill off"; notice.textContent = "Fan failed: " + e.message;
-    fanHoldUntil = 0;
-    setTimeout(() => { if (!running && !pbusy) { notice.textContent = ""; notice.className = ""; } }, 15000);
-  }
+  Act.setFan(el.dataset.fan, el.value / 100, "Fan");
 });
 
 // ---- Print controls (pause / resume / cancel): the server enforces the state rules too ----
@@ -1131,36 +1510,22 @@ function renderPrintCtl(state) {
   printctl.hidden = !(active && CONTROLS);
   document.getElementById("estopwrap").hidden = !CONTROLS;               // the emergency stop is there in every printer state
   pbtn.dataset.print = state === "paused" ? "resume" : "pause";
-  pbtn.textContent = state === "paused" ? "Resume" : "Pause";
+  pbtn.innerHTML = state === "paused" ? ico("play") + "Resume" : ico("pause") + "Pause";
   pbtn.disabled = cbtn.disabled = pbusy;
   document.getElementById("ebtn").disabled = false;                      // never locked by another command that is running
 }
-async function printControl(action) {
-  if (pbusy || !await ask(PCONFIRM[action])) return;
-  pbusy = true; renderPrintCtl(printState);
-  notice.className = "pill"; notice.textContent = PLABEL[action] + " - sending...";
-  try {
-    const j = await postControl({action: action});
-    notice.className = "pill on"; notice.textContent = PLABEL[action] + " sent";
-  } catch (e) {
-    notice.className = "pill off"; notice.textContent = PLABEL[action] + " failed: " + e.message;
-  }
-  pbusy = false;
-  tick();
-  setTimeout(() => { if (!running && !pbusy) { notice.textContent = ""; notice.className = ""; } }, 15000);
-}
 printctl.addEventListener("click", ev => {
   const b = ev.target.closest("button[data-print]");
-  if (b && !b.disabled && CONTROLS) printControl(b.dataset.print);
+  if (b && !b.disabled && CONTROLS) Act.print(b.dataset.print);
 });
-document.getElementById("ebtn").addEventListener("click", () => { if (CONTROLS) printControl("estop"); });
+document.getElementById("ebtn").addEventListener("click", () => { if (CONTROLS) Act.print("estop"); });
 
 // ---- Live console: Moonraker's recent console history, polled (read-only) ----
 const conlog = document.getElementById("conlog"), constat = document.getElementById("constat");
 let conSig = "", conFirst = true;
 const escHtml = escH;
 async function conPoll() {
-  if (!document.hidden) {
+  if (!document.hidden && shown(conlog)) {                    // only while the console box is on screen
     try {
       const items = (await jget(MR + "/server/gcode_store?count=150")).result.gcode_store;
       const sig = items.length + ":" + (items.length ? items[items.length - 1].time : 0);
@@ -1801,8 +2166,7 @@ const PTSTEPS = [0.005, 0.01, 0.025, 0.05];
 let ptStep = 0.01, ptHold = 0, ptBusy = false;      // ptHold: leave the controls alone while one is being used
 const ptEl = id => document.getElementById(id);
 ptEl("ptzsteps").innerHTML = PTSTEPS.map(v => '<button data-zstep="' + v + '" class="' + (v === ptStep ? "on" : "") + '" title="Step of ' + v + ' mm">' + v + "</button>").join("");
-function renderTune(st) {
-  ptEl("ptune").hidden = !CONTROLS;
+function renderTune(st) {                       // the section is only shown with controls (applyConfig)
   if (!CONTROLS || Date.now() < ptHold) return;
   const gm = st.gcode_move || {}, ex = st[(st.toolhead || {}).extruder] || st.extruder || {}, z = +((gm.homing_origin || [])[2]) || 0;
   ptEl("ptz").textContent = (z > 0 ? "+" : "") + z.toFixed(3) + " mm";
@@ -1812,28 +2176,18 @@ function renderTune(st) {
   if (typeof ex.smooth_time === "number") put("ptsm", +ex.smooth_time.toFixed(4));
   ptEl("ptune").querySelectorAll("button[data-tune]").forEach(b => { b.disabled = ptBusy; });
 }
-async function tuneSend(what, value, label) {
-  if (ptBusy) return;
-  ptBusy = true; ptHold = Date.now() + 4000;
-  try {
-    await postControl({action: "tune", what, value});
-  } catch (e) {
-    flashError(label + " failed: " + e.message, 8000);
-  }
-  ptBusy = false; ptHold = 0; tick();
-}
 ptEl("ptune").addEventListener("click", ev => {
   const s = ev.target.closest("button[data-zstep]");
   if (s) { ptStep = +s.dataset.zstep; ptEl("ptzsteps").querySelectorAll("button").forEach(b => b.classList.toggle("on", b === s)); return; }
   const b = ev.target.closest("button[data-tune]"); if (!b || b.disabled || !CONTROLS) return;
   const t = b.dataset.tune, num = id => { const v = ptEl(id).value; return v === "" ? NaN : +v; };
-  if (t === "zdown") tuneSend("z_adjust", -ptStep, "Z offset");
-  else if (t === "zup") tuneSend("z_adjust", ptStep, "Z offset");
-  else if (t === "zreset") { ask("Set the Z offset back to 0?\nThe nozzle moves by the current offset straight away.", "Reset").then(ok => { if (ok) tuneSend("z_reset", 0, "Z offset"); }); }
-  else if (t === "speed100") tuneSend("speed", 100, "Speed");
-  else if (t === "flow100") tuneSend("flow", 100, "Flow");
-  else if (t === "pa") tuneSend("pa", num("ptpa"), "Pressure advance");
-  else if (t === "smooth") tuneSend("smooth", num("ptsm"), "Smooth time");
+  if (t === "zdown") Act.tune("z_adjust", -ptStep, "Z offset");
+  else if (t === "zup") Act.tune("z_adjust", ptStep, "Z offset");
+  else if (t === "zreset") Act.zReset();
+  else if (t === "speed100") Act.tune("speed", 100, "Speed");
+  else if (t === "flow100") Act.tune("flow", 100, "Flow");
+  else if (t === "pa") Act.tune("pa", num("ptpa"), "Pressure advance");
+  else if (t === "smooth") Act.tune("smooth", num("ptsm"), "Smooth time");
 });
 ptEl("ptune").addEventListener("input", ev => {            // live readout while a slider is dragged
   const e = ev.target; if (!e.matches("input[type=range]")) return;
@@ -1841,7 +2195,7 @@ ptEl("ptune").addEventListener("input", ev => {            // live readout while
 });
 ptEl("ptune").addEventListener("change", ev => {           // sent when the slider is released
   const e = ev.target; if (!e.matches("input[type=range]") || !CONTROLS) return;
-  tuneSend(e.id === "ptspeed" ? "speed" : "flow", Math.max(10, +e.value), e.id === "ptspeed" ? "Speed" : "Flow");
+  Act.tune(e.id === "ptspeed" ? "speed" : "flow", Math.max(10, +e.value), e.id === "ptspeed" ? "Speed" : "Flow");
 });
 // ---- Print info: ETA, speed, flow, filament used, slicer estimate (metadata of the current file) ----
 let meta = null, metaFile = "", thumbUrl = "";
@@ -2179,7 +2533,8 @@ function afcSvg(s) {
   const cx = 104, cy = 70, RY = 56, RX = 25, dx = 34;                      // flange ellipse radii, flange spacing
   const rf = 20 + (RY - 7 - 20) * Math.max(.06, Math.min(1, s.frac)), rfx = rf * RX / RY;
   const fx = cx + dx;                                                        // front flange x
-  return '<svg class="slotsvg" viewBox="0 0 220 176" role="img"><defs>' +
+  // cropped to the spool itself (x 79..166, y 13..127), centred: the card's header already names the slot and its state
+  return '<svg class="slotsvg afcspool" viewBox="27 6 188 128" role="img"><defs>' +
     '<linearGradient id="afw' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="' + light + '"/><stop offset=".45" stop-color="' + c + '"/><stop offset="1" stop-color="' + dark + '"/></linearGradient>' +
     '<linearGradient id="aff' + id + '" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4a4690"/><stop offset="1" stop-color="#1d1a42"/></linearGradient>' +
     '<linearGradient id="afs' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3670"/><stop offset="1" stop-color="#211e48"/></linearGradient></defs>' +
@@ -2195,11 +2550,8 @@ function afcSvg(s) {
     // hub, axle stub
     '<ellipse cx="' + fx + '" cy="' + cy + '" rx="9" ry="20" fill="#0f0d24" stroke="#6a66b0"/>' +
     '<rect x="' + fx + '" y="' + (cy - 5) + '" width="16" height="10" rx="3" fill="#8a86c8"/><ellipse cx="' + (fx + 16) + '" cy="' + cy + '" rx="3" ry="5" fill="#b3b0e6"/></g>' +
-    // status LED on the slab front and labels
-    '<circle cx="196" cy="14" r="3.6" fill="' + led + '"/><circle cx="196" cy="14" r="7" fill="' + led + '" opacity=".25"/>' +
-    '<text x="110" y="162" text-anchor="middle" font-size="9" font-weight="600" fill="#A29EDB">' + escH(s.status) + '</text>' +
-    '<text x="8" y="14" font-size="12" font-weight="700" fill="' + (s.isActive ? "#9580FF" : "#A29EDB") + '">' + escH(s.label) + '</text>' +
-    (s.map ? '<text x="8" y="28" font-size="9.5" fill="#6B66A5">' + escH(s.map) + '</text>' : "") + '</svg>';
+    // the lane's status light, as on the unit: on the axle stub's end
+    '<circle cx="' + (fx + 16) + '" cy="' + cy + '" r="7" fill="' + led + '" opacity=".25"/><circle cx="' + (fx + 16) + '" cy="' + cy + '" r="3" fill="' + led + '"/></svg>';
 }
 
 const exName = i => i ? "extruder" + i : "extruder";
@@ -2323,19 +2675,50 @@ function slotsExtruders(st) {                // any Klipper printer: one slot pe
   }
   return out;
 }
-function render(st) {
-  printState = st.print_stats.state;
-  renderPrintInfo(st);
-  renderTune(st);
+// ---- Status feed: each poll publishes the printer's status, and every view subscribes to what it shows ----
+// Status.on(fn, {el}) adds a view: fn(st) runs on every poll, but only while one of its elements (an id or a list of ids)
+// is on screen. A section that is not shown (another page, another touch section, a layout that hides it) costs
+// nothing, and Status.refresh() brings views up to date at once when they come into view or a button changes what
+// they show. One view failing is logged and does not stop the others or make the printer look offline.
+const shown = el => !!el && (el.checkVisibility ? el.checkVisibility() : el.offsetParent !== null);
+const Status = {
+  st: null, subs: [],
+  on(fn, opts = {}) {
+    const s = {fn, els: [].concat(opts.el || [])};
+    this.subs.push(s);
+    if (this.st) this.run(s);
+    return () => { this.subs = this.subs.filter(x => x !== s); };
+  },
+  run(s) {
+    if (s.els.length && !s.els.some(id => shown(document.getElementById(id)))) return;
+    try { s.fn(this.st); } catch (e) { console.warn("Feedline: a view failed to update", e); }
+  },
+  publish(st) {
+    this.st = window.__st = st;
+    printState = (st.print_stats || {}).state || "";       // read by the action buttons' locks everywhere
+    this.subs.forEach(s => this.run(s));
+  },
+  refresh() { if (this.st) this.subs.forEach(s => this.run(s)); },
+};
+// Home's views
+Status.on(st => {                                          // header: job line, print buttons; footer
   renderPrintCtl(printState);
-  renderTemps(st);
-  renderFans(st);
+  const p = st.print_stats || {};
+  document.getElementById("job").textContent = p.state === "printing" || p.state === "paused"
+    ? cap(p.state) + (st.virtual_sdcard ? " " + Math.round(st.virtual_sdcard.progress * 100) + "%" : "") + ": " + String(p.filename || "").split("/").pop() + (p.info && p.info.total_layer ? "  (layer " + p.info.current_layer + "/" + p.info.total_layer + ")" : "")
+    : "State: " + cap(p.state);
+  document.getElementById("foot").textContent = "updated " + new Date().toLocaleTimeString() + "  -  " + CFG.name + " (" + PRINTER + ")";
+});
+Status.on(renderPrintInfo);                                // also loads the file's metadata and thumbnail, which other views use
+Status.on(renderTune, {el: "ptune"});
+Status.on(renderTemps, {el: "temps"});
+Status.on(renderFans, {el: "fans"});
+Status.on(renderMove, {el: "move"});
+Status.on(renderSlots, {el: ["grid", "scene"]});           // filament cards, their status row and the drawn printer
+function renderSlots(st) {
   renderAfcBar(st);
-  window.__st = st;
-  renderMove(st);
   const qb = CFG.provider === "qidibox", afc = CFG.provider === "afc" || qb;      // both have one card per lane / slot feeding a single toolhead
   const slots = CFG.provider === "u1" ? slotsU1(st) : qb ? slotsQidi(st) : afc ? slotsAFC(st) : slotsExtruders(st), ts = st.toolhead.extruder;
-  renderBoxBar(st); renderTcBar(st);
   let out = "";
   const sceneCols = [], sceneLoaded = [];
   for (const s of slots) {
@@ -2361,7 +2744,7 @@ function render(st) {
     }
     Object.assign(s, {isActive, fanLabel});
     out += '<div class="tool' + (isActive ? " active" : "") + (s.loaded ? "" : " empty") + '">' +
-      '<div class="top"><span class="tn">' + escH(s.label || "T" + i) + '</span>' +
+      '<div class="top"><span class="tn">' + escH(s.label || "T" + i) + (s.map && s.map !== s.label && !s.ext ? "<small>" + escH(s.map) + "</small>" : "") + '</span>' +
       '<span class="badge' + (isActive ? " active" : heating ? " heat" : "") + '">' + (heating && !isActive ? "Heating" : escH(cap(state))) + '</span></div>' +
       slotGraphic(s) +
       '<div class="mat">' + escH(s.title) + '</div>' +
@@ -2370,10 +2753,12 @@ function render(st) {
       (s.remTxt !== "-" ? '<div><b>' + s.remTxt + '</b>' + escH(String(s.spool || "").replace(/^./, c => c.toUpperCase())) + '</div>' : "") +
       (CFG.spoolman ? '<div><b>' + (s.sp ? "#" + s.sp.id : "-") + '</b>Spoolman</div>' : "") + '</div>' + actions(i, s.loaded, isActive, ex, s) + '</div>';
   }
-  document.getElementById("grid").innerHTML = out;
+  const grid = document.getElementById("grid");
+  if (shown(grid)) grid.innerHTML = out;
   AFCS = UNITON && slots.length ? slots : null;
   SLOTSNOW = slots;
-  sceneUpdate(st, sceneCols, sceneLoaded);
+  renderBoxBar(st); renderTcBar(st);                       // after the slots: the QIDI Box row names the slot in use
+  if (shown(document.getElementById("scene"))) sceneUpdate(st, sceneCols, sceneLoaded);      // hidden when the column is narrow, and in touch mode
   spinApply();
 }
 
@@ -2401,16 +2786,25 @@ function spinApply() {
 }
 const FANPOS = {part: 190, cavity: 352}, fanSpd = {part: 0, cavity: 0}, fanAng = {part: 0, cavity: 0};
 let spinLast = 0;
+// Touch mode runs on small computers: no drawn printer at all, and the spools only turn while Filament is shown, at about 12 frames a second
+const spinNext = () => TOUCH ? setTimeout(() => requestAnimationFrame(spinFrame), window.touchPanel === "filament" ? 80 : 500) : requestAnimationFrame(spinFrame);
 function spinFrame(t) {
+  if (TOUCH && window.touchPanel !== "filament") { spinLast = 0; return spinNext(); }
   const dt = spinLast ? Math.min(0.1, (t - spinLast) / 1000) : 0;
   spinLast = t;
+  if (TOUCH) {
+    let turned = false;
+    for (let i = 0; i < spoolSpd.length; i++) if (spoolSpd[i]) { spoolAng[i] = (spoolAng[i] + spoolSpd[i] * dt + 360) % 360 || .01; turned = true; }
+    if (turned) spinApply();
+    return spinNext();
+  }
   let moved = false;
   for (let i = 0; i < N; i++) if (spinSpeed[i] > 0) { spinAngle[i] = (spinAngle[i] + spinSpeed[i] * dt) % 360; moved = true; }
   for (const k in FANPOS) if (fanSpd[k] > 0) { fanAng[k] = (fanAng[k] + fanSpd[k] * dt) % 360; moved = true; }
   for (let i = 0; i < spoolSpd.length; i++) if (spoolSpd[i]) { spoolAng[i] = (spoolAng[i] + spoolSpd[i] * dt + 360) % 360 || .01; moved = true; }
   if (moved) spinApply();
   motionApply(dt);
-  requestAnimationFrame(spinFrame);
+  spinNext();
 }
 requestAnimationFrame(spinFrame);
 
@@ -2475,7 +2869,7 @@ async function tick() {
       }
     }
     const extra = tempObjs.filter(n => !/^extruder\d*$/.test(n)).concat(fanObjs).map(n => "&" + encodeURIComponent(n)).join("");
-    const base = ["toolhead", "print_stats", "virtual_sdcard", "gcode_move", "motion_report"].concat(Array.from({length: N}, (_, i) => exName(i)), tmcObjs);
+    const base = ["webhooks", "toolhead", "print_stats", "virtual_sdcard", "gcode_move", "motion_report"].concat(Array.from({length: N}, (_, i) => exName(i)), tmcObjs);
     if (CFG.provider === "u1") base.push("filament_detect", "filament_feed left", "filament_feed right");
     if (CFG.provider === "afc") base.push("AFC", ...afcLanes, ...afcParts);
     if (CFG.provider === "toolchanger") base.push("toolchanger");
@@ -2484,18 +2878,25 @@ async function tick() {
     const objs = base.map(n => encodeURIComponent(n)).join("&") + extra;
     const j = await jget(MR + "/printer/objects/query?" + objs);
     if (CFG.spoolman && Date.now() - spoolsAt > 15000) await loadSpools();
-    const st = j.result.status;
-    render(st);
-    conn.textContent = "Connected";
-    conn.className = "pill on";
-    const p = st.print_stats;
-    document.getElementById("job").textContent = p.state === "printing" || p.state === "paused"
-      ? cap(p.state) + (st.virtual_sdcard ? " " + Math.round(st.virtual_sdcard.progress * 100) + "%" : "") + ": " + p.filename + (p.info && p.info.total_layer ? "  (layer " + p.info.current_layer + "/" + p.info.total_layer + ")" : "")
-      : "State: " + cap(p.state);
-    document.getElementById("foot").textContent = "updated " + new Date().toLocaleTimeString() + "  -  " + CFG.name + " (" + PRINTER + ")";
+    const wh = j.result.status.webhooks || {};
+    klippySet(wh.state, wh.state_message);                 // e.g. "shutdown" after an emergency stop, with Klipper's reason
+    conn.textContent = Klippy.state === "ready" ? "Connected" : "Klipper: " + Klippy.state;
+    conn.className = Klippy.state === "ready" ? "pill on" : "pill off";
+    Status.publish(j.result.status);                       // every view updates itself (see Status)
   } catch (e) {
-    conn.textContent = "Offline";
-    conn.className = "pill off";
+    // the printer's status could not be read. If Moonraker answers, Klipper itself is not running properly (it could not start,
+    // a microcontroller is missing...): show what it says, with the restart buttons. Otherwise the printer is offline.
+    let info = null;
+    try { info = (await jget(MR + "/printer/info")).result; } catch (e2) { /* Moonraker is not answering either */ }
+    if (info && info.state && info.state !== "ready") {
+      klippySet(info.state, info.state_message);
+      conn.textContent = "Klipper: " + info.state; conn.className = "pill off";
+      // the views keep the last values they had, but no print runs now: say so (header, print card, print buttons)
+      if (Status.st) Status.publish(Object.assign({}, Status.st, {webhooks: {state: info.state, state_message: info.state_message},
+        print_stats: Object.assign({}, Status.st.print_stats, {state: "error", message: info.state_message}), virtual_sdcard: {progress: 0}}));
+    } else {
+      conn.textContent = "Offline"; conn.className = "pill off";
+    }
   }
 }
 // Camera: one JPEG frame at a time (the printer offers WebRTC only, no MJPEG), about once a second.
@@ -2508,18 +2909,47 @@ const camframe = document.getElementById("camframe"), camlive = document.getElem
 let camMode = "live";
 try { camMode = localStorage.getItem("camMode") || "live"; } catch (e) {}
 function setCam(m) {
+  const again = m !== camMode || !camOpen;
   camMode = m;
   try { localStorage.setItem("camMode", m); } catch (e) {}
-  const live = m === "live", mjpeg = !!(CFG && CFG.camera && CFG.camera.mode === "mjpeg");
+  const live = m === "live", mjpeg = camMjpeg();
   camframe.hidden = !live || mjpeg; camlive.hidden = !live || !mjpeg; camimg.hidden = live;
-  const fsrc = live && !mjpeg ? CAM_PAGE : "about:blank";       // blank frame closes the WebRTC session
-  if (camframe.getAttribute("src") !== fsrc) camframe.src = fsrc;
-  if (live && mjpeg) { if (camlive.getAttribute("src") !== CAM_PAGE) camlive.src = CAM_PAGE; }
-  else camlive.removeAttribute("src");                           // no src: the browser stops reading the stream
   cambtn.textContent = live ? "Use snapshots" : "Use live video";
-  camstat.textContent = live ? (mjpeg ? "Connecting" : "Live (WebRTC)") : "Loading";
+  if (again || camKey !== live + CAM_PAGE) camStart(); else camLayout();    // settings saved: keep a stream that is running
+}
+// Live video looks after itself: it stops while the page is hidden (a minimised window or a background tab, where the
+// browser lets an MJPEG stream stall and a WebRTC session drop) and starts afresh when the page is back. A stream that
+// fails, or shows no picture within 15 s, is opened again, waiting a little longer each time (up to 30 s), so a camera
+// that comes up late or drops out reconnects without a page reload.
+const camMjpeg = () => !!(CFG && CFG.camera && CFG.camera.mode === "mjpeg");
+let camOpen = false, camKey = "", camTries = 0, camWait = null;
+function camStop() {
+  clearTimeout(camWait); camOpen = false; camKey = "";
+  if (camframe.getAttribute("src") !== "about:blank") camframe.src = "about:blank";    // a blank frame closes the WebRTC session
+  camlive.removeAttribute("src");                                                    // no src: the browser stops reading the stream
+}
+function camStart() {
+  camStop();
+  if (camMode !== "live" || !CAM_PAGE) { if (camMode === "snap") camstat.textContent = "Loading"; camOff(false); camLayout(); return; }
+  if (document.hidden) return;                                     // opened when the page is shown
+  camOpen = true; camKey = "true" + CAM_PAGE;
+  if (camMjpeg()) {                                                // a fresh address, so the browser opens a new connection
+    camlive.src = CAM_PAGE + (CAM_PAGE.includes("?") ? "&" : "?") + "_t=" + Date.now();
+    camstat.textContent = camTries ? "Reconnecting" : "Connecting";
+    camWait = setTimeout(camRetry, 15000);                         // no picture yet: try again
+  } else { camframe.src = CAM_PAGE; camstat.textContent = "Live (WebRTC)"; }
+  camOff(false);
   camLayout();
 }
+function camRetry() {
+  if (camMode !== "live" || document.hidden) return;
+  camStop(); camstat.textContent = "Unavailable"; camOff(true);
+  camWait = setTimeout(camStart, Math.min(30000, 2000 * 2 ** camTries++));
+}
+document.addEventListener("visibilitychange", () => {
+  if (camMode !== "live") return;
+  if (document.hidden) camStop(); else { camTries = 0; camStart(); }
+});
 // The camera view. The box keeps the picture's own shape (4:3, 16:9, ...) so it fills it without bars, and the picture is
 // turned as configured: rotation in quarter turns clockwise, then mirrored left-right / top-bottom as seen on screen (the
 // same order Mainsail uses, so Moonraker's webcam settings look the same here). After a quarter turn the box is the
@@ -2537,14 +2967,20 @@ function camLayout() {
   }
 }
 const camShape = im => { if (im.naturalWidth && im.naturalHeight) { camNat = [im.naturalWidth, im.naturalHeight]; camLayout(); } };
-camlive.addEventListener("load", () => { camShape(camlive); if (camMode === "live") camstat.textContent = "Live (MJPEG)"; });
-camlive.addEventListener("error", () => { if (camMode === "live" && camlive.getAttribute("src")) camstat.textContent = "Unavailable"; });
+// No picture: say so in the box instead of showing a broken-image icon
+function camOff(off) {
+  const v = document.getElementById("camview");
+  v.classList.toggle("off", off);
+  v.dataset.msg = off ? "Camera unavailable - " + (camMode === "live" ? "reconnecting" : "retrying") : "";
+}
+camlive.addEventListener("load", () => { if (!camlive.getAttribute("src")) return; clearTimeout(camWait); camTries = 0; camShape(camlive); camOff(false); if (camMode === "live") camstat.textContent = "Live (MJPEG)"; });
+camlive.addEventListener("error", () => { if (camMode === "live" && camlive.getAttribute("src")) { clearTimeout(camWait); camRetry(); } });
 cambtn.onclick = () => setCam(camMode === "live" ? "snap" : "live");
 function camNext() {
   if (document.hidden || camMode !== "snap") return setTimeout(camNext, 1000);
   const im = new Image();
-  im.onload = () => { camimg.src = im.src; camShape(im); camstat.textContent = "Live"; setTimeout(camNext, 800); };
-  im.onerror = () => { camstat.textContent = "Unavailable"; setTimeout(camNext, 4000); };
+  im.onload = () => { camimg.src = im.src; camShape(im); camOff(false); camstat.textContent = "Live"; setTimeout(camNext, 800); };
+  im.onerror = () => { camstat.textContent = "Unavailable"; camOff(true); setTimeout(camNext, 4000); };
   im.src = HOSTED ? withP("/cam/snapshot?t=" + Date.now()) : MR_HTTP + "/webcam/snapshot.jpg?t=" + Date.now();
 }
 let MR_HTTP = HOSTED ? "" : "http://" + PRINTER;
@@ -2559,7 +2995,7 @@ const withP = u => u + (u.includes("?") ? "&" : "?") + "p=" + encodeURIComponent
 if (HOSTED) {
   const rawFetch = window.fetch.bind(window);
   window.fetch = (u, o) => {
-    if (typeof u === "string" && u[0] === "/" && PID) { o = Object.assign({}, o); o.headers = Object.assign({}, o.headers, {"X-Printer": PID}); }
+    if (typeof u === "string" && u[0] === "/" && PID) { o = Object.assign({}, o); o.headers = Object.assign({"X-Printer": PID}, o.headers); }   // a request may name another printer (Printers page controls)
     return rawFetch(u, o);
   };
 }
@@ -2596,13 +3032,16 @@ async function applyConfig(c) {
   const slotsN = (c.provider === "afc" || c.provider === "qidibox") && c.lanes && c.lanes.length ? c.lanes.length : N;
   stage.style.setProperty("--n", slotsN); stage.style.setProperty("--cols", Math.min(slotsN, c.provider === "qidibox" ? 5 : 4));      // one QIDI Box and its external spool share a row
   mvEl.hidden = !CONTROLS;
+  document.getElementById("ptune").hidden = !CONTROLS;
   document.getElementById("navsettings").hidden = !CONTROLS;
   document.getElementById("navmacros").hidden = !HOSTED;
   const canLive = !!CAM_PAGE, canSnap = !!(c.camera && c.camera.snapshot);
   document.getElementById("cam").hidden = !canLive && !canSnap;
   cambtn.hidden = !(canLive && canSnap);
   if (!canLive) camMode = "snap"; else if (!canSnap) camMode = "live";
-  setCam(camMode);
+  if (TOUCH) {          // the touchscreen sits at the printer: no camera, which also spares the small computer driving it
+    camMode = "off"; camStop();
+  } else setCam(camMode);
   tempObjs = null; fanObjs = null;
   await applyGraphics();
 }
@@ -2615,7 +3054,7 @@ async function bootstrap() {
   await applyConfig(c || Object.assign({}, FALLBACK_CFG));
   if (window.routeHash && /^#(settings|macros)$/.test(location.hash)) window.routeHash();
   try { const f = sessionStorage.getItem("flash"); if (f) { sessionStorage.removeItem("flash"); notice.className = "pill on"; notice.textContent = f; setTimeout(() => { notice.textContent = ""; notice.className = ""; }, 12000); } } catch (e) {}
-  camNext(); conPoll(); tick(); setInterval(tick, 2000);
+  camNext(); conPoll(); tick(); setInterval(tick, TOUCH ? 4000 : 2000);      // touch mode: every 4 s, to go easy on the small computer driving the screen (a button press still updates at once)
 }
 bootstrap();
 </script>
@@ -2640,9 +3079,17 @@ bootstrap();
     const tp = j.exists ? thumbPath(j.filename, (j.metadata || {}).thumbnails, false) : "";
     return tp ? (typeof HOSTED !== "undefined" && HOSTED ? withP(tp) : MRB + tp) : "";
   }
+  // The print running now, shown from the printer's live status: some firmware (QIDI) closes the history record seconds after
+  // the start as "klippy_disconnect" while the print carries on. The newest job is the live one when it is for the file printing now.
+  function withLive(list) {
+    const ps = (window.__st || {}).print_stats || {}, j = list[0];
+    if (!j || !ps.filename || j.filename !== ps.filename || (ps.state !== "printing" && ps.state !== "paused")) return list;
+    return [Object.assign({}, j, {status: ps.state, live: true, print_duration: ps.print_duration || j.print_duration, filament_used: ps.filament_used || j.filament_used}), ...list.slice(1)];
+  }
   function jobsHtml(lim) {
-    const all = jobs.filter(j => filter === "all" || j.status === filter), rows = lim ? all.slice(0, lim) : all;
-    const counts = {all: jobs.length}; jobs.forEach(j => counts[j.status] = (counts[j.status] || 0) + 1);
+    const list = withLive(jobs);
+    const all = list.filter(j => filter === "all" || j.status === filter), rows = lim ? all.slice(0, lim) : all;
+    const counts = {all: list.length}; list.forEach(j => counts[j.status] = (counts[j.status] || 0) + 1);
     let h = '<div class="seg">' + ["all", ...Object.keys(counts).filter(k => k !== "all")].map(k =>
       '<button data-f="' + esc(k) + '" class="' + (k === filter ? "on" : "") + '">' + esc(k === "all" ? "All" : cap(k.replace(/_/g, " "))) + " (" + counts[k] + ")</button>").join("") + "</div>";
     // leave out the thumbnail and materials columns when no listed row has anything to show in them
@@ -2651,18 +3098,21 @@ bootstrap();
       return {j, m, th: thumbOf(j), ids: spoolIds(j), cols};
     });
     const hasTh = info.some(r => r.th), hasMat = info.some(r => r.ids.length || r.cols.length);
-    h += '<div class="vcard" style="padding:6px 8px;overflow-x:auto"><table class="jobtbl"><thead><tr>' + (hasTh ? "<th></th>" : "") + '<th>File</th><th>Status</th><th>Started</th><th>Print time</th><th>Filament</th>' + (hasMat ? "<th>Materials (click for Spoolman info)</th>" : "") + "</tr></thead><tbody>";
+    h += '<div class="vcard" style="padding:6px 8px;overflow-x:auto"><table class="jobtbl"><thead><tr>' + (hasTh ? "<th></th>" : "") + '<th>File</th><th class="jx">Status</th><th class="jx">Started</th><th class="jx">Print time</th><th class="jx">Filament</th>' + (hasMat ? '<th class="jx">Materials (click for Spoolman info)</th>' : "") + "</tr></thead><tbody>";
     h += info.map(({j, m, th, ids, cols}) => {
       let mats = ids.map(id => { const s = spoolMap && spoolMap[id], f = s && s.filament;
         return '<button class="chip" data-spool-id="' + id + '" title="Spool #' + id + (f ? " - " + esc((f.vendor ? f.vendor.name + " " : "") + f.name) : " (not found in Spoolman)") + '"><i style="background:' + (f && f.color_hex ? "#" + esc(f.color_hex.slice(0, 6)) : "#555") + '"></i>#' + id + (f ? " " + esc(f.material || "") : "") + "</button>"; }).join("");
       if (!mats) mats = '<span class="dots">' + cols.map(c => '<i style="background:' + esc(c) + '"></i>').join("") + "</span>";
+      const started = j.start_time ? new Date(j.start_time * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"}) : "";
       return "<tr>" + (hasTh ? "<td>" + (th ? '<img src="' + esc(th) + '" alt="" onerror="this.style.visibility=\'hidden\'">' : '<div style="width:44px;height:44px"></div>') + "</td>" : "") +
-        '<td class="fn" title="' + esc(j.filename) + '">' + esc(String(j.filename).split("/").pop()) + "</td>" +      // base name only; the full path is in the tooltip
-        '<td><span class="st ' + esc(j.status) + '">' + esc(cap(String(j.status).replace(/_/g, " "))) + "</span></td>" +
-        "<td>" + (j.start_time ? new Date(j.start_time * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"}) : "-") + "</td>" +
-        "<td>" + (j.print_duration ? dur(j.print_duration) : "-") + (m.estimated_time ? ' <span style="color:var(--sub)">/ ' + dur(m.estimated_time) + "</span>" : "") + "</td>" +
-        "<td>" + (j.filament_used ? (j.filament_used / 1000).toFixed(2) + " m" : "-") + (m.filament_weight_total ? ' <span style="color:var(--sub)">(' + m.filament_weight_total.toFixed(0) + " g est.)</span>" : "") + "</td>" +
-        (hasMat ? "<td>" + mats + "</td>" : "") + "</tr>";
+        '<td class="fn" title="' + esc(j.filename) + '">' + esc(String(j.filename).split("/").pop()) +      // base name only; the full path is in the tooltip
+          '<span class="jsub"><span class="st ' + esc(j.status) + '">' + esc(cap(String(j.status).replace(/_/g, " "))) + "</span> " +
+          esc([started, j.print_duration ? dur(j.print_duration) : ""].filter(Boolean).join(" · ")) + "</span></td>" +      // phones: the other columns folded in here
+        '<td class="jx"><span class="st ' + esc(j.status) + '">' + esc(cap(String(j.status).replace(/_/g, " "))) + "</span></td>" +
+        '<td class="jx">' + (started || "-") + "</td>" +
+        '<td class="jx">' + (j.print_duration ? dur(j.print_duration) : "-") + (m.estimated_time ? ' <span style="color:var(--sub)">/ ' + dur(m.estimated_time) + "</span>" : "") + "</td>" +
+        '<td class="jx">' + (j.filament_used ? (j.filament_used / 1000).toFixed(2) + " m" : "-") + (m.filament_weight_total ? ' <span style="color:var(--sub)">(' + m.filament_weight_total.toFixed(0) + " g est.)</span>" : "") + "</td>" +
+        (hasMat ? '<td class="jx">' + mats + "</td>" : "") + "</tr>";
     }).join("") + "</tbody></table>" + (rows.length ? "" : '<div style="padding:14px;color:var(--sub)">No jobs recorded.</div>') + "</div>";
     if (lim && all.length > lim) h += '<div style="margin:-6px 0 16px"><button class="seg-b" data-goto="jobs">All jobs (' + all.length + ')</button></div>';
     return h;
@@ -2705,7 +3155,7 @@ bootstrap();
       stat("Longest print", dur(t.longest_print)) +
       stat("Total job time", dur(t.total_time), "including heating and pauses") +
       stat("Filament used", (t.total_filament_used || 0) >= 1e6 ? (t.total_filament_used / 1e6).toFixed(2) + " km" : ((t.total_filament_used || 0) / 1000).toFixed(1) + " m");
-    const c = {}; lst.result.jobs.forEach(j => { if (j.status !== "in_progress") c[j.status] = (c[j.status] || 0) + 1; });
+    const c = {}; withLive(lst.result.jobs).forEach(j => { if (j.status !== "in_progress" && !j.live) c[j.status] = (c[j.status] || 0) + 1; });     // finished jobs only
     const tot2 = Object.values(c).reduce((a, b) => a + b, 0), col = {completed: "#4ADE80", cancelled: "#F0577A", interrupted: "#E8B04F"};
     $("histbreak").innerHTML = tot2 ? '<div style="display:flex;height:14px;border-radius:7px;overflow:hidden;background:#1D1A42">' +
       Object.entries(c).map(([k, v]) => '<div title="' + esc(k) + ": " + v + '" style="width:' + (v / tot2 * 100) + "%;background:" + (col[k] || "#7A63F2") + '"></div>').join("") + "</div>" +
@@ -2826,10 +3276,10 @@ bootstrap();
       plan = j.steps;
     } catch (e) { m.textContent = "Cannot calibrate now: " + String(e.message || e); return; }
     if (!await ask("Calibrate the bed mesh? The printer will: " + plan.map((s, i) => (i + 1) + ". " + s).join("  ") + ". The toolhead moves and it takes a few minutes. The new mesh is kept in the printer's memory only: run SAVE_CONFIG on the printer to keep it.", "Calibrate")) return;
-    b.disabled = true; m.textContent = "Working... this can take several minutes";
+    b.disabled = true; b.dataset.working = "1"; m.textContent = "Working... this can take several minutes";
     try { await postControl({action: "mesh_calibrate"}); m.textContent = "Done. Run SAVE_CONFIG on the printer to keep this mesh."; await loadMesh(); }
     catch (e) { m.textContent = String(e.message || e); }
-    finally { b.disabled = false; }
+    finally { b.dataset.working = ""; b.disabled = false; }
   });
 
   // ---------- Console (full history, polled while the page is open) ----------
@@ -2853,21 +3303,28 @@ bootstrap();
   // type G-code: Enter sends it, Up / Down walk through earlier lines. The server refuses restarts, emergency stop, firmware and shell commands.
   const conHist = []; let conPos = 0;
   // Restart Klipper / Firmware restart (Files and Console tabs): ask first; the server refuses while a print is running
-  const rstLock = () => { const off = typeof CONTROLS !== "undefined" && !CONTROLS; document.querySelectorAll(".rstgrp").forEach(g => { g.hidden = off; }); };
+  const rstLock = () => {
+    const off = typeof CONTROLS !== "undefined" && !CONTROLS, busy = printState === "printing" || printState === "paused";
+    document.querySelectorAll(".rstgrp").forEach(g => { g.hidden = off; });
+    document.querySelectorAll("button.rst").forEach(b => {        // greyed out with the reason while a print runs (the server refuses then anyway)
+      if (b.dataset.tip == null) b.dataset.tip = b.title;
+      b.disabled = busy || b.dataset.sending === "1";
+      b.title = busy ? "Not while a print is running" : b.dataset.tip;
+    });
+    const mc = $("meshcal");                                  // Calibrate bed mesh: the same rule
+    if (mc && !mc.dataset.working) {
+      if (mc.dataset.tip == null) mc.dataset.tip = mc.title;
+      mc.disabled = busy; mc.title = busy ? "Not while a print is running" : mc.dataset.tip;
+    }
+  };
   rstLock(); setInterval(rstLock, 2000);           // CONTROLS is only known once the page has asked the server
   document.addEventListener("click", async ev => {
     const b = ev.target.closest && ev.target.closest("button.rst"); if (!b || b.disabled) return;
-    const kind = b.dataset.restart, fw = kind === "firmware";
-    if (printState === "printing" || printState === "paused") { setNote("Not restarting: a print is running. Cancel it first.", true); $("conerr").textContent = "Not restarting: a print is running. Cancel it first."; return; }
-    if (!await ask((fw ? "Firmware restart" : "Restart Klipper") + "?\n\n" + (fw ? "Klipper and the printer's microcontrollers restart. " : "Klipper reloads its configuration (printer.cfg, macros). ") + "The printer is unavailable for a little while and may need homing again.", fw ? "Firmware restart" : "Restart Klipper")) return;
-    const all = [...document.querySelectorAll("button.rst")], label = all.map(x => x.textContent);
-    all.forEach(x => { x.disabled = true; }); b.textContent = "Restarting...";
-    try {
-      await postControl({action: "restart", kind});
-      const m = (fw ? "Firmware restart" : "Klipper restart") + " sent. The printer reconnects in a few seconds.";
-      setNote(m); $("conerr").textContent = m;
-    } catch (e) { const m = "Restart failed: " + e.message; setNote(m, true); $("conerr").textContent = m; }
-    setTimeout(() => all.forEach((x, i) => { x.disabled = false; x.textContent = label[i]; }), 8000);
+    const all = [...document.querySelectorAll("button.rst")], label = all.map(x => x.innerHTML);
+    all.forEach(x => { x.disabled = true; x.dataset.sending = "1"; }); b.textContent = "Restarting...";
+    const ok = await Act.restart(b.dataset.restart), m = notice.textContent;      // the action asks first and reports in the status pill
+    if (m) { setNote(m, !ok); $("conerr").textContent = m; }                        // and here, next to the buttons
+    setTimeout(() => { all.forEach((x, i) => { x.dataset.sending = ""; x.innerHTML = label[i]; }); rstLock(); }, ok ? 8000 : 0);
   });
   const conLock = () => {            // re-checked on every refresh: the page decides later whether it may send commands
     rstLock();
@@ -2995,6 +3452,15 @@ bootstrap();
   window.addEventListener("beforeunload", e => { if (edDirty()) { e.preventDefault(); e.returnValue = ""; } });
   // ---------- Printers: every printer at a glance (status only; a click opens that printer) ----------
   let ovSig = "";
+  // what each slot holds (QIDI Box slots, AFC lanes, U1 channels, tools): a color dot, the slot, the filament; the one feeding the nozzle is outlined
+  const ovFils = f => !f || !f.length ? "" : '<div class="ovfils">' + f.map(s => {
+    const what = s.loaded ? s.title || (s.color ? "" : "loaded") : "empty";
+    return '<span class="ovfil' + (s.active ? " on" : "") + (s.loaded ? "" : " empty") + '" title="' + esc(s.label + (what ? ": " + what : "") + (s.active ? " (in use)" : "")) + '"><i' +
+      (s.loaded && s.color ? ' style="background:' + esc(s.color) + '"' : "") + "></i><b>" + esc(s.label) + "</b>" + (s.loaded && s.title ? esc(s.title) : "") + "</span>";
+  }).join("") + "</div>";
+  // Pause / Resume / Cancel for a printer that is printing, right on its card (the server checks the state again before sending)
+  const ovCtl = p => !CONTROLS || !(p.state === "printing" || p.state === "paused") ? "" : '<div class="ovctl">' +
+    (p.state === "printing" ? '<button data-ctl="pause">' + ico("pause") + "Pause</button>" : '<button data-ctl="resume">' + ico("play") + "Resume</button>") + '<button class="danger" data-ctl="cancel">' + ico("x") + "Cancel</button></div>";
   const ovTemp = (label, t) => t && typeof t[0] === "number" ? "<span>" + label + " <b>" + Math.round(t[0]) + "°</b>" + (t[1] > 0 ? " / " + Math.round(t[1]) + "°" : "") + "</span>" : "<span></span>";
   function ovBody(p) {
     if (!p.online) return '<div class="ovfile">Not reachable</div><div class="ovsub">' + esc((p.model && p.model.label ? p.model.label + " · " : "") + p.host) + "</div>";
@@ -3005,7 +3471,7 @@ bootstrap();
     return '<div class="ovfile" title="' + esc(p.file) + '">' + (act ? esc(p.file.split("/").pop()) : p.klippy && p.klippy !== "ready" ? "Klipper is " + esc(p.klippy) : "Idle") + "</div>" +
       (act ? '<div class="ovbar"><i style="width:' + (pr * 100).toFixed(1) + '%"></i></div><div class="ovrow"><span><b>' + Math.round(pr * 100) + "%</b>" + (p.layer ? " · layer " + (+p.layer[0] || 0) + "/" + (+p.layer[1] || 0) : "") + "</span><span>" +
         (left != null ? dur(left) + " left · " + esc(eta) : "") + "</span></div>" : "") +
-      '<div class="ovrow">' + ovTemp("Nozzle", p.nozzle) + ovTemp("Bed", p.bed) + "</div>" +
+      '<div class="ovrow">' + ovTemp("Nozzle", p.nozzle) + ovTemp("Bed", p.bed) + "</div>" + ovFils(p.filament) + ovCtl(p) +
       '<div class="ovsub">' + esc((p.model && p.model.label ? p.model.label + " · " : "") + p.host) + (p.active ? " · shown in this tab" : "") + "</div>";
   }
   const ovTurn = v => !v ? "" : (v.flipH ? " scaleX(-1)" : "") + (v.flipV ? " scaleY(-1)" : "") + (v.rotation ? " rotate(" + (+v.rotation || 0) + "deg)" + (v.rotation % 180 ? " scale(.5625)" : "") : "");
@@ -3034,8 +3500,24 @@ bootstrap();
       th.hidden = !want; if (want && th.getAttribute("src") !== want) th.src = want;
     });
   }
-  $("ovgrid").addEventListener("click", e => { const c = e.target.closest(".ovcard"); if (c) selectPrinter(c.dataset.id, true); });
-  $("ovgrid").addEventListener("keydown", e => { const c = e.target.closest(".ovcard"); if (c && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); selectPrinter(c.dataset.id, true); } });
+  async function ovControl(b, c) {
+    const act = b.dataset.ctl, name = (c.querySelector(".ovhd b") || {}).textContent || c.dataset.id;
+    if (!PCONFIRM[act] || !await ask(name + ": " + PCONFIRM[act], PLABEL[act])) return;      // the same questions as the buttons at the top
+    b.closest(".ovctl").querySelectorAll("button").forEach(x => { x.disabled = true; });
+    try {
+      const r = await fetch("/control", {method: "POST", headers: {"Content-Type": "application/json", "X-Feedline-Control": "1", "X-Printer": c.dataset.id}, body: JSON.stringify({action: act})});
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || "HTTP " + r.status);
+      $("ovstat").textContent = PLABEL[act] + " sent to " + name;
+    } catch (e) { $("ovstat").textContent = name + ": " + e.message; }
+    loadOverview().catch(() => {});
+  }
+  $("ovgrid").addEventListener("click", e => {
+    const c = e.target.closest(".ovcard"), b = e.target.closest("button[data-ctl]");
+    if (b && c) { e.stopPropagation(); if (!b.disabled) ovControl(b, c); return; }
+    if (c) selectPrinter(c.dataset.id, true);
+  });
+  $("ovgrid").addEventListener("keydown", e => { const c = e.target.closest(".ovcard"); if (c && !e.target.closest("button") && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); selectPrinter(c.dataset.id, true); } });
   // ---------- routing ----------
   const loaders = {printers: loadOverview, files: loadFiles, console: loadConsole, jobs: loadJobs, history: () => Promise.all([loadHistory(), loadJobs()]), tune: loadMesh, settings: () => (window.settingsLoad ? window.settingsLoad() : Promise.resolve()), macros: () => (window.macrosLoad ? window.macrosLoad() : Promise.resolve())};
   function setView(v, push) {
@@ -3044,6 +3526,7 @@ bootstrap();
     $("layout").style.display = v === "home" ? "" : "none"; $("foot").hidden = v !== "home";
     for (const k of ["printers", "jobs", "history", "tune", "console", "files", "settings", "macros"]) $("v-" + k).hidden = v !== k;
     document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("on", b.dataset.view === v));
+    if (v === "home") Status.refresh();      // Home's sections were not redrawn while another page was shown
     try {      // push when the user navigates so Back/Forward work; replace on first load and on hash changes (which are already in the history)
       const base = location.pathname + location.search, url = v === "home" ? base : base + "#" + v;
       if (push && url !== base + location.hash) history.pushState(null, "", url); else history.replaceState(null, "", url);
@@ -3139,7 +3622,7 @@ bootstrap();
     const g = CFG.graphics, pk = CFG.packs, md = CFG.model || {};
     const opts = (kind, sel) => (pk[kind] || []).map(p => '<option value="' + escH(p.id) + '"' + (p.id === sel ? " selected" : "") + ">" + escH(p.label || p.id) + (p.custom ? " (custom)" : "") + "</option>").join("");
     const plist = PRINTERS.map(p => '<div class="prow"><b>' + escH(p.active ? CFG.name : p.name) + '</b><span>' + escH(p.host) + (p.active ? " &middot; shown now" : "") + '</span>' +
-      (p.active ? "" : '<button data-sw="' + escH(p.id) + '">Switch</button>') + (p.main ? '<span class="sub">set in config.json</span>' : '<button class="danger" data-rm="' + escH(p.id) + '">Remove</button>') + '</div>').join("");
+      (p.active ? "" : '<button data-sw="' + escH(p.id) + '">Switch</button>') + (p.main || p.fixed ? '<span class="sub">set in server config</span>' : '<button class="danger" data-rm="' + escH(p.id) + '">Remove</button>') + '</div>').join("");
     const customs = kind => (pk[kind] || []).filter(p => p.custom).map(p => '<div class="prow"><b>' + escH(p.label || p.id) + '</b><span>' + escH(p.id) + '</span>' +
       (kind === "printer" ? '<button data-edit="' + escH(p.id) + '">Edit anchors</button>' : "") + '<button class="danger" data-del="' + kind + ":" + escH(p.id) + '">Delete</button></div>').join("") || '<div class="sub">None yet.</div>';
     root.innerHTML = '<h2>Settings <span id="setmsg" class="badge"></span></h2>' +
@@ -3475,14 +3958,252 @@ bootstrap();
     else if (b.dataset.run) {
       const card = b.closest(".mcard"), params = {};
       card.querySelectorAll("[data-p]").forEach(i => { if (i.value.trim()) params[i.dataset.p] = i.value.trim(); });
-      const line = b.dataset.run + Object.entries(params).map(([k, v]) => " " + k + "=" + v).join("");
-      if (!await ask("Run this macro on " + CFG.name + "?\n\n" + line + "\n\nIt runs on the printer immediately and macros can move or heat it.")) return;
-      b.disabled = true; running = true;
-      try { const j = await post({action: "run_macro", name: b.dataset.run, params}); msg("Ran " + j.cmd); }
-      finally { running = false; b.disabled = locked() || !!b.dataset.blocked; }
+      b.disabled = true;
+      try { const j = await Act.runMacro(b.dataset.run, params); if (j) msg("Ran " + j.cmd); }
+      finally { b.disabled = locked() || !!b.dataset.blocked; }
     }
   }));
   window.macrosLoad = load;
+})();
+</script>
+<script>
+// ---- Touch mode (/touch): a KlipperScreen-style layout for a touchscreen beside the printer. It builds its own markup with big
+// buttons; every button runs an action from Act, and every section draws itself from the status feed (Status), so it shares all
+// behaviour with the normal page without depending on its layout. A few normal-page widgets are moved in and used as they are. ----
+(() => {
+  if (!TOUCH) return;
+  const $ = id => document.getElementById(id);
+  const ICON = {home: "house", filament: "disc-3", move: "move", tune: "sliders-horizontal", macros: "zap", console: "square-terminal"};      // the rail's icons (sprite names)
+  const SECTIONS = [["home", "Status"], ["filament", "Filament"], ["move", "Move"], ["tune", "Tune"], ["macros", "Macros"], ["console", "Console"]];
+  const MV_STEPS = [0.1, 1, 10, 50, 100], Z_STEPS = [0.005, 0.01, 0.025, 0.05];
+  const PRESETS = [["PLA", 210, 60], ["PETG", 240, 80], ["ABS / ASA", 260, 100]];      // nozzle °C, bed °C
+  let mvStep = 10, zStep = 0.01;
+  const steps = (list, cur, attr) => list.map(v => '<button data-' + attr + '="' + v + '"' + (v === cur ? ' class="on"' : "") + ">" + v + "</button>").join("");
+
+  const root = document.createElement("div");
+  root.id = "touch";
+  root.innerHTML =
+    '<div id="tbar"><h1 id="tname"></h1><div id="ttemps" aria-label="Temperatures"></div>' +
+      '<button class="tbtn" id="tpause" hidden></button><button class="tbtn danger" id="tcancel" hidden>' + ico("x") + 'Cancel</button>' +
+      '<button class="tbtn estop" id="testop" hidden>' + ico("octagon-x") + 'Emergency stop</button></div>' +
+    '<nav id="trail" aria-label="Sections">' + SECTIONS.map(([k, l]) => '<button data-tp="' + k + '"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-' + ICON[k] + '"/></svg>' + l + "</button>").join("") + "</nav>" +
+    '<main id="tmain">' +
+      '<section class="tp" id="tp-home">' +
+        '<div id="tjob" class="tbox"><img id="tjimg" alt="" hidden><div class="tjtxt"><div id="tjst" class="tjst">Connecting...</div><div id="tjfile" class="tjfile"></div>' +
+          '<div class="tjbar" id="tjbarw" hidden><i id="tjbar"></i></div><div id="tjsub" class="tjsub"></div></div></div>' +
+        '<div><h2>Temperatures</h2><div class="theat" id="theat"></div></div>' +
+        '<div class="tpre" id="tpre"><button class="tbtn" data-cool>' + ico("snowflake") + 'Cool down</button>' + PRESETS.map(([n, e, b], i) => '<button class="tbtn" data-preset="' + i + '">' + ico("flame") + n + " " + e + "° / " + b + "°</button>").join("") + "</div>" +
+      "</section>" +
+      '<section class="tp" id="tp-filament" hidden></section>' +
+      '<section class="tp" id="tp-move" hidden>' +
+        '<div class="tbox"><div class="tpos" id="tpos"></div><div class="tnote" id="tmvnote"></div></div>' +
+        '<div class="tmove">' +
+          '<div class="dpad"><span></span><button class="kb" data-jog="Y:1" title="Y+ (back)">' + ico("arrow-up") + '<span>Y+</span></button><span></span>' +
+            '<button class="kb" data-jog="X:-1" title="X- (left)">' + ico("arrow-left") + '<span>X&minus;</span></button><button class="kb home" data-home="xy">' + ico("house") + '<span>Home XY</span></button><button class="kb" data-jog="X:1" title="X+ (right)">' + ico("arrow-right") + '<span>X+</span></button>' +
+            '<span></span><button class="kb" data-jog="Y:-1" title="Y- (front)">' + ico("arrow-down") + '<span>Y&minus;</span></button><span></span></div>' +
+          '<div class="zpad"><button class="kb" data-jog="Z:1">' + ico("chevrons-up") + '<span>Z+</span></button><button class="kb home" data-home="z">' + ico("house") + '<span>Home Z</span></button><button class="kb" data-jog="Z:-1">' + ico("chevrons-down") + '<span>Z&minus;</span></button></div>' +
+          '<div class="tside"><span class="k">Step (mm)</span><div class="tsteps" id="tmvsteps">' + steps(MV_STEPS, mvStep, "step") + "</div>" +
+            '<button class="tbtn" data-home="all">' + ico("house") + 'Home all</button><button class="tbtn" data-motors>' + ico("power-off") + 'Motors off</button></div>' +
+        "</div>" +
+      "</section>" +
+      '<section class="tp" id="tp-tune" hidden>' +
+        '<div class="tbox tunes">' +
+          '<div class="trow"><span class="k">Z offset</span><button class="tbtn" data-z="-1">' + ico("arrow-down-to-line") + 'Closer</button><span class="val" id="tz"></span><button class="tbtn" data-z="1">' + ico("arrow-up-from-line") + 'Further</button><button class="tbtn" data-zreset>' + ico("rotate-ccw") + 'Reset</button></div>' +
+          '<div class="trow"><span class="k">Z step (mm)</span><div class="tsteps" id="tzsteps">' + steps(Z_STEPS, zStep, "zstep") + "</div></div>" +
+          '<div class="trow"><span class="k">Speed</span><button class="tbtn" data-f="speed:-10">&minus;10</button><span class="val" id="tspeed"></span><button class="tbtn" data-f="speed:10">+10</button><button class="tbtn" data-f="speed:=100">100%</button></div>' +
+          '<div class="trow"><span class="k">Flow</span><button class="tbtn" data-f="flow:-2">&minus;2</button><span class="val" id="tflow"></span><button class="tbtn" data-f="flow:2">+2</button><button class="tbtn" data-f="flow:=100">100%</button></div>' +
+          '<div class="trow"><span class="k">Pressure advance</span><button class="tbtn" data-f="pa:-0.005">&minus;0.005</button><span class="val" id="tpa"></span><button class="tbtn" data-f="pa:0.005">+0.005</button></div>' +
+          '<div class="trow"><span class="k">Smooth time</span><button class="tbtn" data-f="smooth:-0.005">&minus;0.005</button><span class="val" id="tsm"></span><button class="tbtn" data-f="smooth:0.005">+0.005</button></div>' +
+        "</div>" +
+        '<div><h2>Fans</h2><div class="tfans" id="tfans"></div><div class="tfro" id="tfro" style="margin-top:12px"></div></div>' +
+      "</section>" +
+      '<section class="tp" id="tp-macros" hidden></section>' +
+      '<section class="tp" id="tp-console" hidden></section>' +
+    "</main>" +
+    '<div id="tnum" hidden></div>';
+  document.body.appendChild(root);
+  // normal-page widgets used here as they are, and the indicators the shared code writes to
+  $("tbar").insertBefore($("conn"), $("ttemps"));
+  root.appendChild($("notice"));
+  document.body.appendChild($("tgtpop"));
+  $("tp-home").appendChild($("pinfo"));
+  $("tp-filament").append($("afcbar"), $("grid"));
+  $("tp-macros").appendChild($("v-macros")); $("v-macros").hidden = false;
+  $("tp-console").appendChild($("con"));
+  $("tmain").prepend($("kalert"));            // Klipper not ready: above whichever section is open
+
+  // ---- sections ----
+  let panel = "home";
+  function show(p) {
+    if (!$("tp-" + p) || document.querySelector('#trail [data-tp="' + p + '"]').hidden) p = "home";
+    panel = window.touchPanel = p;
+    for (const [k] of SECTIONS) $("tp-" + k).hidden = k !== p;
+    document.querySelectorAll("#trail button").forEach(b => b.classList.toggle("on", b.dataset.tp === p));
+    $("tmain").scrollTop = 0;
+    if (p === "macros" && window.macrosLoad) window.macrosLoad();
+    try { sessionStorage.setItem("touchPanel", p); } catch (e) {}
+    Status.refresh();                 // a section that was hidden was not redrawn: bring it up to date now
+  }
+  $("trail").addEventListener("click", e => { const b = e.target.closest("button[data-tp]"); if (b) show(b.dataset.tp); });
+  let start = "home"; try { start = sessionStorage.getItem("touchPanel") || "home"; } catch (e) {}
+  show(start);
+
+  // ---- status bar: name, temperatures, print buttons ----
+  const STATE = {standby: "Ready", printing: "Printing", paused: "Paused", complete: "Finished", cancelled: "Cancelled", error: "Error"};
+  const deg = v => typeof v === "number" ? Math.round(v) + "°" : "--";
+  const tgtAttrs = (obj, label, target) => ' data-heater="' + escH(obj) + '" data-title="' + escH(label) + '" data-cur="' + Math.round(target || 0) + '"';
+  const heaterLabel = n => /^extruder\d*$/.test(n) ? (N > 1 ? "T" + (+n.replace("extruder", "") || 0) : "Nozzle") : n === "heater_bed" ? "Bed" : n === (CH && CH.sensor) ? "Chamber" : tempTitle(n);
+  Status.on(st => {
+    $("tname").textContent = CFG.name;
+    const mv = document.querySelector('#trail [data-tp="move"]');
+    mv.hidden = !CONTROLS;                                       // moves need the dashboard server
+    if (panel === "move" && mv.hidden) show("home");
+    const chips = [];
+    for (const [obj, label] of [...Array.from({length: N}, (_, i) => [exName(i), heaterLabel(exName(i))]), ["heater_bed", "Bed"], ...(CH && CH.sensor ? [[CH.sensor, "Chamber"]] : [])]) {
+      const h = st[obj]; if (!h || typeof h.temperature !== "number") continue;
+      const tg = typeof h.target === "number" ? h.target : null, hot = tg > 0;
+      chips.push("<span" + (CONTROLS && tg !== null ? ' class="tgt' + (hot ? " hot" : "") + '"' + tgtAttrs(obj, label, tg) : hot ? ' class="hot"' : "") +
+        "><small>" + escH(label) + "</small><b>" + deg(h.temperature) + "</b>" + (tg !== null ? "<small>/ " + (hot ? deg(tg) : "off") + "</small>" : "") + "</span>");
+    }
+    const html = chips.join("");
+    if ($("ttemps").__h !== html) { $("ttemps").innerHTML = html; $("ttemps").__h = html; }
+    const act = PRINTING();
+    $("tpause").hidden = $("tcancel").hidden = !(act && CONTROLS);
+    $("tpause").innerHTML = printState === "paused" ? ico("play") + "Resume" : ico("pause") + "Pause";
+    $("tpause").disabled = $("tcancel").disabled = pbusy;
+    $("testop").hidden = !CONTROLS;
+  });
+  $("tpause").addEventListener("click", () => Act.print(printState === "paused" ? "resume" : "pause"));
+  $("tcancel").addEventListener("click", () => Act.print("cancel"));
+  $("testop").addEventListener("click", () => Act.print("estop"));
+
+  // ---- Status: print card, heater tiles, presets ----
+  Status.on(st => {
+    const ps = st.print_stats || {}, vs = st.virtual_sdcard || {}, active = PRINTING();
+    const tl = ps.info && ps.info.total_layer, cl = ps.info && ps.info.current_layer;
+    const prog = Math.max(0, Math.min(1, vs.progress || 0));
+    $("tjst").innerHTML = escH(STATE[ps.state] || cap(ps.state || "")) + (active ? "<small>" + Math.round(prog * 100) + "%</small>" : "");
+    $("tjfile").textContent = ps.filename ? String(ps.filename).split("/").pop() : "No file loaded";
+    $("tjbarw").hidden = !active; $("tjbar").style.width = (prog * 100).toFixed(1) + "%";
+    $("tjsub").textContent = active ? [tl ? "Layer " + (cl || 0) + " of " + tl : "", ps.print_duration ? "printing for " + fmtDur(ps.print_duration) : ""].filter(Boolean).join(" · ")
+      : ps.state === "error" ? (ps.message || "") : ps.filename ? "Last print" : "";
+    const im = $("tjimg"), src = ps.filename && thumbUrl ? thumbUrl : "";
+    if (im.getAttribute("src") !== src) { if (src) im.src = src; else im.removeAttribute("src"); }
+    im.hidden = !src;
+    // one tile per heater (tap to set its target), then the chamber sensor if it is not a heater
+    const names = [...Array.from({length: N}, (_, i) => exName(i)), "heater_bed", ...(tempObjs || []).filter(n => /^heater_generic /.test(n))];
+    if (CH && CH.sensor && !names.includes(CH.sensor)) names.push(CH.sensor);
+    const tiles = names.map(n => {
+      const h = st[n]; if (!h || typeof h.temperature !== "number") return "";
+      const tg = typeof h.target === "number" ? h.target : null, hot = tg > 0, label = heaterLabel(n);
+      return '<div class="th' + (hot ? " hot" : "") + (CONTROLS && tg !== null ? ' tgt"' + tgtAttrs(n, label, tg) : '"') + '><span class="nm">' + escH(label) + '</span><span class="v">' + (+h.temperature).toFixed(1) + "°</span>" +
+        '<span class="tg">' + (tg === null ? "sensor" : hot ? "target " + deg(tg) : "off") + "</span>" + (hot ? '<div class="bar"><i style="width:' + Math.round(heatProgress(h.temperature, tg) * 100) + '%"></i></div>' : "") + "</div>";
+    }).join("");
+    if ($("theat").__h !== tiles) { $("theat").innerHTML = tiles; $("theat").__h = tiles; }
+    $("tpre").hidden = !CONTROLS;
+    $("tpre").querySelectorAll("button").forEach(b => { b.disabled = active; b.title = active ? "Not while a print is running" : ""; });
+  }, {el: "tp-home"});
+  $("tpre").addEventListener("click", async e => {
+    const b = e.target.closest("button"); if (!b || b.disabled) return;
+    const st = Status.st || {};
+    if (b.dataset.cool != null) {                // every heater that is on, off
+      for (const n of [...Array.from({length: N}, (_, i) => exName(i)), "heater_bed", ...(tempObjs || []).filter(n => /^heater_generic /.test(n))])
+        if (st[n] && st[n].target > 0) await Act.setTemp(n, 0, heaterLabel(n));
+      return;
+    }
+    const [, e0, b0] = PRESETS[+b.dataset.preset], tool = (st.toolhead || {}).extruder || "extruder";      // the nozzle in use, and the bed
+    if (await Act.setTemp(tool, e0, heaterLabel(tool))) await Act.setTemp("heater_bed", b0, "Bed");
+  });
+
+  // ---- Move: direction pad, Z, step size, homing ----
+  Status.on(st => {
+    const locked = !CONTROLS || running || PRINTING();
+    $("tp-move").querySelectorAll(".kb, [data-home], [data-motors]").forEach(b => { b.disabled = locked; });
+    const th = st.toolhead || {}, p = th.position || [], h = th.homed_axes || "";
+    $("tpos").innerHTML = ["x", "y", "z"].map((a, i) => "<span><b>" + a.toUpperCase() + "</b>" + (!h.includes(a) ? '<span class="nh">not homed</span>' : locked ? (+p[i]).toFixed(2) :
+      '<span class="tgt" data-axis="' + a.toUpperCase() + '" data-cur="' + (+p[i]).toFixed(1) + '" data-min="' + (th.axis_minimum || [])[i] + '" data-max="' + (th.axis_maximum || [])[i] + '">' + (+p[i]).toFixed(2) + "</span>") + "</span>").join("");
+    $("tmvnote").textContent = PRINTING() ? "Moves are locked while a print is running." : !h.includes("x") || !h.includes("y") ? "Home the printer before moving it." : "";
+  }, {el: "tp-move"});
+  $("tp-move").addEventListener("click", e => {
+    const s = e.target.closest("button[data-step]");
+    if (s) { mvStep = +s.dataset.step; $("tmvsteps").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === s)); return; }
+    const b = e.target.closest("button"); if (!b || b.disabled) return;
+    if (b.dataset.jog) { const [a, d] = b.dataset.jog.split(":"); Act.jog(a, +d * mvStep); }
+    else if (b.dataset.home) Act.home(b.dataset.home);
+    else if (b.dataset.motors != null) Act.motorsOff();
+  });
+
+  // ---- Tune: Z offset, speed, flow, pressure advance, smooth time; fans ----
+  const TUNE = {speed: ["Speed", 10, 300], flow: ["Flow", 50, 150], pa: ["Pressure advance", 0, 2], smooth: ["Smooth time", 0, 0.2]};
+  const tuneNow = {};
+  Status.on(st => {
+    const gm = st.gcode_move || {}, ex = st[(st.toolhead || {}).extruder] || st.extruder || {}, z = +((gm.homing_origin || [])[2]) || 0;
+    tuneNow.speed = Math.round((gm.speed_factor || 1) * 100); tuneNow.flow = Math.round((gm.extrude_factor || 1) * 100);
+    tuneNow.pa = typeof ex.pressure_advance === "number" ? ex.pressure_advance : null; tuneNow.smooth = typeof ex.smooth_time === "number" ? ex.smooth_time : null;
+    $("tz").textContent = (z > 0 ? "+" : "") + z.toFixed(3) + " mm";
+    $("tspeed").textContent = tuneNow.speed + "%"; $("tflow").textContent = tuneNow.flow + "%";
+    $("tpa").textContent = tuneNow.pa === null ? "-" : tuneNow.pa.toFixed(3); $("tsm").textContent = tuneNow.smooth === null ? "-" : tuneNow.smooth.toFixed(3);
+    $("tp-tune").querySelectorAll(".tunes .tbtn").forEach(b => { b.disabled = !CONTROLS; });
+    // fans: the ones that can be set get a tile with buttons, the others (hotend, controller fans) are listed
+    const fans = (fanObjs || []).filter(n => st[n] && fanSpeed(st[n]) !== null).map(n => ({n, t: fanTitle(n), s: fanSpeed(st[n])}))
+      .sort((a, b) => (a.n === "fan" ? -1 : 0) - (b.n === "fan" ? -1 : 0) || a.t.localeCompare(b.t));
+    const settable = f => CONTROLS && (f.n === "fan" || f.n.startsWith("fan_generic "));
+    const tiles = fans.filter(settable).map(f => '<div class="tbox tfan" data-fan="' + escH(fanKey(f.n)) + '" data-title="' + escH(f.t) + '" data-cur="' + Math.round(f.s * 100) + '"><div class="nm">' + escH(f.t) + '</div><div class="v">' + Math.round(f.s * 100) + "%</div>" +
+      '<div class="row"><button class="tbtn" data-fs="0">Off</button><button class="tbtn" data-fs="-10">&minus;10</button><button class="tbtn" data-fs="10">+10</button><button class="tbtn" data-fs="100">Max</button></div></div>').join("");
+    if (Date.now() >= fanHoldUntil && $("tfans").__h !== tiles) { $("tfans").innerHTML = tiles; $("tfans").__h = tiles; }
+    $("tfro").innerHTML = fans.filter(f => !settable(f)).map(f => "<span>" + escH(f.t) + "<b>" + Math.round(f.s * 100) + "%</b></span>").join("");
+  }, {el: "tp-tune"});
+  $("tp-tune").addEventListener("click", e => {
+    const zs = e.target.closest("button[data-zstep]");
+    if (zs) { zStep = +zs.dataset.zstep; $("tzsteps").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === zs)); return; }
+    const b = e.target.closest("button"); if (!b || b.disabled) return;
+    if (b.dataset.z) return Act.tune("z_adjust", +b.dataset.z * zStep, "Z offset");
+    if (b.dataset.zreset != null) return Act.zReset();
+    if (b.dataset.f) {                            // "what:step" changes by a step, "what:=value" sets it
+      const [what, arg] = b.dataset.f.split(":"), [label, lo, hi] = TUNE[what], cur = tuneNow[what];
+      if (cur === null || cur === undefined) return;
+      const v = arg[0] === "=" ? +arg.slice(1) : Math.round((cur + +arg) * 1000) / 1000;
+      return Act.tune(what, Math.max(lo, Math.min(hi, v)), label);
+    }
+    const tile = b.closest(".tfan");
+    if (tile && b.dataset.fs != null) {
+      const cur = +tile.dataset.cur, d = +b.dataset.fs, pct = d === 0 || d === 100 ? d : Math.max(0, Math.min(100, cur + d));
+      return Act.setFan(tile.dataset.fan, pct / 100, tile.dataset.title);
+    }
+  });
+
+  // ---- number fields: a pad on the screen instead of a keyboard (inside the target editor, else floating at the right) ----
+  const tgtIn = $("tgtin"); tgtIn.type = "text"; tgtIn.inputMode = "none";
+  const pad = $("tnum");
+  const KEYS = ["7", "8", "9", "4", "5", "6", "1", "2", "3", ".", "0", "back", "neg", "clear", "done"];
+  const LBL = {back: ico("delete"), neg: "&plusmn;", clear: "Clear", done: "OK"};
+  pad.innerHTML = KEYS.map(k => '<button type="button" data-k="' + k + '"' + (k === "done" ? ' class="go"' : k === "neg" || k === "clear" ? ' class="sm"' : "") + ">" + (LBL[k] || k) + "</button>").join("");
+  let target = null, fresh = false;
+  const padFor = el => el instanceof HTMLInputElement && /^(text|number)$/.test(el.type) && !el.readOnly && !el.disabled;
+  const hide = () => { pad.hidden = true; target = null; };
+  document.addEventListener("focusin", e => {
+    if (!padFor(e.target)) return;
+    target = e.target; fresh = true;
+    const pop = target.closest("#tgtpop");
+    (pop || root).appendChild(pad); pad.classList.toggle("float", !pop); pad.hidden = false;
+    target.inputMode = "none";
+  });
+  document.addEventListener("focusout", e => { if (e.target === target) setTimeout(() => { if (document.activeElement !== target) hide(); }, 0); });
+  setInterval(() => { if (target && !target.offsetParent) hide(); }, 400);      // its editor was closed
+  for (const ev of ["pointerdown", "mousedown"]) pad.addEventListener(ev, e => e.preventDefault());     // keep the field focused
+  pad.addEventListener("click", e => {
+    const b = e.target.closest("button[data-k]"); if (!b || !target) return;
+    const k = b.dataset.k, i = target;
+    if (k === "done") { if (i === tgtIn) i.dispatchEvent(new KeyboardEvent("keydown", {key: "Enter", bubbles: true})); else i.blur(); return; }
+    let v = fresh && k !== "back" && k !== "neg" ? "" : i.value;
+    if (k === "back") v = v.slice(0, -1);
+    else if (k === "clear") v = "";
+    else if (k === "neg") v = v.startsWith("-") ? v.slice(1) : "-" + v;
+    else if (k === ".") { if (!v.includes(".")) v = (v === "" || v === "-" ? v + "0" : v) + "."; }
+    else v += k;
+    fresh = false; i.value = v;
+    i.dispatchEvent(new Event("input", {bubbles: true}));
+  });
 })();
 </script>
 <script>

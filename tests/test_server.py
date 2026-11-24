@@ -434,5 +434,142 @@ class TagReread(unittest.TestCase):
         self.assertEqual(self.send({"channel": 1}, objs=()), [400])
 
 
+class ConfigPrinters(unittest.TestCase):
+    """Printers set by the admin (config.json "printers", --printers / FEEDLINE_PRINTERS) next to ones added in the UI."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.TemporaryDirectory()
+        self.saved = (fs.Handler.printer, fs.Handler.fixed_printers, fs.Handler.state, fs.Handler.cfg)
+        fs.Handler.printer, fs.Handler.state, fs.Handler.cfg = "qidi1.lan", self.tmp.name, dict(fs.DEFAULT_CFG)
+
+    def tearDown(self):
+        fs.Handler.printer, fs.Handler.fixed_printers, fs.Handler.state, fs.Handler.cfg = self.saved
+        self.tmp.cleanup()
+
+    def handler(self):
+        replies = []
+
+        class Fake(fs.Handler):
+            def jreply(self, code, obj):
+                replies.append((code, obj))
+
+        h = object.__new__(Fake)
+        h.pid, h.headers = "main", {}
+        return h, replies
+
+    def test_parses_the_command_line_form(self):
+        got = fs.parse_printers(" voron300.lan, Voron 350 = voron350.lan,,QIDI2.lan ", "qidi1.lan")
+        self.assertEqual([(p["id"], p["name"], p["host"], p["provider"], p["fixed"]) for p in got],
+                         [("voron300", "voron300.lan", "voron300.lan", "auto", True),
+                          ("voron-350", "Voron 350", "voron350.lan", "auto", True),
+                          ("qidi2", "qidi2.lan", "qidi2.lan", "auto", True)])
+
+    def test_parses_the_config_form(self):
+        got = fs.parse_printers(["a.lan", {"name": "B", "host": "b.lan", "provider": "afc", "id": "bee"}, "192.168.1.51"])
+        self.assertEqual([(p["id"], p["host"], p["provider"]) for p in got],
+                         [("a", "a.lan", "auto"), ("bee", "b.lan", "afc"), ("192-168-1-51", "192.168.1.51", "auto")])
+        self.assertEqual(fs.parse_printers(None), [])
+        self.assertEqual(fs.parse_printers(""), [])
+
+    def test_skips_bad_entries_repeats_and_the_main_printer(self):
+        with self.assertLogs(level="WARNING") as logs:
+            got = fs.parse_printers(["http://x.lan", "x.lan:7125", "", 5, {"name": "no host"}, "qidi1.lan", "a.lan", "A.LAN",
+                                     {"host": "b.lan", "id": "main"}, {"host": "c.lan", "name": "a.lan"}], "QIDI1.lan")
+        self.assertEqual(len(logs.output), 5)
+        self.assertEqual([(p["id"], p["host"]) for p in got], [("a", "a.lan"), ("b", "b.lan"), ("a-lan", "c.lan")])
+
+    def test_fixed_printers_are_listed_first_and_hide_ui_duplicates(self):
+        fs.write_json_atomic(os.path.join(self.tmp.name, "printers.json"), {"printers": [
+            {"id": "voron300", "name": "old", "host": "voron300.lan"},     # now fixed in config: hidden
+            {"id": "other", "name": "Other", "host": "other.lan"},
+            {"id": "dup-of-main", "host": "qidi1.lan"}]})                  # same host as the main printer: hidden
+        fs.Handler.fixed_printers = fs.parse_printers([{"name": "voron300", "host": "voron300.lan"}], "qidi1.lan")
+        h, _ = self.handler()
+        self.assertEqual([p["id"] for p in h.extra_printers()], ["voron300", "other"])
+        rows = {p["id"]: p for p in h.printer_list()}
+        self.assertTrue(rows["voron300"]["fixed"])
+        self.assertFalse(rows["other"]["fixed"])
+        self.assertTrue(rows["main"]["main"])
+
+    def test_a_fixed_printer_can_be_shown_but_not_removed(self):
+        fs.Handler.fixed_printers = fs.parse_printers("voron300.lan", "qidi1.lan")
+        h, replies = self.handler()
+        h.select_printer = lambda: None
+        h.headers = {"X-Printer": "voron300"}
+        fs.Handler.select_printer(h)
+        self.assertEqual((h.pid, h.printer), ("voron300", "voron300.lan"))
+        h.remove_printer({"id": "voron300"})
+        self.assertEqual(replies[-1][0], 403)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "printers.json")))
+
+    def test_ui_cannot_add_a_fixed_printer_again_and_never_saves_it(self):
+        fs.Handler.fixed_printers = fs.parse_printers("192.0.2.10", "qidi1.lan")   # an IP resolves without a network
+        h, replies = self.handler()
+        h.add_printer({"host": "192.0.2.10"})
+        self.assertEqual(replies[-1][0], 409)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "printers.json")))
+
+
+class OverviewFilament(unittest.TestCase):
+    """The compact filament list on each Printers page card."""
+
+    def test_colors(self):
+        self.assertEqual(fs.color_hex("#ff8800"), "#FF8800")
+        self.assertEqual(fs.color_hex("00ff00ff"), "#00FF00")
+        self.assertEqual(fs.color_hex(0x123456), "#123456")
+        for bad in (None, "", "red", True, "#12"):
+            self.assertIsNone(fs.color_hex(bad), bad)
+
+    def test_qidi_box_from_the_controller(self):
+        st = {"multi_color_controller": {"slots": {"states": {"slot0": 2, "slot1": 1, "slot2": 0},
+                                                   "materials": {"slot0": {"filament": {"filament": "PLA Rapido", "type": "PLA"}, "color": "#FF0000"},
+                                                                 "slot1": {"filament": {"type": "PETG"}, "color": "00FF00"}}}}}
+        got = fs.filament_slots("qidibox", st, ["slot0", "slot1", "slot2", "slot16"])
+        self.assertEqual(got, [
+            {"label": "1A", "loaded": True, "active": True, "title": "PLA Rapido", "color": "#FF0000"},
+            {"label": "1B", "loaded": True, "active": False, "title": "PETG", "color": "#00FF00"},
+            {"label": "1C", "loaded": False, "active": False, "title": "", "color": None}])     # external spool not set up: left out
+
+    def test_qidi_box_from_saved_variables_and_the_table(self):
+        st = {"save_variables": {"variables": {"slot4": 1, "filament_slot4": 3, "color_slot4": 2, "slot16": 0}},
+              "box_extras": {"e_endstop_state": 1}}
+        table = {"fila": {3: "ABS"}, "color": {2: "#0000ff"}, "vendor": {}}
+        got = fs.filament_slots("qidibox", st, ["slot4", "slot16"], table=table)
+        self.assertEqual(got[0], {"label": "2A", "loaded": True, "active": False, "title": "ABS", "color": "#0000FF"})
+        # filament at the head and no Box slot loaded into it: the external spool is in use (as on the Home page)
+        self.assertEqual(got[1], {"label": "Ext", "loaded": True, "active": True, "title": "", "color": None})
+
+    def test_qidi_external_spool_in_use(self):
+        st = {"multi_color_controller": {"extruder": {"filament_detected": True}, "slots": {"states": {"slot0": 1},
+              "materials": {"slot16": {"filament": {"type": "TPU"}, "color": "#111111"}}}}}
+        got = fs.filament_slots("qidibox", st, ["slot0", "slot16"])
+        self.assertEqual(got[1], {"label": "Ext", "loaded": True, "active": True, "title": "TPU", "color": "#111111"})
+
+    def test_afc_lanes(self):
+        st = {"AFC": {"current_load": "lane2"}, "AFC_stepper lane1": {"prep": True, "material": "PLA", "color": "#abcdef"},
+              "AFC_lane lane2": {"load": True, "filament_name": "Silk", "color": "112233"}, "AFC_stepper lane3": {}}
+        got = fs.filament_slots("afc", st, ["lane1", "lane2", "lane3"])
+        self.assertEqual([(s["label"], s["loaded"], s["active"], s["title"], s["color"]) for s in got],
+                         [("lane1", True, False, "PLA", "#ABCDEF"), ("lane2", True, True, "Silk", "#112233"), ("lane3", False, False, "", None)])
+
+    def test_u1_channels(self):
+        st = {"toolhead": {"extruder": "extruder1"},
+              "filament_detect": {"info": [{"MAIN_TYPE": "PLA", "SUB_TYPE": "Matte", "RGB_1": 0xFF0000}, {"MAIN_TYPE": "PETG", "RGB_1": 255}, {"MAIN_TYPE": "NONE"}]},
+              "filament_feed left": {"extruder0": {"filament_detected": True}, "extruder1": {"filament_detected": True}},
+              "filament_feed right": {"extruder2": {"filament_detected": False}}}
+        got = fs.filament_slots("u1", st, tools=4)
+        self.assertEqual([(s["label"], s["loaded"], s["active"], s["title"], s["color"]) for s in got],
+                         [("T0", True, False, "PLA Matte", "#FF0000"), ("T1", True, True, "PETG", "#0000FF"),
+                          ("T2", False, False, "", None), ("T3", False, False, "", None)])
+
+    def test_tools_and_plain_printers(self):
+        self.assertEqual([s["active"] for s in fs.filament_slots("toolchanger", {"toolchanger": {"tool_number": 1}}, tools=3)], [False, True, False])
+        self.assertEqual([s["active"] for s in fs.filament_slots("extruders", {"toolhead": {"extruder": "extruder"}}, tools=2)], [True, False])
+        self.assertEqual(fs.filament_slots("extruders", {}, tools=1), [])
+        self.assertEqual(fs.filament_objects("extruders", [], 1), [])
+        self.assertEqual(fs.filament_objects("afc", ["AFC", "AFC_stepper a", "extruder", "AFC_hub x"]), ["AFC", "AFC_stepper a"])
+
+
 if __name__ == "__main__":
     unittest.main()
