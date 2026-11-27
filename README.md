@@ -16,7 +16,7 @@ Works with any Klipper + Moonraker printer; ships with a drawn Snapmaker U1 view
 **Features at a glance**
 - Live view: camera (rotation and mirroring honored), temperatures, fans, chamber, job progress and thumbnail, moving toolhead and bed drawn from the printer's real position.
 - Filament systems: Snapmaker U1 (RFID + Spoolman), AFC / BoxTurtle, QIDI Box, toolchangers (StealthChanger, klipper-toolchanger), or plain extruders. See [Filament systems](#filament-systems).
-- [Print tuning](#print-tuning) while printing: Z offset, speed, flow, pressure advance. [Bed mesh](#tune-tab-bed-mesh) view with a Calibrate button.
+- [Print tuning](#print-tuning) while printing: Z offset, speed, flow, pressure advance. [Pause at a layer](#pause-at-a-layer) and [exclude an object](#exclude-an-object) that failed. [Bed mesh](#tune-tab-bed-mesh) view with a Calibrate button.
 - Android app with print notifications (finished, failed, cancelled, paused): see [Android app](#android-app-apk).
 - Several printers: one instance, a Printers overview page, and a per-tab `?p=<id>` address so Home Assistant cards can each show a different printer.
 - Remote touchscreen (Paxx firmware), Spoolman, a Home Assistant card helper, a Macros tab, a Console tab where you can send G-code, and a config file browser and editor.
@@ -185,6 +185,7 @@ Notes:
 
 - A status bar with the temperatures (tap one to set its target), Pause / Cancel and Emergency stop, and big section buttons on the left: Status (print card with thumbnail and progress, print details, all temperatures), Filament, Move, Tune (print tuning and fans), Macros and Console.
 - Made for 1024×600 and up. Nothing needs hover or a keyboard: number fields bring up a number pad on the screen.
+- Left on another section, the screen goes back to Status after 300 seconds without a touch. Add `&idle=<seconds>` to the address for another time, or `&idle=0` to stay where you are.
 - The camera and the drawn printer are left out, and the screen updates every 4 seconds (every 2 on the normal page), to keep the load low on the small computer that drives the screen. A button press still updates at once.
 - Any browser in kiosk mode works. On a Raspberry Pi, [Cog](https://github.com/Igalia/cog) (WPE WebKit) is light and needs no desktop: `cog --platform=drm --platform-params=renderer=gles http://<feedline>/touch`, run as a user in the `video`, `render` and `input` groups (with KlipperScreen and any desktop stopped, so Cog can take the screen).
 - Everything looks stretched sideways? Many small panels have pixels that are not square: a 7" 1024×600 panel's pixels are about 5 % wider than tall. Add `&aspect=1.05` (one pixel's width divided by its height) to the address, for example `/touch?p=main&aspect=1.05`, and the page is squeezed to match, so round things look round again.
@@ -384,6 +385,16 @@ While a print runs, the **Pause at...** button next to Pause opens a pop-up: pic
 - The request is refused when the layer has already passed or is the last one, and it is dropped when the print finishes, is cancelled or another file starts. It survives a Feedline restart (`pause_at.json` in the state folder).
 - Resume as usual with the Resume button.
 
+## Exclude an object
+
+When one object of a print has failed, the **Exclude object...** button next to Pause stops printing it and lets the rest carry on, as Fluidd and Mainsail do. The pop-up shows the bed from above (front at the bottom) with every object numbered, and the same objects as a list. Pick one on the bed or press **Exclude** in the list, then confirm. The object being printed now is green; excluded objects are dashed and crossed out, and the button counts them (`Exclude object... (1 excluded)`). Notes:
+
+- Klipper needs an `[exclude_object]` section in `printer.cfg`, and the slicer has to label the objects (Orca, Prusa and Super: *Label objects*; or `enable_object_processing: True` under `[file_manager]` in `moonraker.conf`). The button shows only while a print with two or more labelled objects is running or paused.
+- An excluded object cannot be brought back in the same print.
+- The last object left cannot be excluded: use **Cancel print**.
+- Feedline sends `EXCLUDE_OBJECT NAME=<object>` only for a name the printer itself reports for the running print.
+- The drawn rectangle is the area the nozzle can reach (Klipper's axis limits), which can be a little larger than the bed. Objects the slicer wrote without an outline are shown as a dot, or only in the list.
+
 ## Console
 
 When Klipper is not ready (it could not start, for example because a microcontroller does not answer, or it shut down after an emergency stop), every page, including the touch view, shows what Klipper reports with **Restart**, **Firmware restart** and the Klipper and Moonraker logs, as Fluidd and Mainsail do. It goes away by itself once Klipper is ready again.
@@ -402,7 +413,7 @@ Lists every user-facing macro (names not starting with `_`) with its description
 
     python -m unittest discover -s tests -v
 
-`tests/test_server.py` covers the server's decisions that need no printer: model detection, filament-system detection, the command each tool button builds, print-tuning limits, heater caps, macro parameters, and the path and address checks. Standard library only; printer answers are faked and nothing opens a network connection. The page has no automated tests.
+`tests/test_server.py` covers the server's decisions that need no printer: model detection, filament-system detection, the command each tool button builds, print-tuning limits, heater caps, macro parameters, pause-at-layer and exclude-object checks, and the path and address checks. Standard library only; printer answers are faked and nothing opens a network connection. The page has no automated tests.
 
 **Icons** are [Lucide](https://lucide.dev) (ISC licence; the icons that come from Feather are MIT), kept inside `feedline.html` as one small inline sprite, so the page needs no internet and stays a single file. Only the icons Feedline uses are included. To add one, put its name in `NAMES` in `tools/build_icons.py`, unpack the `lucide-static` npm package (`npm pack lucide-static@<version>`, then `tar -xzf` it) and run `python3 tools/build_icons.py package`. In the page, `ico("name")` draws an icon.
 

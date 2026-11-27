@@ -66,6 +66,34 @@
   #pamodal button:hover:not(:disabled){border-color:#9580FF} #pamodal #paok{background:#7A63F2;border-color:#7A63F2;color:#fff;font-weight:600}
   #pamodal button:disabled{opacity:.4;cursor:not-allowed}
   body.touch #pamodal .dlg{max-width:600px;padding:24px 26px} body.touch #pamodal button{min-height:58px;font-size:18px} body.touch #pamodal input[type=number]{font-size:22px;width:160px} body.touch #pamodal p,body.touch #pamodal .opts{font-size:18px}
+  #xomodal{position:fixed;inset:0;z-index:95;background:#000b;display:flex;align-items:center;justify-content:center;padding:16px}
+  #xomodal[hidden]{display:none}
+  #xomodal .dlg{background:#14122b;border:1px solid #352F6B;border-radius:14px;max-width:560px;width:100%;max-height:94vh;display:flex;flex-direction:column;padding:18px 20px;color:#e8e6ff;box-shadow:0 12px 40px #000c}
+  #xomodal .xobody{flex:1 1 auto;min-height:0;overflow:auto}
+  #xomodal h3{margin:0 0 10px;font-size:16px}
+  #xomodal p{font-size:13px;line-height:1.45;margin:0 0 12px;color:#bdb8ee}
+  #xomap{display:block;width:100%;max-height:46vh;margin:0 0 12px;background:#0d0b20;border:1px solid #352F6B;border-radius:8px}
+  #xomap .bed,#xomap .grid,#xomap .o polygon,#xomap .o circle{vector-effect:non-scaling-stroke;stroke-width:1.5px}
+  #xomap .bed{fill:#14122b;stroke:#352F6B} #xomap .grid{fill:none;stroke:#352F6B;opacity:.45}
+  #xomap .o{cursor:pointer} #xomap .o polygon,#xomap .o circle{fill:#7A63F255;stroke:#9580FF}
+  #xomap .o text{fill:#e8e6ff;font-weight:600;text-anchor:middle;dominant-baseline:central;pointer-events:none}
+  #xomap .o.hi polygon,#xomap .o.hi circle{fill:#7A63F2aa}
+  #xomap .o.cur polygon,#xomap .o.cur circle{fill:#4ADE8040;stroke:var(--good)}
+  #xomap .o.gone{cursor:default} #xomap .o.gone polygon,#xomap .o.gone circle{fill:none;stroke:#6b678f;stroke-dasharray:4 3} #xomap .o.gone text{fill:#6b678f}
+  #xolist .r{display:flex;align-items:center;gap:10px;padding:5px 6px;border-radius:8px;font-size:13px}
+  #xolist .r.hi{background:#1D1A42}
+  #xolist .num{flex:none;width:24px;height:24px;border-radius:50%;background:#1D1A42;border:1px solid #352F6B;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600}
+  #xolist .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #xolist .what{flex:none;font-size:12px;color:var(--muted)} #xolist .r.cur .what{color:var(--good)} #xolist .r.gone .nm{text-decoration:line-through;color:#6b678f}
+  #xomodal .err{color:var(--bad);min-height:1.2em;margin:8px 0 0;font-size:13px}
+  #xomodal .row{display:flex;justify-content:flex-end;gap:10px;margin-top:12px}
+  #xomodal button{background:#1D1A42;border:1px solid #352F6B;color:#e8e6ff;border-radius:8px;padding:7px 18px;cursor:pointer;font:inherit;font-size:13px;min-width:84px}
+  #xomodal button:hover:not(:disabled){border-color:#9580FF} #xomodal button:disabled{opacity:.4;cursor:not-allowed}
+  #xolist button{flex:none;padding:4px 12px;color:var(--bad);border-color:#7a2c40} #xolist button:hover:not(:disabled){background:#3a1626;border-color:var(--bad)}
+  body.touch #xomodal{padding:8px} body.touch #xomodal .dlg{max-width:960px;padding:16px 20px} body.touch #xomodal button{min-height:52px;font-size:18px}
+  body.touch #xomodal h3{font-size:20px} body.touch #xomodal p{font-size:16px;margin-bottom:8px} body.touch #xolist .r{font-size:17px}
+  @media (min-aspect-ratio:1/1){body.touch #xomodal .xobody{display:flex;gap:16px;overflow:hidden} body.touch #xomap{flex:1 1 0;min-width:0;margin:0;max-height:calc(100vh - 250px)} body.touch #xolist{flex:1 1 0;min-width:0;overflow:auto}}
+  body.touch #xolist .num{width:34px;height:34px;font-size:16px} body.touch #xolist .what{font-size:15px}
   .spool{cursor:pointer;outline:none} .spool:hover circle:first-child,.spool:focus-visible circle:first-child{stroke:#9580FF}
   #spmodal{position:fixed;inset:0;background:rgba(5,4,14,.72);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
   #spmodal .dlg{background:#14122b;border:1px solid #352F6B;border-radius:14px;max-width:440px;width:100%;max-height:90vh;overflow:auto;padding:18px 20px;position:relative;color:#e8e6ff}
@@ -198,6 +226,14 @@
   .tr .bar{grid-column:1 / -1;height:3px;border-radius:2px;background:#1D1A42;overflow:hidden;margin-top:4px}
   .tr .bar i{display:block;height:100%;background:var(--violet)}
   .tr.hot .bar i{background:var(--warn)}
+  /* a heater whose target can be set: the whole row is the button, and the target is drawn as a field (.tset) */
+  .tr.tgt{text-decoration:none;border-radius:6px}
+  .tr.tgt:hover,.tr.tgt:focus-visible{color:inherit;background:#1a1738;box-shadow:-8px 0 0 #1a1738,8px 0 0 #1a1738;outline:none}
+  .tr.tgt:focus-visible{box-shadow:-8px 0 0 #1a1738,8px 0 0 #1a1738,0 0 0 2px #7A63F2}
+  .tr .tset{display:inline-block;min-width:44px;margin-left:8px;padding:3px 9px;border:1px solid #352F6B;border-radius:8px;background:#0a0818;font-size:13px;font-weight:400;text-align:center;color:var(--muted)}
+  .tr.hot .tset{font-weight:600;color:#e8e6ff}
+  .tr .tset::after{content:"";display:inline-block;margin-left:6px;border:4px solid transparent;border-top-color:currentColor;border-bottom:0;vertical-align:middle;opacity:.7}
+  .tr.tgt:hover .tset,.tr.tgt:focus-visible .tset{border-color:#7A63F2;background:#1D1A42;color:#fff}
   .drv{display:flex;flex-wrap:wrap;gap:6px}
   .drv span{background:#0f0d24;border:1px solid #231f4a;border-radius:999px;padding:2px 10px;font-size:12px;color:var(--muted);white-space:nowrap}
   .drv span.hot{color:var(--warn);border-color:#6b4a1a}
@@ -658,6 +694,7 @@ SOFTWARE.
   <span id="printctl" hidden>
     <button id="pbtn" data-print="pause"><svg class="i" aria-hidden="true"><use href="#i-pause"/></svg>Pause</button>
     <button id="pabtn" title="Pause automatically before or after a layer">Pause at...</button>
+    <button id="xobtn" title="Stop printing one object and carry on with the rest" hidden>Exclude object...</button>
     <button id="cbtn" data-print="cancel" class="danger"><svg class="i" aria-hidden="true"><use href="#i-x"/></svg>Cancel print</button>
   </span>
   <span id="estopwrap" hidden><button id="ebtn" data-print="estop" class="danger estop" title="Emergency stop (M112) - always available"><svg class="i" aria-hidden="true"><use href="#i-octagon-x"/></svg>Emergency stop</button></span>
@@ -790,6 +827,14 @@ SOFTWARE.
   <p class="err" id="paerr" role="alert"></p>
   <p>The printer pauses on its own when the print gets there. It is accurate to about a second: the printer reads the G-code slightly ahead of what it is printing. The slicer must write layer information into the G-code.</p>
   <div class="row"><button id="parem" type="button" hidden>Remove</button><button id="pano" type="button">Close</button><button id="paok" type="button">Set pause</button></div>
+</div></div>
+<div id="xomodal" hidden role="dialog" aria-modal="true" aria-labelledby="xotitle"><div class="dlg">
+  <h3 id="xotitle">Exclude object</h3>
+  <p>Pick an object that has failed, on the bed or in the list. The printer stops printing it and carries on with the rest. This cannot be undone.</p>
+  <div class="xobody"><svg id="xomap" role="img" aria-label="The objects on the bed, seen from above with the front of the bed at the bottom"></svg>
+  <div id="xolist"></div></div>
+  <p class="err" id="xoerr" role="alert"></p>
+  <div class="row"><button id="xono" type="button">Close</button></div>
 </div></div>
 <div id="askmodal" hidden role="alertdialog" aria-modal="true" aria-labelledby="askmsg"><div class="dlg"><p id="askmsg"></p><div class="row"><button id="askno" type="button">Cancel</button><button id="askok" type="button">OK</button></div></div></div>
 <script>
@@ -1273,7 +1318,7 @@ function tgtOpen(el) {
     document.getElementById("tgtunit").textContent = "°C"; document.getElementById("tgtoff").hidden = false;
     document.getElementById("tgtset").textContent = "Set";
   }
-  const r = el.getBoundingClientRect();
+  const r = (el.querySelector(".tset") || el).getBoundingClientRect();      // a Temperatures row: open under its target field
   tgtPop.hidden = false;
   tgtPop.style.left = Math.max(8, Math.min(innerWidth - 190, r.left + r.width / 2 - 85)) + "px";
   tgtPop.style.top = Math.max(8, Math.min(innerHeight - 130, r.bottom + 8)) + "px";
@@ -1300,10 +1345,14 @@ document.addEventListener("click", ev => {
   if (t) { ev.stopPropagation(); return tgtOpen(t); }
   if (!ev.target.closest("#tgtpop")) tgtPop.hidden = true;
 });
+document.addEventListener("keydown", ev => {      // a focused Temperatures row works like a button
+  if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches && ev.target.matches('.tgt[role="button"]')) { ev.preventDefault(); tgtOpen(ev.target); }
+});
 document.getElementById("tgtset").addEventListener("click", () => tgtApply(tgtIn.value));
 document.getElementById("tgtoff").addEventListener("click", () => tgtApply(0));
 document.getElementById("tgtx").addEventListener("click", () => { tgtPop.hidden = true; });
-tgtIn.addEventListener("keydown", ev => { if (ev.key === "Enter" && tgtIn.value !== "") tgtApply(tgtIn.value); if (ev.key === "Escape") tgtPop.hidden = true; });
+// preventDefault: during a print the action asks first, and the same Enter would otherwise press that question's Cancel button
+tgtIn.addEventListener("keydown", ev => { if (ev.key === "Enter" && tgtIn.value !== "") { ev.preventDefault(); tgtApply(tgtIn.value); } if (ev.key === "Escape") tgtPop.hidden = true; });
 let lightOn = true, lightHold = 0;       // lightHold: ignore polled state briefly after a toggle
 function lightApply() {
   const $ = id => document.getElementById(id);
@@ -1422,13 +1471,16 @@ function renderTemps(st) {
     const hasTarget = typeof o.target === "number";
     const hot = hasTarget && o.target > 0;
     const pw = typeof o.power === "number" ? Math.round(o.power * 100) : null;
-    const tgt = /^(extruder\d*|heater_bed)$/.test(n) ? tgtSpan(n, tempTitle(n), o.target, false) : (o.target > 0 ? o.target.toFixed(0) + "°" : "off");
+    // Heaters the server can set (nozzles, the bed, a heater_generic such as the chamber): the whole row opens the editor.
+    const settable = CONTROLS && hasTarget && /^(extruder\d*|heater_bed|heater_generic .+)$/.test(n);
+    const tgtTxt = o.target > 0 ? Math.round(o.target) + "°" : "off";
     // The bar is how far the heater has got from room temperature to its target: empty when cold, full at temperature,
     // steady while it holds there. (Not the heater's power: the controller pulses that between 0 and 100% every second.)
     const prog = hot ? heatProgress(o.temperature, o.target) : 0;
     const tip = hot ? (prog >= 1 ? "at target" : Math.round(prog * 100) + "% of the way to " + Math.round(o.target) + "°") + (pw !== null ? " · heater power " + pw + "%" : "") : "off";
-    const row = '<div class="tr' + (hot ? " hot" : "") + '"><span class="nm" title="' + escH(n) + '">' + escH(tempTitle(n)) + '</span><span class="v">' + o.temperature.toFixed(1) + '°' +
-      (hasTarget ? ' <small>/ ' + tgt + '</small>' : "") + '</span>' +
+    const set = settable ? ' tgt" role="button" tabindex="0" title="Set the ' + escH(tempTitle(n)) + ' target" data-heater="' + escH(n) + '" data-title="' + escH(tempTitle(n)) + '" data-cur="' + Math.round(o.target || 0) : "";
+    const row = '<div class="tr' + (hot ? " hot" : "") + set + '"><span class="nm"' + (settable ? "" : ' title="' + escH(n) + '"') + '>' + escH(tempTitle(n)) + '</span><span class="v">' + o.temperature.toFixed(1) + '°' +
+      (settable ? '<span class="tset">' + tgtTxt + '</span>' : hasTarget ? ' <small>/ ' + tgtTxt + '</small>' : "") + '</span>' +
       (hasTarget ? '<div class="bar" title="' + escH(tip) + '"><i style="width:' + (prog * 100).toFixed(1) + '%"></i></div>' : "") + '</div>';
     (hasTarget ? heaters : sensors).push({n, row});
   }
@@ -1442,11 +1494,18 @@ function renderTemps(st) {
     drv += '<span' + (o.temperature >= 90 ? ' class="hot"' : "") + '>' + escH(label) + '<b>' + o.temperature.toFixed(0) + '°</b></span>';
   }
   const sec = (title, body) => body ? '<div class="tsec"><div class="tl">' + title + '</div>' + body + '</div>' : "";
-  document.getElementById("tgrid").innerHTML = '<div class="tcard">' +
+  const grid = document.getElementById("tgrid");
+  if (tgridDown) return;                               // a press is under way: replacing the rows now would lose its click
+  const focus = grid.contains(document.activeElement) ? document.activeElement.dataset.heater : null;
+  grid.innerHTML = '<div class="tcard">' +
     sec("Heaters", heaters.length ? '<div class="trows">' + heaters.map(x => x.row).join("") + '</div>' : "") +
     sec("Sensors", sensors.length ? '<div class="trows">' + sensors.map(x => x.row).join("") + '</div>' : "") +
     sec("Drivers", drv ? '<div class="drv">' + drv + '</div>' : "") + '</div>';
-}// ---- Fans: discovered the same way ----
+  if (focus) { const el = [...grid.querySelectorAll(".tr.tgt")].find(e => e.dataset.heater === focus); if (el) el.focus({preventScroll: true}); }      // keep keyboard focus across the redraw
+}
+let tgridDown = false;
+document.getElementById("tgrid").addEventListener("pointerdown", () => { tgridDown = true; });
+for (const ev of ["pointerup", "pointercancel"]) addEventListener(ev, () => { tgridDown = false; });// ---- Fans: discovered the same way ----
 function graphicFans() {                     // fans shown inside the printer graphic instead of the Fans card
   const s = new Set(PK.partFan ? ["fan"] : []);
   for (const f of ((CFG && CFG.toolFans) || [])) { if (f && f.hotend) s.add(f.hotend); if (f && f.part) s.add(f.part); }
@@ -1602,6 +1661,96 @@ pabtn.addEventListener("click", async () => {
   pamodal.onclick = e => { if (e.target === pamodal) done(); };
   document.addEventListener("keydown", key, true);
   pamodal.hidden = false; inp.focus();
+});
+
+// ---- Exclude object: a pop-up with a map of the bed. Picking an object stops printing it (Klipper's [exclude_object]); the
+// objects, the excluded ones and the one being printed come with every status poll, and the server checks the name again ----
+const xobtn = document.getElementById("xobtn"), xomodal = document.getElementById("xomodal");
+let xoHas = false, xoSig = "", xoBusy = false;
+const xoSent = new Set();                                    // excluded from here, until the printer's status says so too
+function xoState(st) {
+  const eo = (st && st.exclude_object) || {}, gone = new Set((eo.excluded_objects || []).concat([...xoSent]));
+  const objs = (eo.objects || []).filter(o => o && typeof o.name === "string")
+    .map((o, i) => ({n: i + 1, name: o.name, center: o.center, poly: o.polygon, gone: gone.has(o.name), cur: eo.current_object === o.name}));
+  return {objs, left: objs.filter(o => !o.gone).length};
+}
+function xoUpdate(st) {                                      // on every poll: the button, and the pop-up while it is open
+  const active = printState === "printing" || printState === "paused";
+  if (!active) xoSent.clear();
+  const s = xoState(st), n = s.objs.length - s.left;
+  xobtn.hidden = !(active && s.objs.length > 1);             // one object: there is nothing to carry on with, Cancel does it
+  xobtn.textContent = "Exclude object..." + (n ? " (" + n + " excluded)" : "");
+  if (xomodal.hidden) return;
+  if (xobtn.hidden) return xoClose();                        // the print ended while the pop-up was open
+  xoDraw(st, s);
+}
+function xoDraw(st, s) {
+  const sig = JSON.stringify([s.objs.map(o => [o.name, o.gone, o.cur]), xoBusy]);
+  if (sig === xoSig) return;                                 // nothing changed: leave it alone, a finger may be on it
+  xoSig = sig;
+  const num = v => typeof v === "number" && isFinite(v), pt = p => Array.isArray(p) && num(p[0]) && num(p[1]), f = v => +v.toFixed(2);
+  const shapes = s.objs.map(o => {                           // the outline the slicer wrote; some write only the centre (a dot), some neither (list only)
+    const poly = (Array.isArray(o.poly) ? o.poly : []).filter(pt);
+    const c = pt(o.center) ? o.center : poly.length ? [poly.reduce((a, p) => a + p[0], 0) / poly.length, poly.reduce((a, p) => a + p[1], 0) / poly.length] : null;
+    return {o, poly: poly.length >= 3 ? poly : null, c};
+  }).filter(x => x.c);
+  const map = document.getElementById("xomap");
+  map.style.display = shapes.length ? "" : "none";
+  if (shapes.length) {
+    const th = st.toolhead || {}, lo = th.axis_minimum || [], hi = th.axis_maximum || [];
+    const bed = num(lo[0]) && num(lo[1]) && num(hi[0]) && num(hi[1]) && hi[0] > lo[0] && hi[1] > lo[1];      // the area the nozzle can reach
+    const all = shapes.flatMap(x => (x.poly || []).concat([x.c])).concat(bed ? [lo, hi] : []);
+    const x0 = Math.min(...all.map(p => p[0])), x1 = Math.max(...all.map(p => p[0])), y0 = Math.min(...all.map(p => p[1])), y1 = Math.max(...all.map(p => p[1]));
+    const size = Math.max(x1 - x0, y1 - y0, 1), fs = size / 22, pad = size * 0.03 + (shapes.some(x => !x.poly) ? fs : 0);
+    map.setAttribute("viewBox", [f(x0 - pad), f(-y1 - pad), f(x1 - x0 + 2 * pad), f(y1 - y0 + 2 * pad)].join(" "));      // y is drawn upside down: front of the bed at the bottom
+    let h = "";
+    if (bed) {
+      const step = size > 600 ? 100 : 50;
+      let d = "";
+      for (let x = Math.floor(lo[0] / step) * step + step; x < hi[0]; x += step) d += "M" + x + " " + f(-hi[1]) + "V" + f(-lo[1]);
+      for (let y = Math.floor(lo[1] / step) * step + step; y < hi[1]; y += step) d += "M" + f(lo[0]) + " " + (-y) + "H" + f(hi[0]);
+      h += '<rect class="bed" x="' + f(lo[0]) + '" y="' + f(-hi[1]) + '" width="' + f(hi[0] - lo[0]) + '" height="' + f(hi[1] - lo[1]) + '"/><path class="grid" d="' + d + '"/>';
+    }
+    h += shapes.map(({o, poly, c}) => '<g class="o' + (o.gone ? " gone" : o.cur ? " cur" : "") + '" data-xo="' + escH(o.name) + '"><title>' + escH(o.name) + '</title>' +
+      (poly ? '<polygon points="' + poly.map(p => f(p[0]) + "," + f(-p[1])).join(" ") + '"/>' : '<circle cx="' + f(c[0]) + '" cy="' + f(-c[1]) + '" r="' + f(fs * 0.9) + '"/>') +
+      '<text x="' + f(c[0]) + '" y="' + f(-c[1]) + '" font-size="' + f(fs) + '">' + o.n + '</text></g>').join("");
+    map.innerHTML = h;
+  }
+  document.getElementById("xolist").innerHTML = s.objs.map(o =>
+    '<div class="r' + (o.gone ? " gone" : o.cur ? " cur" : "") + '" data-xo="' + escH(o.name) + '"><span class="num">' + o.n + '</span><span class="nm" title="' + escH(o.name) + '">' + escH(o.name) + '</span>' +
+    (o.gone || o.cur ? '<span class="what">' + (o.gone ? "Excluded" : "Printing now") + '</span>' : "") +
+    (o.gone ? "" : '<button type="button" data-xo="' + escH(o.name) + '"' + (xoBusy || s.left <= 1 ? " disabled" : "") + '>Exclude</button>') + '</div>').join("");
+}
+async function xoExclude(name) {
+  if (xoBusy || !CONTROLS) return;
+  const s = xoState(Status.st), o = s.objs.find(x => x.name === name), err = document.getElementById("xoerr");
+  if (!o || o.gone) return;
+  if (s.left <= 1) { err.textContent = "This is the only object left. Cancel the print instead."; return; }
+  if (!await ask("Exclude object " + o.n + " (" + name + ")?\nThe printer stops printing it and carries on with the rest. This cannot be undone.", "Exclude")) return;
+  xoBusy = true; err.textContent = ""; xoUpdate(Status.st);
+  try {
+    await postControl({action: "exclude_object", name});
+    xoSent.add(name);
+    notice.className = "pill on"; notice.textContent = "Excluded object " + o.n; noticeClear(15000);
+  } catch (e) { err.textContent = e.message; }
+  xoBusy = false; xoUpdate(Status.st);
+}
+const xoKey = e => { if (e.key === "Escape" && document.getElementById("askmodal").hidden) { e.preventDefault(); e.stopPropagation(); xoClose(); } };
+function xoClose() { xomodal.hidden = true; document.removeEventListener("keydown", xoKey, true); }
+xobtn.addEventListener("click", () => {
+  if (!CONTROLS) return;
+  document.getElementById("xoerr").textContent = ""; xoSig = "";
+  xomodal.hidden = false; document.addEventListener("keydown", xoKey, true);
+  xoUpdate(Status.st); document.getElementById("xono").focus({preventScroll: true});
+});
+xomodal.addEventListener("click", ev => {
+  if (ev.target === xomodal || ev.target.id === "xono") return xoClose();
+  const t = ev.target.closest("g[data-xo], button[data-xo]");
+  if (t) xoExclude(t.dataset.xo);
+});
+xomodal.addEventListener("pointerover", ev => {              // the object under the pointer lights up on the bed and in the list
+  const t = ev.target.closest("[data-xo]"), name = t ? t.dataset.xo : null;
+  xomodal.querySelectorAll("[data-xo]").forEach(e => e.classList.toggle("hi", name !== null && e.dataset.xo === name));
 });
 
 // ---- Live console: Moonraker's recent console history, polled (read-only) ----
@@ -2787,6 +2936,7 @@ const Status = {
 // Home's views
 Status.on(st => {                                          // header: job line, print buttons; footer
   renderPrintCtl(printState);
+  xoUpdate(st);
   const p = st.print_stats || {};
   document.getElementById("job").textContent = p.state === "printing" || p.state === "paused"
     ? cap(p.state) + (st.virtual_sdcard ? " " + Math.round(st.virtual_sdcard.progress * 100) + "%" : "") + ": " + String(p.filename || "").split("/").pop() + (p.info && p.info.total_layer ? "  (layer " + p.info.current_layer + "/" + p.info.total_layer + ")" : "")
@@ -2938,6 +3088,7 @@ async function tick() {
         (/^extruder/.test(a) ? 1 : 0) - (/^extruder/.test(b) ? 1 : 0) || a.localeCompare(b));
       fanObjs = l.result.objects.filter(n => FAN_RE.test(n));
       tmcObjs = l.result.objects.filter(n => /^tmc\d+ /.test(n));
+      xoHas = l.result.objects.includes("exclude_object");
       afcParts = l.result.objects.includes("AFC") ? l.result.objects.filter(n => /^AFC_(extruder|hub|buffer) \S/.test(n)) : [];
       afcLanes = l.result.objects.includes("AFC") ? l.result.objects.filter(n => /^AFC_(stepper|lane) \S/.test(n)) : [];
       boxObjs = l.result.objects.filter(n => /^(box_stepper slot\d+|aht20_f \S+|heater_generic heater_box\d*)$/.test(n));
@@ -2959,6 +3110,7 @@ async function tick() {
     if (CFG.provider === "toolchanger") base.push("toolchanger");
     if (CFG.provider === "qidibox") base.push("multi_color_controller", "save_variables", "box_extras", "filament_switch_sensor fila", ...boxObjs);
     if (CFG.light && CFG.light.object) base.push(CFG.light.object);
+    if (xoHas) base.push("exclude_object");
     const objs = base.map(n => encodeURIComponent(n)).join("&") + extra;
     const j = await jget(MR + "/printer/objects/query?" + objs);
     if (CFG.spoolman && Date.now() - spoolsAt > 15000) await loadSpools();
@@ -4074,7 +4226,8 @@ bootstrap();
     '<main id="tmain">' +
       '<section class="tp" id="tp-home">' +
         '<div id="tjob" class="tbox"><img id="tjimg" alt="" hidden><div class="tjtxt"><div id="tjst" class="tjst">Connecting...</div><div id="tjfile" class="tjfile"></div>' +
-          '<div class="tjbar" id="tjbarw" hidden><i id="tjbar"></i></div><div id="tjsub" class="tjsub"></div></div></div>' +
+          '<div class="tjbar" id="tjbarw" hidden><i id="tjbar"></i></div><div id="tjsub" class="tjsub"></div></div>' +
+          '<button class="tbtn" id="txo" style="flex:none" hidden></button></div>' +
         '<div><h2>Temperatures</h2><div class="theat" id="theat"></div></div>' +
         '<div class="tpre" id="tpre"><button class="tbtn" data-cool>' + ico("snowflake") + 'Cool down</button>' + PRESETS.map(([n, e, b], i) => '<button class="tbtn" data-preset="' + i + '">' + ico("flame") + n + " " + e + "° / " + b + "°</button>").join("") + "</div>" +
       "</section>" +
@@ -4131,6 +4284,18 @@ bootstrap();
   $("trail").addEventListener("click", e => { const b = e.target.closest("button[data-tp]"); if (b) show(b.dataset.tp); });
   let start = "home"; try { start = sessionStorage.getItem("touchPanel") || "home"; } catch (e) {}
   show(start);
+  // Left alone on another section, the screen goes back to Status: after 300 s without a touch, or ?idle=<seconds> (0 = never).
+  const IDLE = q.has("idle") && +q.get("idle") >= 0 ? +q.get("idle") : 300;
+  let idleTimer = 0;
+  const idleHome = () => {
+    if (panel === "home") return;
+    $("tgtpop").hidden = true;                                // a half-typed target or position goes with the section it belonged to
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();      // and so does the number pad
+    show("home");
+  };
+  const idleArm = () => { clearTimeout(idleTimer); if (IDLE > 0) idleTimer = setTimeout(idleHome, IDLE * 1000); };
+  for (const ev of ["pointerdown", "pointerup", "touchmove", "wheel", "keydown"]) document.addEventListener(ev, idleArm, {capture: true, passive: true});
+  idleArm();
 
   // ---- status bar: name, temperatures, print buttons ----
   const STATE = {standby: "Ready", printing: "Printing", paused: "Paused", complete: "Finished", cancelled: "Cancelled", error: "Error"};
@@ -4174,6 +4339,8 @@ bootstrap();
     const im = $("tjimg"), src = ps.filename && thumbUrl ? thumbUrl : "";
     if (im.getAttribute("src") !== src) { if (src) im.src = src; else im.removeAttribute("src"); }
     im.hidden = !src;
+    $("txo").hidden = xobtn.hidden || !CONTROLS;             // the normal page's Exclude object button, shown here on the print card
+    $("txo").textContent = xobtn.textContent.replace("...", "");
     // one tile per heater (tap to set its target), then the chamber sensor if it is not a heater
     const names = [...Array.from({length: N}, (_, i) => exName(i)), "heater_bed", ...(tempObjs || []).filter(n => /^heater_generic /.test(n))];
     if (CH && CH.sensor && !names.includes(CH.sensor)) names.push(CH.sensor);
@@ -4187,6 +4354,7 @@ bootstrap();
     $("tpre").hidden = !CONTROLS;
     $("tpre").querySelectorAll("button").forEach(b => { b.disabled = active; b.title = active ? "Not while a print is running" : ""; });
   }, {el: "tp-home"});
+  $("txo").addEventListener("click", () => xobtn.click());
   $("tpre").addEventListener("click", async e => {
     const b = e.target.closest("button"); if (!b || b.disabled) return;
     const st = Status.st || {};

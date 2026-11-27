@@ -1240,6 +1240,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
             pend = None
         self.jreply(200, {"pending": pend, "state": st["state"], "layer": st["layer"], "total": st["total"]})
 
+    # ---- "Exclude object": stop printing one object of the running print (Klipper's [exclude_object]). The page draws the
+    # objects from the printer's status; here the name is checked against what the printer itself reports before it is sent.
+    def exclude_control(self, req):
+        try:
+            st = self.mget("/printer/objects/query?exclude_object&print_stats")["result"]["status"]
+        except Exception as e:  # noqa: BLE001
+            return self.jreply(502, {"error": str(e)})
+        try:
+            cmd = exclude_command(req.get("name"), st.get("exclude_object"), (st.get("print_stats") or {}).get("state"))
+        except ValueError as e:
+            return self.jreply(409 if str(e).startswith("refused") else 400, {"error": str(e)})
+        try:
+            self.run_gcode(cmd, 60)
+            self.jreply(200, {"ok": True, "cmd": cmd})
+        except Exception as e:  # noqa: BLE001
+            self.jreply(502, {"error": str(e)})
+
     # ---- print tuning: baby-stepping, speed and flow factors, pressure advance. Meant for use during a print, so there is
     # no print-state check; every value is range-checked and turned into one fixed command.
     Z_STEPS = (0.005, 0.01, 0.025, 0.05)
@@ -1918,7 +1935,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     # POST /control: the method that handles each "action". Print controls, tool buttons and macros are handled in do_POST
     # itself, because they share the one-command-at-a-time lock and the "not while printing" rule.
-    ROUTES = {"tune": "tune_control", "mesh_calibrate": "mesh_control", "gcode": "gcode_control", "fan": "fan_control", "restart": "restart_control", "pause_at": "pause_at_control", "pause_at_cancel": "pause_at_control", "tag_reread": "tag_control", "temp": "temp_control", "light": "light_control",
+    ROUTES = {"tune": "tune_control", "mesh_calibrate": "mesh_control", "gcode": "gcode_control", "fan": "fan_control", "restart": "restart_control", "pause_at": "pause_at_control", "pause_at_cancel": "pause_at_control", "exclude_object": "exclude_control", "tag_reread": "tag_control", "temp": "temp_control", "light": "light_control",
               "home": "move_control", "jog": "move_control", "goto": "move_control", "motors_off": "move_control",
               "set_lane": "lane_control", "set_slot": "box_slot_control", "save_config": "config_save",
               "save_settings": "save_settings", "save_pack": "save_pack", "delete_pack": "delete_pack",
@@ -2176,6 +2193,29 @@ def watch_pause_at(interval=1):
             if due:
                 PAUSE_AT.pop(pid, None)
                 pause_at_save()
+
+
+def exclude_command(name, eo, state):
+    """The command that excludes object `name` from the running print, from Klipper's exclude_object status `eo` and the
+    print state. Raises ValueError (message starting "refused" when the print's state is the reason, 409)."""
+    if not isinstance(name, str) or not name:
+        raise ValueError("name the object to exclude")
+    objs = (eo or {}).get("objects") or []
+    names = [o.get("name") for o in objs if isinstance(o, dict) and isinstance(o.get("name"), str)]
+    if not names:
+        raise ValueError("refused: this print has no objects to exclude (Klipper needs [exclude_object] and the slicer has to label the objects)")
+    if state not in ("printing", "paused"):
+        raise ValueError("refused: there is no running print (printer is %s)" % state)
+    if name not in names:
+        raise ValueError("this print has no object with that name")
+    gone = set((eo or {}).get("excluded_objects") or [])
+    if name in gone:
+        raise ValueError("refused: %s is already excluded" % name)
+    if len([n for n in names if n not in gone]) <= 1:
+        raise ValueError("refused: %s is the only object left; cancel the print instead" % name)
+    if re.search(r"""[\s"';#\x00-\x1f\x7f]""", name):       # the name comes from the G-code file: nothing that could end the parameter or start another
+        raise ValueError("this object's name cannot be sent as a command")
+    return "EXCLUDE_OBJECT NAME=%s" % name
 
 
 def watch_printers(interval=5):
