@@ -226,6 +226,14 @@
   .tr .bar{grid-column:1 / -1;height:3px;border-radius:2px;background:#1D1A42;overflow:hidden;margin-top:4px}
   .tr .bar i{display:block;height:100%;background:var(--violet)}
   .tr.hot .bar i{background:var(--warn)}
+  /* a heater whose target can be set: the whole row is the button, and the target is drawn as a field (.tset) */
+  .tr.tgt{text-decoration:none;border-radius:6px}
+  .tr.tgt:hover,.tr.tgt:focus-visible{color:inherit;background:#1a1738;box-shadow:-8px 0 0 #1a1738,8px 0 0 #1a1738;outline:none}
+  .tr.tgt:focus-visible{box-shadow:-8px 0 0 #1a1738,8px 0 0 #1a1738,0 0 0 2px #7A63F2}
+  .tr .tset{display:inline-block;min-width:44px;margin-left:8px;padding:3px 9px;border:1px solid #352F6B;border-radius:8px;background:#0a0818;font-size:13px;font-weight:400;text-align:center;color:var(--muted)}
+  .tr.hot .tset{font-weight:600;color:#e8e6ff}
+  .tr .tset::after{content:"";display:inline-block;margin-left:6px;border:4px solid transparent;border-top-color:currentColor;border-bottom:0;vertical-align:middle;opacity:.7}
+  .tr.tgt:hover .tset,.tr.tgt:focus-visible .tset{border-color:#7A63F2;background:#1D1A42;color:#fff}
   .drv{display:flex;flex-wrap:wrap;gap:6px}
   .drv span{background:#0f0d24;border:1px solid #231f4a;border-radius:999px;padding:2px 10px;font-size:12px;color:var(--muted);white-space:nowrap}
   .drv span.hot{color:var(--warn);border-color:#6b4a1a}
@@ -1310,7 +1318,7 @@ function tgtOpen(el) {
     document.getElementById("tgtunit").textContent = "°C"; document.getElementById("tgtoff").hidden = false;
     document.getElementById("tgtset").textContent = "Set";
   }
-  const r = el.getBoundingClientRect();
+  const r = (el.querySelector(".tset") || el).getBoundingClientRect();      // a Temperatures row: open under its target field
   tgtPop.hidden = false;
   tgtPop.style.left = Math.max(8, Math.min(innerWidth - 190, r.left + r.width / 2 - 85)) + "px";
   tgtPop.style.top = Math.max(8, Math.min(innerHeight - 130, r.bottom + 8)) + "px";
@@ -1337,10 +1345,14 @@ document.addEventListener("click", ev => {
   if (t) { ev.stopPropagation(); return tgtOpen(t); }
   if (!ev.target.closest("#tgtpop")) tgtPop.hidden = true;
 });
+document.addEventListener("keydown", ev => {      // a focused Temperatures row works like a button
+  if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches && ev.target.matches('.tgt[role="button"]')) { ev.preventDefault(); tgtOpen(ev.target); }
+});
 document.getElementById("tgtset").addEventListener("click", () => tgtApply(tgtIn.value));
 document.getElementById("tgtoff").addEventListener("click", () => tgtApply(0));
 document.getElementById("tgtx").addEventListener("click", () => { tgtPop.hidden = true; });
-tgtIn.addEventListener("keydown", ev => { if (ev.key === "Enter" && tgtIn.value !== "") tgtApply(tgtIn.value); if (ev.key === "Escape") tgtPop.hidden = true; });
+// preventDefault: during a print the action asks first, and the same Enter would otherwise press that question's Cancel button
+tgtIn.addEventListener("keydown", ev => { if (ev.key === "Enter" && tgtIn.value !== "") { ev.preventDefault(); tgtApply(tgtIn.value); } if (ev.key === "Escape") tgtPop.hidden = true; });
 let lightOn = true, lightHold = 0;       // lightHold: ignore polled state briefly after a toggle
 function lightApply() {
   const $ = id => document.getElementById(id);
@@ -1459,13 +1471,16 @@ function renderTemps(st) {
     const hasTarget = typeof o.target === "number";
     const hot = hasTarget && o.target > 0;
     const pw = typeof o.power === "number" ? Math.round(o.power * 100) : null;
-    const tgt = /^(extruder\d*|heater_bed)$/.test(n) ? tgtSpan(n, tempTitle(n), o.target, false) : (o.target > 0 ? o.target.toFixed(0) + "°" : "off");
+    // Heaters the server can set (nozzles, the bed, a heater_generic such as the chamber): the whole row opens the editor.
+    const settable = CONTROLS && hasTarget && /^(extruder\d*|heater_bed|heater_generic .+)$/.test(n);
+    const tgtTxt = o.target > 0 ? Math.round(o.target) + "°" : "off";
     // The bar is how far the heater has got from room temperature to its target: empty when cold, full at temperature,
     // steady while it holds there. (Not the heater's power: the controller pulses that between 0 and 100% every second.)
     const prog = hot ? heatProgress(o.temperature, o.target) : 0;
     const tip = hot ? (prog >= 1 ? "at target" : Math.round(prog * 100) + "% of the way to " + Math.round(o.target) + "°") + (pw !== null ? " · heater power " + pw + "%" : "") : "off";
-    const row = '<div class="tr' + (hot ? " hot" : "") + '"><span class="nm" title="' + escH(n) + '">' + escH(tempTitle(n)) + '</span><span class="v">' + o.temperature.toFixed(1) + '°' +
-      (hasTarget ? ' <small>/ ' + tgt + '</small>' : "") + '</span>' +
+    const set = settable ? ' tgt" role="button" tabindex="0" title="Set the ' + escH(tempTitle(n)) + ' target" data-heater="' + escH(n) + '" data-title="' + escH(tempTitle(n)) + '" data-cur="' + Math.round(o.target || 0) : "";
+    const row = '<div class="tr' + (hot ? " hot" : "") + set + '"><span class="nm"' + (settable ? "" : ' title="' + escH(n) + '"') + '>' + escH(tempTitle(n)) + '</span><span class="v">' + o.temperature.toFixed(1) + '°' +
+      (settable ? '<span class="tset">' + tgtTxt + '</span>' : hasTarget ? ' <small>/ ' + tgtTxt + '</small>' : "") + '</span>' +
       (hasTarget ? '<div class="bar" title="' + escH(tip) + '"><i style="width:' + (prog * 100).toFixed(1) + '%"></i></div>' : "") + '</div>';
     (hasTarget ? heaters : sensors).push({n, row});
   }
@@ -1479,11 +1494,18 @@ function renderTemps(st) {
     drv += '<span' + (o.temperature >= 90 ? ' class="hot"' : "") + '>' + escH(label) + '<b>' + o.temperature.toFixed(0) + '°</b></span>';
   }
   const sec = (title, body) => body ? '<div class="tsec"><div class="tl">' + title + '</div>' + body + '</div>' : "";
-  document.getElementById("tgrid").innerHTML = '<div class="tcard">' +
+  const grid = document.getElementById("tgrid");
+  if (tgridDown) return;                               // a press is under way: replacing the rows now would lose its click
+  const focus = grid.contains(document.activeElement) ? document.activeElement.dataset.heater : null;
+  grid.innerHTML = '<div class="tcard">' +
     sec("Heaters", heaters.length ? '<div class="trows">' + heaters.map(x => x.row).join("") + '</div>' : "") +
     sec("Sensors", sensors.length ? '<div class="trows">' + sensors.map(x => x.row).join("") + '</div>' : "") +
     sec("Drivers", drv ? '<div class="drv">' + drv + '</div>' : "") + '</div>';
-}// ---- Fans: discovered the same way ----
+  if (focus) { const el = [...grid.querySelectorAll(".tr.tgt")].find(e => e.dataset.heater === focus); if (el) el.focus({preventScroll: true}); }      // keep keyboard focus across the redraw
+}
+let tgridDown = false;
+document.getElementById("tgrid").addEventListener("pointerdown", () => { tgridDown = true; });
+for (const ev of ["pointerup", "pointercancel"]) addEventListener(ev, () => { tgridDown = false; });// ---- Fans: discovered the same way ----
 function graphicFans() {                     // fans shown inside the printer graphic instead of the Fans card
   const s = new Set(PK.partFan ? ["fan"] : []);
   for (const f of ((CFG && CFG.toolFans) || [])) { if (f && f.hotend) s.add(f.hotend); if (f && f.part) s.add(f.part); }
