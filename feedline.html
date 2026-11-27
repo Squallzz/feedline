@@ -4284,6 +4284,18 @@ bootstrap();
   $("trail").addEventListener("click", e => { const b = e.target.closest("button[data-tp]"); if (b) show(b.dataset.tp); });
   let start = "home"; try { start = sessionStorage.getItem("touchPanel") || "home"; } catch (e) {}
   show(start);
+  // Left alone on another section, the screen goes back to Status: after 300 s without a touch, or ?idle=<seconds> (0 = never).
+  const IDLE = q.has("idle") && +q.get("idle") >= 0 ? +q.get("idle") : 300;
+  let idleTimer = 0;
+  const idleHome = () => {
+    if (panel === "home") return;
+    $("tgtpop").hidden = true;                                // a half-typed target or position goes with the section it belonged to
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();      // and so does the number pad
+    show("home");
+  };
+  const idleArm = () => { clearTimeout(idleTimer); if (IDLE > 0) idleTimer = setTimeout(idleHome, IDLE * 1000); };
+  for (const ev of ["pointerdown", "pointerup", "touchmove", "wheel", "keydown"]) document.addEventListener(ev, idleArm, {capture: true, passive: true});
+  idleArm();
 
   // ---- status bar: name, temperatures, print buttons ----
   const STATE = {standby: "Ready", printing: "Printing", paused: "Paused", complete: "Finished", cancelled: "Cancelled", error: "Error"};
